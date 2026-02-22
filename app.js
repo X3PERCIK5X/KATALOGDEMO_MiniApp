@@ -21,6 +21,9 @@ const state = {
   productionSlide: 0,
   profile: {},
   orders: [],
+  promoCode: '',
+  promoPercent: 0,
+  recentlyViewed: [],
 };
 
 const menuCatalogTree = [
@@ -49,6 +52,7 @@ const ui = {
   cartButton: document.getElementById('cartButton'),
   ordersButton: document.getElementById('ordersButton'),
   homeButton: document.getElementById('homeButton'),
+  profileButton: document.getElementById('profileButton'),
   favoritesCount: document.getElementById('favoritesCount'),
   cartCount: document.getElementById('cartCount'),
   categoriesGrid: document.getElementById('categoriesGrid'),
@@ -83,6 +87,7 @@ const ui = {
   policyLink: document.getElementById('policyLink'),
   orderStatus: document.getElementById('orderStatus'),
   orderRetry: document.getElementById('orderRetry'),
+  orderSubmit: document.getElementById('orderSubmit'),
   feedbackForm: document.getElementById('feedbackForm'),
   feedbackName: document.getElementById('feedbackName'),
   feedbackPhone: document.getElementById('feedbackPhone'),
@@ -100,9 +105,20 @@ const ui = {
   promoList: document.getElementById('promoList'),
   productsSort: document.getElementById('productsSort'),
   productsSearch: document.getElementById('productsSearch'),
+  homeProductsSort: document.getElementById('homeProductsSort'),
+  homeProductsSearch: document.getElementById('homeProductsSearch'),
   promoSort: document.getElementById('promoSort'),
   homeProductionButton: document.getElementById('homeProductionButton'),
   dataStatus: document.getElementById('dataStatus'),
+  headerAddress: document.getElementById('headerAddress'),
+  profileAvatar: document.getElementById('profileAvatar'),
+  profileName: document.getElementById('profileName'),
+  profileHandle: document.getElementById('profileHandle'),
+  featuredPromo: document.getElementById('featuredPromo'),
+  promoCodeInput: document.getElementById('promoCodeInput'),
+  promoApplyButton: document.getElementById('promoApplyButton'),
+  promoStatus: document.getElementById('promoStatus'),
+  homeRecentTrack: document.getElementById('homeRecentTrack'),
 };
 
 function reportStatus(message) {
@@ -115,6 +131,20 @@ function on(el, event, handler, options) {
   if (!el) return;
   el.addEventListener(event, handler, options);
 }
+
+function debounce(fn, delay = 220) {
+  let timer = null;
+  return (...args) => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), delay);
+  };
+}
+
+const PROMO_CODES = {
+  WELCOME10: 10,
+  DEMO5: 5,
+  STYLE15: 15,
+};
 
 function getTelegramUser() {
   return window.HORECA_TG?.initDataUnsafe?.user || {};
@@ -186,6 +216,10 @@ function setScreen(name) {
     state.screenStack.push(name);
   }
   ui.screens.forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
+  if (name === 'profile') {
+    renderProfile();
+    renderOrders();
+  }
   updateBottomNav(name);
   scrollToTop();
 }
@@ -224,14 +258,15 @@ function closeDrawer() {
 function updateBottomNav(screen) {
   const map = {
     home: ui.homeButton,
-    favorites: ui.favoritesButton,
     cart: ui.cartButton,
-    orders: ui.ordersButton,
-    menu: ui.menuButton,
+    profile: ui.profileButton,
+    orders: ui.profileButton,
+    favorites: ui.profileButton,
+    menu: ui.profileButton,
   };
   const defaultButton = ui.homeButton;
   const activeButton = map[screen] || defaultButton;
-  [ui.homeButton, ui.favoritesButton, ui.cartButton, ui.ordersButton, ui.menuButton].forEach((btn) => {
+  [ui.homeButton, ui.cartButton, ui.profileButton].forEach((btn) => {
     if (!btn) return;
     btn.classList.toggle('active', btn === activeButton);
   });
@@ -288,6 +323,9 @@ function loadStorage() {
   state.selectedFavorites = new Set(safeParse(localStorage.getItem('demo_catalog_fav_selected') || '[]', []));
   state.profile = safeParse(localStorage.getItem('demo_catalog_profile') || '{}', {});
   state.orders = safeParse(localStorage.getItem('demo_catalog_orders') || '[]', []);
+  state.promoCode = String(localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
+  state.promoPercent = Number(localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
+  state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
 }
 
 function saveStorage() {
@@ -297,6 +335,9 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_fav_selected', JSON.stringify(Array.from(state.selectedFavorites)));
   localStorage.setItem('demo_catalog_profile', JSON.stringify(state.profile));
   localStorage.setItem('demo_catalog_orders', JSON.stringify(state.orders));
+  localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
+  localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
+  localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
 }
 
 function getProduct(id) { return state.products.find((p) => p.id === id); }
@@ -323,18 +364,22 @@ function cartSummary() {
     }
     sum += item.price * item.qty;
   });
-  return { sum, missing, count, requestCount };
+  const discountPercent = Number(state.promoPercent || 0);
+  const discountAmount = discountPercent > 0 ? Math.round(sum * (discountPercent / 100)) : 0;
+  const finalSum = Math.max(0, sum - discountAmount);
+  return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, missing, count, requestCount };
 }
 
 function formatSummaryTotal(summary) {
   const hasNumericTotal = Number(summary.sum || 0) > 0;
+  const promoLabel = summary.discountAmount > 0 ? ` (скидка ${summary.discountPercent}%)` : '';
   if (summary.missing && hasNumericTotal) {
-    return `${formatPrice(summary.sum)} ₽ + Запрос цены`;
+    return `${formatPrice(summary.sum)} ₽${promoLabel} + Запрос цены`;
   }
   if (summary.missing) {
     return 'Запрос цены';
   }
-  return `${formatPrice(summary.sum)} ₽`;
+  return `${formatPrice(summary.sum)} ₽${promoLabel}`;
 }
 
 function updateBadges() {
@@ -361,7 +406,7 @@ function renderCategories() {
     const image = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : c.image;
     return `
     <button class="category-card" data-category="${c.id}">
-      <img src="${safeSrc(image)}" alt="${c.title}" />
+      <img src="${safeSrc(image)}" alt="${c.title}" loading="lazy" decoding="async" />
       <span>${c.title}</span>
     </button>
   `;
@@ -382,7 +427,7 @@ function buildProductCards(list, options = {}) {
           <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
         </svg>
       </button>
-      <img src="${safeSrc(p.images[0])}" alt="${p.title}" />
+      <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div>
         <div class="product-title">${p.title}</div>
         <div class="product-meta">${p.shortDescription || ''}</div>
@@ -440,8 +485,8 @@ function renderProducts() {
   if (!list.length) {
     ui.productsList.innerHTML = `
       <div class="empty-state">
-        <div class="empty-title">Пока нет товаров в этом разделе</div>
-        <div class="empty-text">Попробуйте открыть другую категорию.</div>
+        <div class="empty-title">${state.filters.products.search ? 'Ничего не найдено' : 'Пока нет товаров в этом разделе'}</div>
+        <div class="empty-text">${state.filters.products.search ? 'Измените запрос или фильтр.' : 'Попробуйте открыть другую категорию.'}</div>
       </div>
     `;
     return;
@@ -465,13 +510,19 @@ function getRecommendedProducts(product, limit = 8) {
 function renderPromos() {
   const list = getPromoProducts();
   const filtered = applyFilters(list, state.filters.promo);
+  if (ui.featuredPromo && list.length) {
+    const lead = list[0];
+    ui.featuredPromo.style.background = `linear-gradient(180deg, rgba(7, 9, 15, 0.14), rgba(7, 9, 15, 0.78)), url('${safeSrc(lead.images[0])}') center/cover`;
+    ui.featuredPromo.querySelector('.featured-title').textContent = lead.title || 'Новая коллекция';
+    ui.featuredPromo.querySelector('.featured-text').textContent = lead.shortDescription || 'Подборка лучших товаров в каталоге';
+  }
   if (ui.promoTrack) {
     ui.promoTrack.innerHTML = list.map((p) => {
       const newPrice = Math.round((p.price || 0) * 0.9);
       return `
     <article class="promo-card" data-open="${p.id}">
       <div class="promo-badge">-10%</div>
-      <img src="${safeSrc(p.images[0])}" alt="${p.title}" />
+      <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div class="promo-title">${p.title}</div>
       <div class="promo-price">
         <span class="promo-new">${formatPrice(newPrice)} ₽</span>
@@ -493,6 +544,38 @@ function renderPromos() {
       ui.promoList.innerHTML = buildProductCards(filtered, { promo: true });
     }
   }
+}
+
+function touchRecentlyViewed(productId) {
+  if (!productId) return;
+  state.recentlyViewed = [productId, ...state.recentlyViewed.filter((id) => id !== productId)].slice(0, 12);
+  saveStorage();
+}
+
+function getRecentlyViewedProducts(limit = 8) {
+  if (!state.recentlyViewed.length) return [];
+  const map = new Map(state.products.map((p) => [p.id, p]));
+  return state.recentlyViewed.map((id) => map.get(id)).filter(Boolean).slice(0, limit);
+}
+
+function renderHomeRecent() {
+  if (!ui.homeRecentTrack) return;
+  const recent = getRecentlyViewedProducts(8);
+  if (!recent.length) {
+    ui.homeRecentTrack.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-title">Здесь появятся просмотренные товары</div>
+      </div>
+    `;
+    return;
+  }
+  ui.homeRecentTrack.innerHTML = recent.map((p) => `
+    <article class="promo-card" data-open="${p.id}">
+      <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
+      <div class="promo-title">${p.title}</div>
+      <div class="promo-price">${priceLabel(p)}</div>
+    </article>
+  `).join('');
 }
 
 function renderProductView() {
@@ -526,7 +609,7 @@ function renderProductView() {
   const recommended = getRecommendedProducts(p, 10);
   ui.productView.innerHTML = `
     <div class="product-hero">
-      <div class="product-gallery">${p.images.map((src) => `<img src="${safeSrc(src)}" alt="${p.title}" />`).join('')}</div>
+      <div class="product-gallery">${p.images.map((src) => `<img src="${safeSrc(src)}" alt="${p.title}" loading="lazy" decoding="async" />`).join('')}</div>
     </div>
     <div class="product-title">${p.title}</div>
     <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
@@ -558,7 +641,7 @@ function renderProductView() {
         <div class="recommended-track">
           ${recommended.map((item) => `
             <button class="recommended-card" data-open="${item.id}" type="button" aria-label="${item.title}">
-              <img src="${safeSrc(item.images[0])}" alt="${item.title}" />
+              <img src="${safeSrc(item.images[0])}" alt="${item.title}" loading="lazy" decoding="async" />
               <div class="recommended-title">${item.title}</div>
               <div class="recommended-price">${priceLabel(item)}</div>
             </button>
@@ -584,7 +667,7 @@ function renderFavorites() {
         <input type="checkbox" data-fav-select="${p.id}" ${state.selectedFavorites.has(p.id) ? 'checked' : ''} />
         <span></span>
       </label>
-      <img src="${safeSrc(p.images[0])}" alt="${p.title}" />
+      <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div>
         <div class="product-title">${p.title}</div>
         <div class="product-meta">${p.shortDescription || ''}</div>
@@ -626,7 +709,7 @@ function renderCart() {
         <input type="checkbox" data-cart-select="${p.id}" ${state.selectedCart.has(p.id) ? 'checked' : ''} />
         <span></span>
       </label>
-      <img class="cart-image" src="${safeSrc(p.images[0])}" alt="${p.title}" />
+      <img class="cart-image" src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div class="cart-info">
         <button class="cart-title-link" data-open="${p.id}">${p.title}</button>
         <div class="cart-sku">Артикул: ${getSku(p) || '—'}</div>
@@ -663,6 +746,14 @@ function renderCart() {
   if (ui.cartSelectAll) {
     ui.cartSelectAll.checked = items.length && items.every((i) => state.selectedCart.has(i.id));
   }
+  if (ui.promoCodeInput) ui.promoCodeInput.value = state.promoCode || '';
+  if (ui.promoStatus) {
+    if (state.promoPercent > 0) {
+      ui.promoStatus.textContent = `Скидка ${state.promoPercent}% активна (${state.promoCode}). Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
+    } else if (/активна/.test(ui.promoStatus.textContent || '')) {
+      ui.promoStatus.textContent = '';
+    }
+  }
 }
 
 function renderOrders() {
@@ -696,6 +787,50 @@ function renderOrders() {
   `).join('');
 }
 
+function renderProfile() {
+  const user = getTelegramUser();
+  const firstName = String(user.first_name || state.profile.name || 'Пользователь').trim();
+  const username = String(user.username || '').trim();
+  if (ui.profileName) ui.profileName.textContent = firstName || 'Пользователь';
+  if (ui.profileHandle) ui.profileHandle.textContent = username ? `@${username}` : `ID: ${getTelegramId() || '—'}`;
+  if (ui.profileAvatar) ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
+}
+
+function validatePhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+function validateEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function applyPromoCode() {
+  const code = String(ui.promoCodeInput?.value || '').trim().toUpperCase();
+  if (!code) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод очищен.';
+    saveStorage();
+    renderCart();
+    return;
+  }
+  const percent = Number(PROMO_CODES[code] || 0);
+  if (!percent) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод не найден.';
+    saveStorage();
+    renderCart();
+    return;
+  }
+  state.promoCode = code;
+  state.promoPercent = percent;
+  if (ui.promoStatus) ui.promoStatus.textContent = `Промокод ${code} активирован: скидка ${percent}%.`;
+  saveStorage();
+  renderCart();
+}
+
 function toggleFavorite(id) {
   if (state.favorites.has(id)) state.favorites.delete(id); else state.favorites.add(id);
   saveStorage();
@@ -723,6 +858,12 @@ function addToCart(id) {
   updateBadges();
 }
 
+function setActiveHomeChip(targetButton) {
+  document.querySelectorAll('.catalog-chips .chip').forEach((chip) => {
+    chip.classList.toggle('chip-active', chip === targetButton);
+  });
+}
+
 function bindEvents() {
   on(ui.menuButton, 'click', openMenu);
 
@@ -737,6 +878,10 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       setScreen(btn.dataset.screen);
       if (btn.dataset.screen === 'orders') renderOrders();
+      if (btn.dataset.screen === 'profile') {
+        renderProfile();
+        renderOrders();
+      }
     });
   });
 
@@ -746,8 +891,9 @@ function bindEvents() {
 
   document.querySelectorAll('.hero-tile').forEach((tile) => {
     tile.addEventListener('click', () => {
+      setActiveHomeChip(tile);
       state.currentGroup = tile.dataset.group;
-      ui.categoriesTitle.textContent = tile.dataset.group === 'accessories' ? 'Аксессуары и подборки' : 'Одежда и обувь';
+      ui.categoriesTitle.textContent = tile.dataset.group === 'accessories' ? 'Аксессуары и подборки' : 'Каталог';
       renderCategories();
       setScreen('categories');
     });
@@ -755,9 +901,18 @@ function bindEvents() {
   // Ensure categories grid has data on load
   if (!state.currentGroup) {
     state.currentGroup = 'apparel';
-    ui.categoriesTitle.textContent = 'Одежда и обувь';
+    ui.categoriesTitle.textContent = 'Каталог';
     renderCategories();
   }
+
+  document.querySelectorAll('[data-home-category]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setActiveHomeChip(btn);
+      const categoryId = btn.dataset.homeCategory;
+      if (!categoryId) return;
+      openCategoryById(categoryId);
+    });
+  });
 
   if (ui.menuCatalogList) {
     ui.menuCatalogList.addEventListener('click', (e) => {
@@ -864,6 +1019,7 @@ function bindEvents() {
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
+    touchRecentlyViewed(state.currentProduct);
     renderProductView();
     setScreen('product');
   });
@@ -873,9 +1029,25 @@ function bindEvents() {
     renderProducts();
   });
 
-  on(ui.productsSearch, 'input', () => {
-    state.filters.products.search = ui.productsSearch.value.trim();
+  const applyProductsSearch = debounce((value, source) => {
+    state.filters.products.search = String(value || '').trim();
+    if (source !== 'products' && ui.productsSearch) ui.productsSearch.value = state.filters.products.search;
+    if (source !== 'home' && ui.homeProductsSearch) ui.homeProductsSearch.value = state.filters.products.search;
     renderProducts();
+  }, 180);
+
+  on(ui.productsSearch, 'input', () => {
+    applyProductsSearch(ui.productsSearch.value, 'products');
+  });
+
+  on(ui.homeProductsSort, 'change', () => {
+    state.filters.products.sort = ui.homeProductsSort.value;
+    if (ui.productsSort) ui.productsSort.value = ui.homeProductsSort.value;
+    renderProducts();
+  });
+
+  on(ui.homeProductsSearch, 'input', () => {
+    applyProductsSearch(ui.homeProductsSearch.value, 'home');
   });
 
   on(ui.promoList, 'click', (e) => {
@@ -910,6 +1082,7 @@ function bindEvents() {
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
+    touchRecentlyViewed(state.currentProduct);
     renderProductView();
     setScreen('product');
   });
@@ -923,6 +1096,16 @@ function bindEvents() {
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
+    touchRecentlyViewed(state.currentProduct);
+    renderProductView();
+    setScreen('product');
+  });
+
+  on(ui.homeRecentTrack, 'click', (e) => {
+    const card = e.target.closest('[data-open]');
+    if (!card) return;
+    state.currentProduct = card.dataset.open;
+    touchRecentlyViewed(state.currentProduct);
     renderProductView();
     setScreen('product');
   });
@@ -937,6 +1120,7 @@ function bindEvents() {
     if (!btn) return;
     if (btn.dataset.open) {
       state.currentProduct = btn.dataset.open;
+      touchRecentlyViewed(state.currentProduct);
       renderProductView();
       return;
     }
@@ -1002,8 +1186,9 @@ function bindEvents() {
 
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
-  on(ui.ordersButton, 'click', () => { renderOrders(); setScreen('orders'); });
-  on(ui.homeButton, 'click', () => { setScreen('home'); });
+  on(ui.ordersButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
+  on(ui.profileButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
+  on(ui.homeButton, 'click', () => { renderHomeRecent(); setScreen('home'); });
   on(ui.checkoutButton, 'click', () => { renderCart(); setScreen('checkout'); });
 
   document.querySelectorAll('.back-button').forEach((btn) => {
@@ -1029,6 +1214,7 @@ function bindEvents() {
     if (!btn) return;
     if (btn.dataset.open) {
       state.currentProduct = btn.dataset.open;
+      touchRecentlyViewed(state.currentProduct);
       renderProductView();
       setScreen('product');
       return;
@@ -1080,6 +1266,14 @@ function bindEvents() {
     renderCart();
   });
 
+  on(ui.promoApplyButton, 'click', applyPromoCode);
+  on(ui.promoCodeInput, 'keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyPromoCode();
+    }
+  });
+
   on(ui.inputDeliveryType, 'change', updateDeliveryAddressVisibility);
 
   on(ui.sharePhoneButton, 'click', async () => {
@@ -1108,6 +1302,8 @@ function bindEvents() {
       email: ui.inputEmail.value.trim(),
     };
     if (!profile.name || !profile.phone || !profile.email) { ui.orderStatus.textContent = 'Заполните поля.'; return; }
+    if (!validatePhone(profile.phone)) { ui.orderStatus.textContent = 'Проверьте номер телефона.'; return; }
+    if (!validateEmail(profile.email)) { ui.orderStatus.textContent = 'Проверьте email.'; return; }
     const deliveryType = ui.inputDeliveryType ? ui.inputDeliveryType.value : 'pickup';
     const deliveryAddress = ui.inputDeliveryAddress ? ui.inputDeliveryAddress.value.trim() : '';
     if (deliveryType === 'delivery' && !deliveryAddress) {
@@ -1134,7 +1330,10 @@ function bindEvents() {
         }
         sum += Number(item.price || 0) * (item.qty || 0);
       });
-      return { sum, missing, count, requestCount };
+      const discountPercent = Number(state.promoPercent || 0);
+      const discountAmount = discountPercent > 0 ? Math.round(sum * (discountPercent / 100)) : 0;
+      const finalSum = Math.max(0, sum - discountAmount);
+      return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, missing, count, requestCount };
     })();
     const mappedItems = items.map((i) => ({
       id: i.id,
@@ -1176,14 +1375,24 @@ function bindEvents() {
       emailSummary: {
         pricedTotal: summary.sum,
         pricedTotalDisplay: `${formatPrice(summary.sum)} ₽`,
+        baseTotalDisplay: `${formatPrice(summary.baseSum || summary.sum)} ₽`,
+        discountAmountDisplay: summary.discountAmount ? `${formatPrice(summary.discountAmount)} ₽` : '',
+        discountPercent: summary.discountPercent || 0,
+        promoCode: state.promoCode || '',
         requestPriceLabel: summary.missing ? 'Запрос цены' : '',
         totalDisplay: formatSummaryTotal(summary),
       },
       telegramUserId: telegramId || null,
       status: 'Счёт отправлен',
+      promo: state.promoCode ? {
+        code: state.promoCode,
+        percent: state.promoPercent || 0,
+        discountAmount: summary.discountAmount || 0,
+      } : null,
     };
 
     ui.orderStatus.textContent = 'Отправка данных в бот...';
+    if (ui.orderSubmit) ui.orderSubmit.disabled = true;
     if (ui.orderRetry) ui.orderRetry.classList.add('hidden');
 
     try {
@@ -1198,6 +1407,8 @@ function bindEvents() {
     } catch (err) {
       ui.orderStatus.textContent = 'Ошибка отправки в бот. Попробуйте ещё раз.';
       if (ui.orderRetry) ui.orderRetry.classList.remove('hidden');
+    } finally {
+      if (ui.orderSubmit) ui.orderSubmit.disabled = false;
     }
   });
 
@@ -1217,6 +1428,14 @@ function bindEvents() {
 
     if (!name || !phone) {
       if (ui.feedbackStatus) ui.feedbackStatus.textContent = 'Заполните имя и телефон.';
+      return;
+    }
+    if (!validatePhone(phone)) {
+      if (ui.feedbackStatus) ui.feedbackStatus.textContent = 'Проверьте номер телефона.';
+      return;
+    }
+    if (email && !validateEmail(email)) {
+      if (ui.feedbackStatus) ui.feedbackStatus.textContent = 'Проверьте email.';
       return;
     }
     if (!state.config.orderEndpoint) {
@@ -1320,6 +1539,9 @@ function setProductionSlide(index) {
 async function loadConfig() {
   const res = await fetch('config.json', { cache: 'no-store' });
   state.config = await res.json();
+  if (ui.headerAddress) {
+    ui.headerAddress.textContent = `📍 ${state.config.companyAddress || 'Адрес будет добавлен'}`;
+  }
   ui.policyLink.href = state.config.privacyPolicyUrl || '#';
   if (ui.aboutText) {
     const aboutRaw = state.config.aboutText || 'Текст будет добавлен позже.';
@@ -1366,6 +1588,7 @@ async function loadConfig() {
   if (!ui.inputName.value) ui.inputName.value = getTelegramFirstName();
   if (ui.inputTelegramId) ui.inputTelegramId.value = getTelegramId();
   updateDeliveryAddressVisibility();
+  renderProfile();
   if (ui.feedbackName) ui.feedbackName.value = state.profile.name || '';
   if (ui.feedbackPhone) ui.feedbackPhone.value = state.profile.phone || '';
   if (ui.feedbackEmail) ui.feedbackEmail.value = state.profile.email || '';
@@ -1408,10 +1631,11 @@ async function loadData() {
     state.currentGroup = 'apparel';
   }
   if (ui.categoriesTitle) {
-    ui.categoriesTitle.textContent = state.currentGroup === 'apparel' ? 'Одежда и обувь' : 'Аксессуары и подборки';
+    ui.categoriesTitle.textContent = state.currentGroup === 'apparel' ? 'Каталог' : 'Аксессуары и подборки';
   }
   renderCategories();
   renderPromos();
+  renderHomeRecent();
   buildMenuCatalog();
   if (state.pendingCategory) {
     const pending = state.pendingCategory;
@@ -1431,10 +1655,16 @@ async function init() {
   state.screenStack = ['home'];
   state.currentScreen = 'home';
   bindEvents();
+  if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
+  if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
+  if (ui.productsSearch) ui.productsSearch.value = state.filters.products.search;
+  if (ui.homeProductsSearch) ui.homeProductsSearch.value = state.filters.products.search;
   updateBottomNav('home');
+  renderProfile();
   updateBadges();
   renderFavorites();
   renderCart();
+  renderHomeRecent();
   closeDrawer();
   buildMenuCatalog();
 

@@ -3,60 +3,64 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-    <title>Demo Catalog - Mini App</title>
-    <link rel="stylesheet" href="style.css?v=20260217-1" />
+    <title>Demo Catalog Lite</title>
+    <link rel="stylesheet" href="style.css?v=20260222-1" />
   </head>
   <body>
     <header class="header">
       <div class="header-brand">
-        <div class="logo">
-          <img src="logo.svg" alt="Demo Catalog" />
+        <div class="brand-logo-line">
+          <span class="brand-apple"></span>
+          <span class="brand-name">BIG TECHNO</span>
         </div>
+        <div id="headerAddress" class="header-address">📍 Москва, ул Барклая 8, 124 павильон</div>
       </div>
       <div class="header-actions">
-        <button class="header-cta" data-screen="production" type="button">Возможности</button>
+        <button class="header-cta" data-screen="production" type="button">О проекте</button>
       </div>
     </header>
 
     <main class="main">
       <div id="dataStatus" class="data-status hidden"></div>
+
       <section id="screen-home" class="screen active">
-        <section class="home-premium-hero">
-          <div class="home-premium-badge">DEMO MINI APP</div>
-          <button class="home-premium-title home-premium-title-link" data-screen="about" type="button">О демо</button>
-          <p class="home-premium-text">
-            Готовый пример Telegram Mini App: каталог, карточка товара, избранное, корзина и оплата заказа.
-          </p>
-          <div class="home-premium-shortcuts">
-            <button class="premium-shortcut" data-screen="about" type="button">О демо</button>
-            <button class="premium-shortcut" data-screen="production" type="button">Возможности</button>
+        <section class="catalog-toolbar">
+          <div class="catalog-chips">
+            <button class="chip chip-active hero-tile" data-group="apparel" type="button">Все</button>
+            <button class="chip" data-home-category="catalog-1" type="button">Женское</button>
+            <button class="chip" data-home-category="catalog-2" type="button">Мужское</button>
+            <button class="chip" data-home-category="catalog-3" type="button">Обувь</button>
+            <button class="chip" data-home-category="catalog-4" type="button">Сумки</button>
+            <button class="chip" data-home-category="catalog-5" type="button">Аксессуары</button>
           </div>
-          <div class="home-premium-actions">
-            <button class="primary-button" data-screen="categories">Перейти в каталог</button>
-            <button class="ghost-button" data-screen="contacts">Контакты</button>
+          <div class="catalog-search-row">
+            <input id="homeProductsSearch" class="filter-input" type="search" placeholder="Поиск товаров..." />
+            <select id="homeProductsSort" class="filter-select filter-select-compact">
+              <option value="default">Популярные</option>
+              <option value="price-asc">По цене</option>
+            </select>
           </div>
         </section>
 
-        <section class="home-trust">
-          <div class="trust-chip">Быстрый запуск</div>
-          <div class="trust-chip">Гибкая кастомизация</div>
-          <div class="trust-chip">Подписка на поддержку</div>
+        <section class="home-feature-wrap">
+          <button id="featuredPromo" class="featured-promo" data-screen="promo" type="button">
+            <div class="featured-chip">NEW</div>
+            <div class="featured-title">Новая коллекция</div>
+            <div class="featured-text">Соберите стильный образ в одном Mini App</div>
+          </button>
         </section>
 
-        <button class="home-section-title home-section-title-link" data-screen="promo" type="button">Демо-акции</button>
+        <div class="home-section-title">Популярное</div>
         <div class="promo-row promo-row-home">
           <div id="promoTrack" class="promo-track"></div>
         </div>
+        <div class="home-section-title">Недавно смотрели</div>
+        <div id="homeRecentTrack" class="promo-track"></div>
 
-        <div class="home-section-title">Каталог</div>
-        <div class="hero-grid hero-grid-premium">
-          <button class="hero-tile" data-group="apparel">
-            <div class="hero-image" data-image="equipment"></div>
-            <div class="hero-label">Коллекции: одежда и аксессуары</div>
-            <div class="hero-sub">Универсальная структура каталога для интернет-магазинов</div>
-          </button>
+        <div class="home-actions-row">
+          <button class="primary-button" data-screen="categories" type="button">Открыть каталог</button>
+          <button class="ghost-button" data-screen="about" type="button">О демо</button>
         </div>
-
       </section>
 
       <section id="screen-categories" class="screen">
@@ -89,23 +93,6 @@
         </nav>
         <div class="menu-footer">
           <div id="menuPhone" class="menu-phone">+7 (900) 000-00-00</div>
-          <div class="drawer-socials">
-            <a class="social-button" href="https://t.me" target="_blank" rel="noopener" aria-label="Telegram">
-              <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M22 4.01c0-.83-.76-1.37-1.54-1.07L3.02 9.62c-.98.37-.97 1.77.02 2.12l4.64 1.64 1.78 5.57c.22.7 1.07.96 1.63.51l2.65-2.1 4.82 3.52c.67.49 1.63.1 1.78-.74l2.64-14.83c.01-.06.02-.12.02-.18Zm-15.37 8.39 11.64-6.64-8.72 8.86-.44 3.3-1.43-4.48-4.59-1.04 3.54-1.99Z"/>
-              </svg>
-            </a>
-            <a class="social-button" href="https://wa.me/70000000000" target="_blank" rel="noopener" aria-label="WhatsApp">
-              <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M12 2a10 10 0 0 0-8.73 14.9L2 22l5.26-1.38A10 10 0 1 0 12 2Zm0 18a8 8 0 0 1-4.06-1.1l-.29-.17-3.12.82.83-3.03-.18-.3A8 8 0 1 1 12 20Zm4.57-5.13c-.25-.12-1.48-.73-1.71-.82-.23-.08-.4-.12-.57.12-.17.25-.65.82-.8.99-.15.17-.3.2-.55.08a6.57 6.57 0 0 1-1.93-1.19 7.22 7.22 0 0 1-1.33-1.65c-.14-.25 0-.38.11-.5.12-.12.25-.3.37-.45.12-.15.17-.25.25-.42.08-.17.04-.32-.02-.45-.06-.12-.57-1.36-.78-1.87-.2-.48-.4-.41-.57-.42h-.49c-.17 0-.45.06-.68.32-.23.25-.9.88-.9 2.14s.92 2.48 1.05 2.65c.12.17 1.81 2.77 4.39 3.88.61.26 1.09.42 1.46.54.61.2 1.17.17 1.61.1.49-.07 1.48-.6 1.69-1.18.21-.58.21-1.07.14-1.18-.06-.12-.23-.2-.48-.32Z"/>
-              </svg>
-            </a>
-            <a class="social-button" href="mailto:demo@example.com" aria-label="Email">
-              <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="currentColor" d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm0 2 8 5 8-5H4Zm0 10h16V10l-8 5-8-5v8Z"/>
-              </svg>
-            </a>
-          </div>
         </div>
       </section>
 
@@ -147,23 +134,8 @@
             <span>Выбрать все</span>
           </label>
           <div class="select-actions">
-            <button id="favoritesToCart" class="icon-btn" aria-label="В корзину">
-              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 11-1 9" />
-                <path d="m19 11-4-7" />
-                <path d="M2 11h20" />
-                <path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4" />
-              </svg>
-            </button>
-            <button id="favoritesClear" class="icon-btn" aria-label="Удалить">
-              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M8 6V4h8v2" />
-                <path d="M6 6l1 14h10l1-14" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-              </svg>
-            </button>
+            <button id="favoritesToCart" class="icon-btn" aria-label="В корзину">+</button>
+            <button id="favoritesClear" class="icon-btn" aria-label="Удалить">×</button>
           </div>
         </div>
         <div id="favoritesList" class="product-list"></div>
@@ -179,23 +151,20 @@
             <span>Выбрать все</span>
           </label>
           <div class="select-actions">
-            <button id="cartRemoveSelected" class="icon-btn" aria-label="Удалить">
-              <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M8 6V4h8v2" />
-                <path d="M6 6l1 14h10l1-14" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-              </svg>
-            </button>
+            <button id="cartRemoveSelected" class="icon-btn" aria-label="Удалить">×</button>
           </div>
         </div>
+        <div class="promo-input-row">
+          <input id="promoCodeInput" class="filter-input" type="text" placeholder="Введите промокод" autocomplete="off" />
+          <button id="promoApplyButton" class="secondary-button" type="button">Активировать</button>
+        </div>
+        <div id="promoStatus" class="status"></div>
         <div id="cartList" class="cart-list"></div>
         <div class="cart-summary-row">
           <span>Итого</span>
           <strong id="cartTotal">0 ₽</strong>
         </div>
-        <button id="checkoutButton" class="primary-button cart-checkout-button" type="button">Оформить заказ</button>
+        <button id="checkoutButton" class="primary-button cart-checkout-button" type="button">Продолжить оформление</button>
       </section>
 
       <section id="screen-checkout" class="screen">
@@ -207,9 +176,9 @@
           <div class="section-title">Данные получателя</div>
           <form id="orderForm" class="order-form flat">
             <label>ФИО *<input id="inputName" type="text" required placeholder="Имя" /></label>
-            <label>Телефон *<input id="inputPhone" type="tel" required placeholder="+7" /></label>
+            <label>Телефон *<input id="inputPhone" type="tel" required placeholder="+7" inputmode="tel" autocomplete="tel" /></label>
             <button id="sharePhoneButton" class="secondary-button" type="button">Поделиться номером из Telegram</button>
-            <label>Email *<input id="inputEmail" type="email" required placeholder="name@mail.ru" /></label>
+            <label>Email *<input id="inputEmail" type="email" required placeholder="name@mail.ru" inputmode="email" autocomplete="email" /></label>
             <label>Telegram ID<input id="inputTelegramId" type="text" readonly placeholder="Определится автоматически" /></label>
             <label>Получение заказа *
               <select id="inputDeliveryType" required>
@@ -217,7 +186,7 @@
                 <option value="delivery">Доставка</option>
               </select>
             </label>
-            <label id="deliveryAddressWrap" class="hidden">Адрес доставки *<input id="inputDeliveryAddress" type="text" placeholder="Город, улица, дом, кв." /></label>
+            <label id="deliveryAddressWrap" class="hidden">Адрес доставки *<input id="inputDeliveryAddress" type="text" placeholder="Город, улица, дом, кв." autocomplete="shipping street-address" /></label>
             <label>Комментарий к заказу<input id="inputComment" type="text" placeholder="Комментарий" /></label>
             <label class="checkbox">
               <input id="policyCheck" type="checkbox" />
@@ -240,25 +209,42 @@
           <h2>Оплата заказа</h2>
         </div>
         <div class="confirmation">
-          <div class="confirmation-icon" aria-hidden="true">
-            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 7 10 17l-6-6" />
-            </svg>
-          </div>
+          <div class="confirmation-icon" aria-hidden="true">✓</div>
           <div class="confirmation-title">Счёт отправлен в чат бота</div>
           <p class="confirmation-text">Откройте чат с ботом и оплатите заказ в Telegram Payments.</p>
           <div class="confirmation-note">После оплаты вы получите подтверждение в чате.</div>
           <div class="confirmation-actions">
             <button class="primary-button" data-screen="home">Вернуться в каталог</button>
-            <button class="ghost-button" data-screen="orders">Открыть мои заказы</button>
+            <button class="ghost-button" data-screen="profile">Открыть профиль</button>
           </div>
         </div>
       </section>
 
-      <section id="screen-orders" class="screen">
+      <section id="screen-profile" class="screen">
         <div class="screen-head">
-          <h2>Мои заказы</h2>
+          <h2>Профиль</h2>
         </div>
+        <div class="profile-card">
+          <div class="profile-header">
+            <div class="profile-avatar" id="profileAvatar">M</div>
+            <div class="profile-meta">
+              <div id="profileName" class="profile-name">Пользователь</div>
+              <div id="profileHandle" class="profile-handle">@telegram</div>
+            </div>
+          </div>
+          <div class="profile-theme-row">
+            <span>🌙 Тема оформления</span>
+            <strong>Тёмная</strong>
+          </div>
+        </div>
+        <button class="profile-manager-button" data-screen="contacts" type="button">
+          <span>💬</span>
+          <span>
+            <strong>Написать менеджеру</strong><br />
+            <small>По любым вопросам в Telegram</small>
+          </span>
+        </button>
+        <div class="home-section-title">История заказов</div>
         <div id="ordersList" class="orders-list"></div>
       </section>
 
@@ -328,20 +314,6 @@
             <button class="dot" data-prod-dot="3" aria-label="Слайд 4"></button>
           </div>
         </div>
-        <div class="presentation-grid">
-          <article class="presentation-card">
-            <div class="presentation-title">Что получает клиент</div>
-            <p>Готовый канал продаж в Telegram с понятным сценарием выбора товара и оплаты.</p>
-          </article>
-          <article class="presentation-card">
-            <div class="presentation-title">Что получает бизнес</div>
-            <p>Структурированные лиды, удобную аналитику по товарам и быстрое масштабирование каталога.</p>
-          </article>
-          <article class="presentation-card">
-            <div class="presentation-title">Что получает отдел продаж</div>
-            <p>Оплаченные заказы с заполненными контактами и составом корзины без ручного сбора данных.</p>
-          </article>
-        </div>
       </section>
 
       <section id="screen-contacts" class="screen">
@@ -380,21 +352,15 @@
       </section>
     </main>
 
-    <nav class="bottom-nav">
-      <button id="menuButton" class="bottom-item" type="button" aria-label="Меню">
+    <nav class="bottom-nav bottom-nav-lite">
+      <button id="homeButton" class="bottom-item" type="button" aria-label="Каталог">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 5h16" />
-          <path d="M4 12h16" />
-          <path d="M4 19h16" />
+          <path d="M3 3h8v8H3z" />
+          <path d="M13 3h8v8h-8z" />
+          <path d="M3 13h8v8H3z" />
+          <path d="M13 13h8v8h-8z" />
         </svg>
-        <span>Меню</span>
-      </button>
-      <button id="ordersButton" class="bottom-item" type="button" aria-label="Мои заказы">
-        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 3h6l1 2h4v4H4V5h4l1-2z" />
-          <path d="M4 9h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9z" />
-        </svg>
-        <span>Заказы</span>
+        <span>Каталог</span>
       </button>
       <button id="cartButton" class="bottom-item bottom-center" type="button" aria-label="Корзина">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -406,24 +372,22 @@
         <span>Корзина</span>
         <span id="cartCount" class="badge">0</span>
       </button>
-      <button id="favoritesButton" class="bottom-item" type="button" aria-label="Избранное">
+      <button id="profileButton" class="bottom-item" type="button" aria-label="Профиль">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
+          <path d="M20 21a8 8 0 0 0-16 0" />
+          <circle cx="12" cy="7" r="4" />
         </svg>
-        <span>Избранное</span>
-        <span id="favoritesCount" class="badge">0</span>
+        <span>Профиль</span>
       </button>
-      <button id="homeButton" class="bottom-item" type="button" aria-label="Главная">
-        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 11 12 3l9 8" />
-          <path d="M5 10v10h14V10" />
-        </svg>
-        <span>Главная</span>
-      </button>
+
+      <button id="menuButton" class="bottom-item nav-hidden" type="button" aria-label="Меню"></button>
+      <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
+      <button id="favoritesButton" class="bottom-item nav-hidden" type="button" aria-label="Избранное"></button>
+      <span id="favoritesCount" class="badge nav-hidden">0</span>
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260221-1"></script>
-    <script src="app.js?v=20260221-1"></script>
+    <script src="app.js?v=20260222-1"></script>
   </body>
 </html>
