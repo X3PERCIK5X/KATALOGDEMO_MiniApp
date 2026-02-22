@@ -1683,14 +1683,7 @@ body {
 .brand-logo-line {
   display: flex;
   align-items: center;
-  gap: 10px;
   margin-bottom: 10px;
-}
-
-.brand-apple {
-  font-size: 38px;
-  line-height: 1;
-  opacity: 0.95;
 }
 
 .brand-name {
