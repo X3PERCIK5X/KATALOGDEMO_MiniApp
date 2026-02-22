@@ -1671,11 +1671,20 @@ body {
   min-height: 100dvh;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 .header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
   background: transparent;
   border: 0;
   box-shadow: none;
-  padding: max(72px, calc(env(safe-area-inset-top) + 44px)) 18px 10px;
+  padding: max(112px, calc(env(safe-area-inset-top) + 82px)) 18px 10px;
 }
 
 .header::before { display: none; }
@@ -1687,11 +1696,14 @@ body {
 }
 
 .brand-name {
-  font-size: clamp(24px, 7.5vw, 32px);
+  font-size: clamp(18px, 5.4vw, 24px);
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.07em;
   line-height: 1.05;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-address {
@@ -1708,6 +1720,9 @@ body {
   box-shadow: none;
   color: var(--text);
   min-height: 34px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .main {
@@ -2066,10 +2081,20 @@ button:disabled {
 }
 
 @media (max-width: 740px) {
-  .header { padding-top: max(66px, calc(env(safe-area-inset-top) + 40px)); }
+  .header {
+    padding-top: max(116px, calc(env(safe-area-inset-top) + 88px));
+    gap: 6px;
+  }
   .brand-name {
-    font-size: clamp(20px, 8vw, 26px);
-    letter-spacing: 0.08em;
+    font-size: clamp(16px, 6vw, 21px);
+    letter-spacing: 0.05em;
+  }
+  .header-address { padding: 10px 12px; }
+  .header-cta {
+    min-height: 32px;
+    font-size: 12px;
+    padding: 7px 10px;
+    max-width: 112px;
   }
   .featured-title { font-size: 32px; }
   .profile-name { font-size: 24px; }
