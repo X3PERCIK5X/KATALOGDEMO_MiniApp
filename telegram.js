@@ -130,5 +130,30 @@ console.log("✅ telegram.js loaded");
   if (isTelegram) {
     Telegram.WebApp.ready();
     Telegram.WebApp.expand();
+    if (typeof Telegram.WebApp.disableVerticalSwipes === "function") {
+      Telegram.WebApp.disableVerticalSwipes();
+    }
   }
+
+  // Fallback: prevent pull-down close gesture when page is at top.
+  // Keeps normal vertical scrolling inside the app content.
+  let touchStartY = 0;
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      touchStartY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
+    },
+    { passive: true }
+  );
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
+      const pullingDown = currentY > touchStartY + 2;
+      if (pullingDown && window.scrollY <= 0) {
+        e.preventDefault();
+      }
+    },
+    { passive: false }
+  );
 })();
