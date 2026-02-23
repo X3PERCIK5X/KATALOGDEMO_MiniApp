@@ -4,18 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260223-4" />
+    <link rel="stylesheet" href="style.css?v=20260223-5" />
   </head>
   <body>
     <header class="header">
-      <div class="header-brand">
+      <div class="header-row">
+        <button id="headerStoreButton" class="header-store-button" type="button" aria-label="Выбрать магазин">
+          <span id="headerStoreCity">Москва</span>
+          <span class="header-store-arrow">›</span>
+        </button>
         <div class="brand-logo-line">
           <span class="brand-name">DEMO STORE</span>
         </div>
-        <div id="headerAddress" class="header-address">📍 Адрес магазина</div>
-      </div>
-      <div class="header-actions">
-        <button class="header-cta" data-screen="production" type="button">Информация</button>
+        <form id="headerSearchForm" class="header-search-form" role="search">
+          <input id="headerSearchInput" class="header-search-input" type="search" placeholder="Поиск" autocomplete="off" />
+        </form>
       </div>
     </header>
 
@@ -51,6 +54,14 @@
           </button>
         </div>
 
+      </section>
+
+      <section id="screen-stores" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="home" aria-label="Назад">←</button>
+          <h2>Выбор магазина</h2>
+        </div>
+        <div id="storesList" class="stores-list"></div>
       </section>
 
       <section id="screen-categories" class="screen">
@@ -390,6 +401,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260221-1"></script>
-    <script src="app.js?v=20260223-2"></script>
+    <script src="app.js?v=20260223-3"></script>
   </body>
 </html>

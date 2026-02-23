@@ -25,6 +25,8 @@ const state = {
   promoPercent: 0,
   recentlyViewed: [],
   theme: 'dark',
+  stores: [],
+  selectedStoreId: null,
 };
 
 const menuCatalogTree = [
@@ -111,7 +113,11 @@ const ui = {
   promoSort: document.getElementById('promoSort'),
   homeProductionButton: document.getElementById('homeProductionButton'),
   dataStatus: document.getElementById('dataStatus'),
-  headerAddress: document.getElementById('headerAddress'),
+  headerStoreButton: document.getElementById('headerStoreButton'),
+  headerStoreCity: document.getElementById('headerStoreCity'),
+  headerSearchForm: document.getElementById('headerSearchForm'),
+  headerSearchInput: document.getElementById('headerSearchInput'),
+  storesList: document.getElementById('storesList'),
   profileAvatar: document.getElementById('profileAvatar'),
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
@@ -207,6 +213,15 @@ function openCategoryBundle(ids, title) {
   ui.productsTitle.textContent = title || 'Каталог';
   renderProducts();
   setScreen('products');
+}
+
+function openGlobalSearch(query) {
+  const q = String(query || '').trim();
+  const allCategoryIds = Array.from(new Set(state.products.map((p) => p.categoryId))).filter(Boolean);
+  if (!allCategoryIds.length) return;
+  state.filters.products.search = q;
+  if (ui.productsSearch) ui.productsSearch.value = q;
+  openCategoryBundle(allCategoryIds, q ? `Поиск: ${q}` : 'Каталог');
 }
 
 function buildMenuCatalog() {
@@ -336,6 +351,7 @@ function loadStorage() {
   state.promoPercent = Number(localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
   state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
   state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
+  state.selectedStoreId = localStorage.getItem('demo_catalog_selected_store') || null;
 }
 
 function saveStorage() {
@@ -349,6 +365,7 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
   localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
   localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
+  localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
 }
 
 function applyTheme(theme) {
@@ -599,6 +616,48 @@ function renderHomeRecent() {
       <div class="promo-title">${p.title}</div>
       <div class="promo-price">${priceLabel(p)}</div>
     </article>
+  `).join('');
+}
+
+function getFallbackStores() {
+  const address = state.config.companyAddress || 'Москва, Тверская 1';
+  return [
+    { id: 'store-1', city: 'Москва', address },
+    { id: 'store-2', city: 'Санкт-Петербург', address: 'Санкт-Петербург, Невский проспект 28' },
+    { id: 'store-3', city: 'Казань', address: 'Казань, ул. Баумана 9' },
+  ];
+}
+
+function normalizeStores(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const normalized = list
+    .map((item, idx) => ({
+      id: String(item?.id || `store-${idx + 1}`),
+      city: String(item?.city || '').trim(),
+      address: String(item?.address || '').trim(),
+    }))
+    .filter((item) => item.city && item.address);
+  return normalized.length ? normalized : getFallbackStores();
+}
+
+function getSelectedStore() {
+  if (!state.stores.length) return null;
+  return state.stores.find((s) => s.id === state.selectedStoreId) || state.stores[0];
+}
+
+function renderHeaderStore() {
+  const selected = getSelectedStore();
+  if (ui.headerStoreCity) ui.headerStoreCity.textContent = selected?.city || 'Магазины';
+}
+
+function renderStores() {
+  if (!ui.storesList) return;
+  const selected = getSelectedStore();
+  ui.storesList.innerHTML = state.stores.map((store) => `
+    <button class="store-item ${selected?.id === store.id ? 'active' : ''}" data-store-id="${store.id}" type="button">
+      <div class="store-city">${store.city}</div>
+      <div class="store-address">${store.address}</div>
+    </button>
   `).join('');
 }
 
@@ -899,6 +958,19 @@ function setActiveHomeChip(targetButton) {
 
 function bindEvents() {
   on(ui.menuButton, 'click', openMenu);
+  on(ui.headerStoreButton, 'click', () => {
+    renderStores();
+    setScreen('stores');
+  });
+  on(ui.headerSearchForm, 'submit', (e) => {
+    e.preventDefault();
+    openGlobalSearch(ui.headerSearchInput?.value || '');
+  });
+  on(ui.headerSearchInput, 'keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    openGlobalSearch(ui.headerSearchInput?.value || '');
+  });
 
 
   document.querySelectorAll('[data-screen]').forEach((btn) => {
@@ -1010,6 +1082,16 @@ function bindEvents() {
     const btn = e.target.closest('[data-category]');
     if (!btn) return;
     openCategoryById(btn.dataset.category);
+  });
+
+  on(ui.storesList, 'click', (e) => {
+    const btn = e.target.closest('[data-store-id]');
+    if (!btn) return;
+    state.selectedStoreId = btn.dataset.storeId;
+    saveStorage();
+    renderHeaderStore();
+    renderStores();
+    setScreen('home');
   });
 
   on(ui.productsList, 'click', (e) => {
@@ -1577,9 +1659,12 @@ function setProductionSlide(index) {
 async function loadConfig() {
   const res = await fetch('config.json', { cache: 'no-store' });
   state.config = await res.json();
-  if (ui.headerAddress) {
-    ui.headerAddress.textContent = `📍 ${state.config.companyAddress || 'Адрес будет добавлен'}`;
+  state.stores = normalizeStores(state.config.storeLocations);
+  if (!state.selectedStoreId || !state.stores.some((s) => s.id === state.selectedStoreId)) {
+    state.selectedStoreId = state.stores[0]?.id || null;
   }
+  renderHeaderStore();
+  renderStores();
   ui.policyLink.href = state.config.privacyPolicyUrl || '#';
   if (ui.aboutText) {
     const aboutRaw = state.config.aboutText || 'Текст будет добавлен позже.';
@@ -1697,6 +1782,8 @@ async function loadData() {
 async function init() {
   loadStorage();
   applyTheme(state.theme);
+  state.stores = getFallbackStores();
+  if (!state.selectedStoreId) state.selectedStoreId = state.stores[0]?.id || null;
   state.screenStack = ['home'];
   state.currentScreen = 'home';
   bindEvents();
@@ -1710,6 +1797,7 @@ async function init() {
   renderFavorites();
   renderCart();
   renderHomeRecent();
+  renderHeaderStore();
   closeDrawer();
   buildMenuCatalog();
 

@@ -2774,3 +2774,137 @@ body {
     padding: 1px 5px;
   }
 }
+
+/* 2026-02-23: reStore-like top bar + store selector screen */
+.header {
+  padding: calc(env(safe-area-inset-top) + 8px) 12px 6px;
+}
+
+.header-row {
+  display: grid;
+  grid-template-columns: minmax(86px, 1fr) auto minmax(86px, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.header-store-button {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  min-height: 32px;
+  padding: 4px 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.header-store-arrow {
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.header .brand-logo-line {
+  justify-self: center;
+  margin-bottom: 0;
+}
+
+.brand-name {
+  font-size: clamp(16px, 4.6vw, 24px);
+  letter-spacing: 0.02em;
+}
+
+.header-search-form {
+  justify-self: end;
+  width: 100%;
+  max-width: 120px;
+}
+
+.header-search-input {
+  width: 100%;
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 14px;
+  padding: 0 12px;
+}
+
+.header-search-input::placeholder {
+  color: var(--muted);
+}
+
+.stores-list {
+  display: grid;
+  gap: 10px;
+}
+
+.store-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 12px;
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  color: var(--text);
+  display: grid;
+  gap: 6px;
+}
+
+.store-item.active {
+  border-color: rgba(230, 92, 174, 0.9);
+  box-shadow: 0 0 0 1px rgba(230, 92, 174, 0.4) inset;
+}
+
+.store-city {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.store-address {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+html[data-theme="light"] .header-search-input {
+  background: #fff;
+}
+
+html[data-theme="light"] .store-item {
+  background: #fff;
+}
+
+@media (max-width: 740px) {
+  .header {
+    padding: calc(env(safe-area-inset-top) + 6px) 10px 4px;
+  }
+
+  .header-row {
+    grid-template-columns: minmax(76px, 1fr) auto minmax(76px, 1fr);
+    gap: 6px;
+  }
+
+  .header-store-button {
+    min-height: 28px;
+    font-size: 14px;
+  }
+
+  .header-search-form {
+    max-width: 100px;
+  }
+
+  .header-search-input {
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+
+  .brand-name {
+    font-size: clamp(13px, 4.6vw, 18px);
+  }
+}
