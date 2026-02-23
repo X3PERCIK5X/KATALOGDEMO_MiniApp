@@ -3051,3 +3051,12 @@ html[data-theme="light"] .store-item {
     font-size: clamp(13px, 4.6vw, 18px);
   }
 }
+
+/* 2026-02-23: ensure readable product titles in dark theme */
+html[data-theme="dark"] .product-title,
+html[data-theme="dark"] .promo-title,
+html[data-theme="dark"] .recommended-title,
+html[data-theme="dark"] .cart-title-link,
+html[data-theme="dark"] .search-item-title {
+  color: #f5f7ff !important;
+}
