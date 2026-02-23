@@ -30,6 +30,7 @@ const state = {
   selectedStoreId: null,
   searchHistory: [],
   promoUsage: {},
+  productStats: {},
   homeBannerIndex: 0,
   homeBannerTimer: null,
 };
@@ -144,7 +145,7 @@ const ui = {
   promoCodeInput: document.getElementById('promoCodeInput'),
   promoApplyButton: document.getElementById('promoApplyButton'),
   promoStatus: document.getElementById('promoStatus'),
-  homeRecentTrack: document.getElementById('homeRecentTrack'),
+  homePopularTrack: document.getElementById('homePopularTrack'),
 };
 
 function reportStatus(message) {
@@ -496,6 +497,8 @@ function loadStorage() {
   state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
   state.selectedStoreId = localStorage.getItem('demo_catalog_selected_store') || null;
   state.promoUsage = safeParse(localStorage.getItem('demo_catalog_promo_usage') || '{}', {});
+  const productStats = safeParse(localStorage.getItem('demo_catalog_product_stats') || '{}', {});
+  state.productStats = productStats && typeof productStats === 'object' ? productStats : {};
   state.searchHistory = safeParse(localStorage.getItem('demo_catalog_search_history') || '[]', [])
     .filter((item) => typeof item === 'string' && item.trim())
     .slice(0, 8);
@@ -515,6 +518,7 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
   localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
   localStorage.setItem('demo_catalog_promo_usage', JSON.stringify(state.promoUsage || {}));
+  localStorage.setItem('demo_catalog_product_stats', JSON.stringify(state.productStats || {}));
   localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
 }
 
@@ -643,7 +647,7 @@ function renderCategories() {
     `;
     return;
   }
-  ui.categoriesGrid.innerHTML = list.map((c) => {
+  const categoryCards = list.map((c) => {
     const firstProduct = state.products.find((p) => p.categoryId === c.id);
     const image = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : c.image;
     return `
@@ -653,6 +657,15 @@ function renderCategories() {
     </button>
   `;
   }).join('');
+  const promoPreview = getPromoProducts()[0];
+  const promoImage = promoPreview?.images?.[0] || state.products[0]?.images?.[0] || 'assets/placeholder.svg';
+  ui.categoriesGrid.innerHTML = `
+    ${categoryCards}
+    <button class="category-card promo-category-card" data-open-screen="promo" type="button">
+      <img src="${safeSrc(promoImage)}" alt="Акции" loading="lazy" decoding="async" />
+      <span>Акции</span>
+    </button>
+  `;
 }
 
 function buildProductCards(list, options = {}) {
@@ -812,27 +825,55 @@ function startHomeBannerAutoplay() {
 function touchRecentlyViewed(productId) {
   if (!productId) return;
   state.recentlyViewed = [productId, ...state.recentlyViewed.filter((id) => id !== productId)].slice(0, 12);
+  if (!state.productStats[productId] || typeof state.productStats[productId] !== 'object') {
+    state.productStats[productId] = { views: 0, orderedQty: 0, orderCount: 0, updatedAt: '' };
+  }
+  const stats = state.productStats[productId];
+  stats.views = Number(stats.views || 0) + 1;
+  stats.updatedAt = new Date().toISOString();
   saveStorage();
 }
 
-function getRecentlyViewedProducts(limit = 8) {
-  if (!state.recentlyViewed.length) return [];
-  const map = new Map(state.products.map((p) => [p.id, p]));
-  return state.recentlyViewed.map((id) => map.get(id)).filter(Boolean).slice(0, limit);
+function getPopularityStats(productId) {
+  const stats = state.productStats?.[productId] || {};
+  return {
+    views: Number(stats.views || 0),
+    orderedQty: Number(stats.orderedQty || 0),
+    orderCount: Number(stats.orderCount || 0),
+  };
 }
 
-function renderHomeRecent() {
-  if (!ui.homeRecentTrack) return;
-  const recent = getRecentlyViewedProducts(8);
-  if (!recent.length) {
-    ui.homeRecentTrack.innerHTML = `
+function getPopularProducts(limit = 8) {
+  const source = state.products.filter((p) => hasPrice(p));
+  if (!source.length) return [];
+  const scored = source.map((product) => {
+    const stats = getPopularityStats(product.id);
+    const score = (stats.orderedQty * 12) + (stats.orderCount * 20) + stats.views;
+    return { product, score, stats };
+  });
+  const hasSignals = scored.some((item) => item.score > 0);
+  if (!hasSignals) return source.slice(0, limit);
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.stats.orderedQty !== a.stats.orderedQty) return b.stats.orderedQty - a.stats.orderedQty;
+    if (b.stats.views !== a.stats.views) return b.stats.views - a.stats.views;
+    return String(a.product.title || '').localeCompare(String(b.product.title || ''), 'ru');
+  });
+  return scored.slice(0, limit).map((item) => item.product);
+}
+
+function renderHomePopular() {
+  if (!ui.homePopularTrack) return;
+  const popular = getPopularProducts(8);
+  if (!popular.length) {
+    ui.homePopularTrack.innerHTML = `
       <div class="empty-state">
-        <div class="empty-title">Здесь появятся просмотренные товары</div>
+        <div class="empty-title">Популярные товары появятся после первых просмотров и заказов</div>
       </div>
     `;
     return;
   }
-  ui.homeRecentTrack.innerHTML = recent.map((p) => `
+  ui.homePopularTrack.innerHTML = popular.map((p) => `
     <article class="promo-card" data-open="${p.id}">
       <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div class="promo-title">${p.title}</div>
@@ -1379,6 +1420,12 @@ function bindEvents() {
   }
 
   on(ui.categoriesGrid, 'click', (e) => {
+    const screenBtn = e.target.closest('[data-open-screen]');
+    if (screenBtn) {
+      const target = screenBtn.dataset.openScreen;
+      if (target) setScreen(target);
+      return;
+    }
     const btn = e.target.closest('[data-category]');
     if (!btn) return;
     openCategoryById(btn.dataset.category);
@@ -1516,7 +1563,7 @@ function bindEvents() {
     setScreen('product');
   });
 
-  on(ui.homeRecentTrack, 'click', (e) => {
+  on(ui.homePopularTrack, 'click', (e) => {
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
@@ -1608,7 +1655,7 @@ function bindEvents() {
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
   on(ui.ordersButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
   on(ui.profileButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
-  on(ui.homeButton, 'click', () => { renderHomeRecent(); setScreen('home'); });
+  on(ui.homeButton, 'click', () => { renderHomePopular(); setScreen('home'); });
   on(ui.checkoutButton, 'click', () => { renderCart(); setScreen('checkout'); });
 
   document.querySelectorAll('.back-button').forEach((btn) => {
@@ -1838,6 +1885,16 @@ function bindEvents() {
       if (!result.ok) throw new Error(result.error || 'SEND_FAILED');
 
       state.orders.push(order);
+      mappedItems.forEach((item) => {
+        if (!item?.id) return;
+        if (!state.productStats[item.id] || typeof state.productStats[item.id] !== 'object') {
+          state.productStats[item.id] = { views: 0, orderedQty: 0, orderCount: 0, updatedAt: '' };
+        }
+        const stats = state.productStats[item.id];
+        stats.orderedQty = Number(stats.orderedQty || 0) + Math.max(1, Number(item.qty || 1));
+        stats.orderCount = Number(stats.orderCount || 0) + 1;
+        stats.updatedAt = new Date().toISOString();
+      });
       if (state.promoKind === 'first_order' && state.promoCode === FIRST_ORDER_PROMO.code) {
         const key = getPromoOwnerKey();
         state.promoUsage[key] = {
@@ -2095,7 +2152,7 @@ async function loadData() {
   }
   renderCategories();
   renderPromos();
-  renderHomeRecent();
+  renderHomePopular();
   buildMenuCatalog();
   if (state.pendingCategory) {
     const pending = state.pendingCategory;
@@ -2137,7 +2194,7 @@ async function init() {
   updateBadges();
   renderFavorites();
   renderCart();
-  renderHomeRecent();
+  renderHomePopular();
   setHomeBanner(0);
   startHomeBannerAutoplay();
   renderHeaderStore();

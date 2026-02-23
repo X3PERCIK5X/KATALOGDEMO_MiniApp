@@ -590,6 +590,24 @@ img { max-width: 100%; display: block; }
 }
 .data-status.hidden { display: none; }
 .category-card { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: #fff; box-shadow: var(--shadow-soft); }
+.promo-category-card {
+  position: relative;
+}
+.promo-category-card::after {
+  content: "SALE";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #2aa645;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
 .category-card img {
   width: 100%;
   height: 140px;
@@ -2017,7 +2035,8 @@ html {
   color: var(--muted);
 }
 
-#homeRecentTrack .empty-state {
+#homeRecentTrack .empty-state,
+#homePopularTrack .empty-state {
   width: 100%;
   padding: 16px;
   border: 1px dashed var(--stroke);
