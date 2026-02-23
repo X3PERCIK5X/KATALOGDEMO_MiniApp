@@ -130,6 +130,7 @@ const ui = {
   profileAvatar: document.getElementById('profileAvatar'),
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
+  profileManagerButton: document.getElementById('profileManagerButton'),
   homeAboutText: document.getElementById('homeAboutText'),
   themeLabel: document.getElementById('themeLabel'),
   themeToggleButton: document.getElementById('themeToggleButton'),
@@ -319,6 +320,16 @@ function submitSearch(query) {
   if (ui.globalSearchInput) ui.globalSearchInput.value = q;
   openGlobalSearch(q);
   closeSearchOverlay();
+}
+
+function openManagerChat() {
+  const username = 'XPERCHIKX';
+  const tgLink = `https://t.me/${username}`;
+  if (window.Telegram?.WebApp?.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(tgLink);
+    return;
+  }
+  window.open(tgLink, '_blank', 'noopener');
 }
 
 function buildMenuCatalog() {
@@ -1132,6 +1143,7 @@ function bindEvents() {
     setScreen('product');
     closeSearchOverlay();
   });
+  on(ui.profileManagerButton, 'click', openManagerChat);
 
 
   document.querySelectorAll('[data-screen]').forEach((btn) => {
