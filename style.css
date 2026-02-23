@@ -3194,8 +3194,32 @@ html[data-theme="light"] .banner-slide-promo {
 #screen-checkout .order-form select {
   min-height: 44px;
   border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 16px;
+  padding: 11px 14px;
+  font-size: 17px;
+}
+
+#screen-checkout .order-form.flat input,
+#screen-checkout .order-form.flat select {
+  background: rgba(19, 24, 38, 0.94);
+  border: 1px solid rgba(154, 170, 208, 0.35);
+  color: #f5f8ff;
+}
+
+#screen-checkout .order-form.flat input::placeholder {
+  color: #a7afc2;
+}
+
+#screen-checkout .order-form.flat label {
+  color: #eef2ff;
+  font-size: 15px;
+}
+
+#screen-checkout .checkbox span {
+  color: #d8deee;
+}
+
+#screen-checkout #policyLink {
+  color: #9ec1ff;
 }
 
 #screen-checkout .checkbox {
@@ -3209,11 +3233,20 @@ html[data-theme="light"] .banner-slide-promo {
 }
 
 #screen-checkout .cart-totals {
-  padding-top: 4px;
+  padding: 10px 14px;
+  margin-top: 4px;
 }
 
 #screen-checkout .cart-totals div {
   font-size: 15px;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+#screen-checkout .cart-totals span,
+#screen-checkout .cart-totals strong {
+  color: #f4f7ff;
 }
 
 @media (max-width: 740px) {
@@ -3233,6 +3266,15 @@ html[data-theme="light"] .banner-slide-promo {
   #screen-checkout .order-form select {
     min-height: 42px;
     font-size: 16px;
+    padding: 10px 13px;
+  }
+
+  #screen-checkout .order-form.flat label {
+    font-size: 14px;
+  }
+
+  #screen-checkout .cart-totals {
+    padding: 10px 12px;
   }
 }
 
