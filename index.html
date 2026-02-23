@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260223-5" />
+    <link rel="stylesheet" href="style.css?v=20260223-6" />
   </head>
   <body>
     <header class="header">
@@ -16,11 +16,38 @@
         <div class="brand-logo-line">
           <span class="brand-name">DEMO STORE</span>
         </div>
-        <form id="headerSearchForm" class="header-search-form" role="search">
-          <input id="headerSearchInput" class="header-search-input" type="search" placeholder="Поиск" autocomplete="off" />
-        </form>
+        <button id="headerSearchButton" class="header-search-button" type="button" aria-label="Поиск по товарам">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+        </button>
       </div>
     </header>
+
+    <div id="searchOverlay" class="search-overlay hidden" aria-hidden="true">
+      <div class="search-sheet">
+        <div class="search-sheet-head">
+          <form id="globalSearchForm" class="search-sheet-form" role="search">
+            <input id="globalSearchInput" class="search-sheet-input" type="search" placeholder="Поиск товаров..." autocomplete="off" />
+          </form>
+          <button id="searchCloseButton" class="search-close-button" type="button" aria-label="Закрыть поиск">✕</button>
+        </div>
+        <div class="search-sheet-body">
+          <div class="search-block">
+            <div class="search-block-head">
+              <span id="searchHistoryTitle">История поиска</span>
+              <button id="searchHistoryClear" class="search-clear-button" type="button">Очистить</button>
+            </div>
+            <div id="searchHistoryList" class="search-list"></div>
+          </div>
+          <div class="search-block">
+            <div id="searchSuggestTitle" class="search-block-head solo">Подсказки</div>
+            <div id="searchSuggestList" class="search-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <main class="main">
       <div id="dataStatus" class="data-status hidden"></div>
@@ -401,6 +428,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260221-1"></script>
-    <script src="app.js?v=20260223-3"></script>
+    <script src="app.js?v=20260223-4"></script>
   </body>
 </html>

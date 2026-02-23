@@ -27,6 +27,7 @@ const state = {
   theme: 'dark',
   stores: [],
   selectedStoreId: null,
+  searchHistory: [],
 };
 
 const menuCatalogTree = [
@@ -115,9 +116,17 @@ const ui = {
   dataStatus: document.getElementById('dataStatus'),
   headerStoreButton: document.getElementById('headerStoreButton'),
   headerStoreCity: document.getElementById('headerStoreCity'),
-  headerSearchForm: document.getElementById('headerSearchForm'),
-  headerSearchInput: document.getElementById('headerSearchInput'),
+  headerSearchButton: document.getElementById('headerSearchButton'),
   storesList: document.getElementById('storesList'),
+  searchOverlay: document.getElementById('searchOverlay'),
+  globalSearchForm: document.getElementById('globalSearchForm'),
+  globalSearchInput: document.getElementById('globalSearchInput'),
+  searchCloseButton: document.getElementById('searchCloseButton'),
+  searchHistoryList: document.getElementById('searchHistoryList'),
+  searchSuggestList: document.getElementById('searchSuggestList'),
+  searchHistoryClear: document.getElementById('searchHistoryClear'),
+  searchHistoryTitle: document.getElementById('searchHistoryTitle'),
+  searchSuggestTitle: document.getElementById('searchSuggestTitle'),
   profileAvatar: document.getElementById('profileAvatar'),
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
@@ -222,6 +231,94 @@ function openGlobalSearch(query) {
   state.filters.products.search = q;
   if (ui.productsSearch) ui.productsSearch.value = q;
   openCategoryBundle(allCategoryIds, q ? `Поиск: ${q}` : 'Каталог');
+}
+
+function normalizeSearchQuery(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function addSearchHistory(query) {
+  const q = normalizeSearchQuery(query);
+  if (!q) return;
+  const lowered = q.toLowerCase();
+  state.searchHistory = [q, ...state.searchHistory.filter((item) => item.toLowerCase() !== lowered)].slice(0, 8);
+  saveStorage();
+}
+
+function getSearchSuggestions(query, limit = 8) {
+  const q = normalizeSearchQuery(query).toLowerCase();
+  if (!q) return [];
+  const starts = [];
+  const includes = [];
+  state.products.forEach((product) => {
+    const title = String(product.title || '').trim();
+    const low = title.toLowerCase();
+    if (!low) return;
+    if (low.startsWith(q)) starts.push(product);
+    else if (low.includes(q)) includes.push(product);
+  });
+  return [...starts, ...includes].slice(0, limit);
+}
+
+function renderSearchHistory() {
+  if (!ui.searchHistoryList) return;
+  if (!state.searchHistory.length) {
+    ui.searchHistoryList.innerHTML = '<div class="search-empty">История пока пуста</div>';
+    return;
+  }
+  ui.searchHistoryList.innerHTML = state.searchHistory.map((item) => `
+    <button class="search-item search-item-history" data-search-history="${item}" type="button">${item}</button>
+  `).join('');
+}
+
+function renderSearchSuggestions(query) {
+  if (!ui.searchSuggestList || !ui.searchSuggestTitle) return;
+  const normalized = normalizeSearchQuery(query);
+  if (!normalized) {
+    ui.searchSuggestTitle.textContent = 'Подсказки';
+    ui.searchSuggestList.innerHTML = '<div class="search-empty">Начните вводить название товара</div>';
+    return;
+  }
+  const suggestions = getSearchSuggestions(normalized);
+  ui.searchSuggestTitle.textContent = `Результаты по "${normalized}"`;
+  if (!suggestions.length) {
+    ui.searchSuggestList.innerHTML = `<button class="search-item search-item-submit" data-search-submit="${normalized}" type="button">Искать "${normalized}"</button>`;
+    return;
+  }
+  ui.searchSuggestList.innerHTML = `
+    <button class="search-item search-item-submit" data-search-submit="${normalized}" type="button">Показать все результаты "${normalized}"</button>
+    ${suggestions.map((product) => `
+      <button class="search-item search-item-product" data-search-product="${product.id}" type="button">
+        <span class="search-item-title">${product.title}</span>
+        <span class="search-item-meta">${priceLabel(product)}</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function openSearchOverlay() {
+  if (!ui.searchOverlay) return;
+  ui.searchOverlay.classList.remove('hidden');
+  requestAnimationFrame(() => ui.searchOverlay.classList.add('show'));
+  const current = normalizeSearchQuery(ui.globalSearchInput?.value || '');
+  renderSearchHistory();
+  renderSearchSuggestions(current);
+  setTimeout(() => ui.globalSearchInput?.focus(), 30);
+}
+
+function closeSearchOverlay() {
+  if (!ui.searchOverlay) return;
+  ui.searchOverlay.classList.remove('show');
+  setTimeout(() => ui.searchOverlay.classList.add('hidden'), 220);
+}
+
+function submitSearch(query) {
+  const q = normalizeSearchQuery(query);
+  if (!q) return;
+  addSearchHistory(q);
+  if (ui.globalSearchInput) ui.globalSearchInput.value = q;
+  openGlobalSearch(q);
+  closeSearchOverlay();
 }
 
 function buildMenuCatalog() {
@@ -352,6 +449,9 @@ function loadStorage() {
   state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
   state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
   state.selectedStoreId = localStorage.getItem('demo_catalog_selected_store') || null;
+  state.searchHistory = safeParse(localStorage.getItem('demo_catalog_search_history') || '[]', [])
+    .filter((item) => typeof item === 'string' && item.trim())
+    .slice(0, 8);
 }
 
 function saveStorage() {
@@ -366,6 +466,7 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
   localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
   localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
+  localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
 }
 
 function applyTheme(theme) {
@@ -958,18 +1059,55 @@ function setActiveHomeChip(targetButton) {
 
 function bindEvents() {
   on(ui.menuButton, 'click', openMenu);
+  on(ui.headerSearchButton, 'click', openSearchOverlay);
   on(ui.headerStoreButton, 'click', () => {
     renderStores();
     setScreen('stores');
   });
-  on(ui.headerSearchForm, 'submit', (e) => {
+  on(ui.globalSearchForm, 'submit', (e) => {
     e.preventDefault();
-    openGlobalSearch(ui.headerSearchInput?.value || '');
+    submitSearch(ui.globalSearchInput?.value || '');
   });
-  on(ui.headerSearchInput, 'keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    openGlobalSearch(ui.headerSearchInput?.value || '');
+  on(ui.globalSearchInput, 'input', () => {
+    renderSearchSuggestions(ui.globalSearchInput?.value || '');
+  });
+  on(ui.searchCloseButton, 'click', closeSearchOverlay);
+  on(ui.searchOverlay, 'click', (e) => {
+    if (e.target === ui.searchOverlay) closeSearchOverlay();
+  });
+  on(ui.globalSearchInput, 'keydown', (e) => {
+    if (e.key === 'Escape') closeSearchOverlay();
+  });
+  on(ui.searchHistoryClear, 'click', () => {
+    state.searchHistory = [];
+    saveStorage();
+    renderSearchHistory();
+  });
+  on(ui.searchHistoryList, 'click', (e) => {
+    const btn = e.target.closest('[data-search-history]');
+    if (!btn) return;
+    const query = btn.dataset.searchHistory || '';
+    if (ui.globalSearchInput) ui.globalSearchInput.value = query;
+    submitSearch(query);
+  });
+  on(ui.searchSuggestList, 'click', (e) => {
+    const submitBtn = e.target.closest('[data-search-submit]');
+    if (submitBtn) {
+      submitSearch(submitBtn.dataset.searchSubmit || '');
+      return;
+    }
+    const productBtn = e.target.closest('[data-search-product]');
+    if (!productBtn) return;
+    const productId = productBtn.dataset.searchProduct || '';
+    const product = getProduct(productId);
+    if (!product) return;
+    const title = normalizeSearchQuery(product.title || '');
+    addSearchHistory(title);
+    state.currentProduct = productId;
+    touchRecentlyViewed(productId);
+    renderProductView();
+    setScreen('product');
+    closeSearchOverlay();
   });
 
 
