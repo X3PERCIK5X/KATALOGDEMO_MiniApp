@@ -2499,3 +2499,129 @@ html[data-theme="light"] .bottom-center.active {
     grid-template-columns: 1fr;
   }
 }
+
+/* 2026-02-23: mobile scale + dock position hotfix */
+html,
+body {
+  overflow-x: hidden;
+}
+
+@media (max-width: 740px) {
+  :root {
+    --bottom-nav-height: 88px;
+  }
+
+  .main {
+    padding: 8px 12px calc(var(--bottom-nav-height) + 8px);
+  }
+
+  .header {
+    padding: calc(env(safe-area-inset-top) + 6px) 12px 6px;
+  }
+
+  .brand-name {
+    font-size: clamp(16px, 6.2vw, 20px);
+    letter-spacing: 0.04em;
+  }
+
+  .header-address {
+    font-size: 14px;
+    padding: 9px 10px;
+  }
+
+  .header-cta {
+    min-height: 30px;
+    font-size: 11px;
+    padding: 6px 9px;
+    max-width: 96px;
+  }
+
+  .screen-head {
+    top: calc(env(safe-area-inset-top) + 58px);
+    margin-bottom: 8px;
+  }
+
+  .screen-head h2,
+  .home-section-title,
+  .section-title {
+    font-size: 22px;
+    line-height: 1.08;
+  }
+
+  .featured-promo {
+    min-height: 192px;
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .featured-title {
+    font-size: clamp(26px, 8vw, 34px);
+  }
+
+  .featured-text {
+    font-size: 14px;
+  }
+
+  .home-info-card {
+    padding: 12px;
+  }
+
+  .home-info-card strong {
+    font-size: 15px;
+  }
+
+  .home-info-card span {
+    font-size: 12px;
+  }
+
+  .product-card {
+    grid-template-columns: 84px 1fr;
+    padding: 9px;
+    gap: 8px;
+  }
+
+  .product-card img {
+    width: 84px;
+    height: 84px;
+    border-radius: 12px;
+  }
+
+  .product-title {
+    font-size: 16px;
+  }
+
+  .product-meta {
+    font-size: 12px;
+  }
+
+  .bottom-nav {
+    left: 8px;
+    right: 8px;
+    bottom: 0;
+    border-radius: 20px;
+    padding: 5px 6px calc(4px + env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+
+  .bottom-item {
+    min-height: 50px;
+    border-radius: 13px;
+    padding: 4px 2px;
+    gap: 4px;
+  }
+
+  .bottom-item .icon-svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .bottom-item span {
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .bottom-item .badge {
+    top: -1px;
+    right: 6px;
+  }
+}
