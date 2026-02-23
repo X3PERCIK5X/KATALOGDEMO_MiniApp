@@ -3131,6 +3131,14 @@ html[data-theme="light"] .banner-slide-promo {
   padding-inline: 8px;
 }
 
+#screen-categories .screen-head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#screen-categories .screen-head h2 {
+  padding-inline: 0;
+}
+
 @media (max-width: 740px) {
   .bottom-nav {
     padding-bottom: calc(2px + env(safe-area-inset-bottom));
