@@ -1836,9 +1836,10 @@ html {
 
 .banner-slide-promo {
   background:
-    linear-gradient(180deg, rgba(12, 11, 28, 0.24), rgba(12, 11, 28, 0.82)),
-    radial-gradient(600px 280px at 20% 20%, rgba(255, 114, 197, 0.35), transparent 72%),
-    radial-gradient(680px 260px at 80% 80%, rgba(115, 120, 255, 0.26), transparent 70%);
+    linear-gradient(180deg, rgba(6, 10, 20, 0.1), rgba(6, 10, 20, 0.86)),
+    radial-gradient(700px 260px at 20% 16%, rgba(255, 76, 144, 0.32), transparent 70%),
+    radial-gradient(760px 280px at 84% 82%, rgba(92, 141, 255, 0.24), transparent 72%),
+    url("https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1800&q=80") center/cover;
 }
 
 .banner-slide-promo .featured-chip {
@@ -1898,8 +1899,30 @@ html {
 .featured-text {
   margin-top: 8px;
   max-width: 360px;
-  color: #d9dde4;
+  color: #eef2ff;
   font-size: 17px;
+  line-height: 1.38;
+}
+
+.featured-text strong {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.featured-cta {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: linear-gradient(135deg, rgba(255, 90, 162, 0.92), rgba(224, 84, 195, 0.92));
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 .promo-row-home .promo-track {
@@ -2607,6 +2630,12 @@ body {
     font-size: 14px;
   }
 
+  .featured-cta {
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
   .home-info-card {
     padding: 12px;
   }
@@ -2741,6 +2770,14 @@ body {
     margin-top: 6px;
     font-size: 13px;
     line-height: 1.28;
+  }
+
+  .featured-cta {
+    margin-top: 10px;
+    min-height: 30px;
+    border-radius: 10px;
+    font-size: 12px;
+    padding: 0 10px;
   }
 
   .home-info-grid {
@@ -3074,9 +3111,15 @@ html[data-theme="light"] .store-item {
 
 html[data-theme="light"] .banner-slide-promo {
   background:
-    linear-gradient(180deg, rgba(248, 221, 238, 0.4), rgba(245, 204, 230, 0.78)),
-    radial-gradient(540px 240px at 18% 22%, rgba(244, 122, 186, 0.22), transparent 72%),
-    radial-gradient(640px 260px at 80% 78%, rgba(121, 153, 255, 0.18), transparent 70%);
+    linear-gradient(180deg, rgba(244, 224, 237, 0.24), rgba(231, 198, 224, 0.7)),
+    radial-gradient(560px 250px at 18% 20%, rgba(241, 109, 180, 0.2), transparent 72%),
+    radial-gradient(700px 280px at 82% 80%, rgba(126, 157, 255, 0.2), transparent 72%),
+    url("https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1800&q=80") center/cover;
+}
+
+html[data-theme="light"] .banner-slide-promo .featured-text,
+html[data-theme="light"] .banner-slide-promo .featured-text strong {
+  color: #fbfdff;
 }
 
 @media (max-width: 740px) {
