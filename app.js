@@ -482,6 +482,22 @@ function toggleTheme() {
   saveStorage();
 }
 
+function dismissKeyboardIfNeeded(eventTarget) {
+  const active = document.activeElement;
+  if (!active) return;
+  const tag = String(active.tagName || '').toLowerCase();
+  const isEditable =
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select' ||
+    active.isContentEditable;
+  if (!isEditable) return;
+  if (eventTarget && eventTarget.closest && eventTarget.closest('input, textarea, select, [contenteditable="true"]')) {
+    return;
+  }
+  active.blur();
+}
+
 function getProduct(id) { return state.products.find((p) => p.id === id); }
 
 function cartItems() {
@@ -1058,6 +1074,13 @@ function setActiveHomeChip(targetButton) {
 }
 
 function bindEvents() {
+  on(document, 'touchstart', (e) => {
+    dismissKeyboardIfNeeded(e.target);
+  }, { passive: true });
+  on(document, 'click', (e) => {
+    dismissKeyboardIfNeeded(e.target);
+  });
+
   on(ui.menuButton, 'click', openMenu);
   on(ui.headerSearchButton, 'click', openSearchOverlay);
   on(ui.headerStoreButton, 'click', () => {
