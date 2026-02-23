@@ -2625,3 +2625,152 @@ body {
     right: 6px;
   }
 }
+
+@media (max-width: 430px) {
+  :root {
+    --bottom-nav-height: 80px;
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  .main {
+    padding: 6px 10px calc(var(--bottom-nav-height) + 6px);
+  }
+
+  .header {
+    padding: calc(env(safe-area-inset-top) + 4px) 10px 4px;
+    gap: 4px;
+  }
+
+  .brand-name {
+    font-size: clamp(15px, 5.2vw, 18px);
+    letter-spacing: 0.03em;
+  }
+
+  .header-address {
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 14px;
+  }
+
+  .header-cta {
+    min-height: 28px;
+    font-size: 10px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    max-width: 86px;
+  }
+
+  .screen-head {
+    top: calc(env(safe-area-inset-top) + 52px);
+    margin-bottom: 6px;
+  }
+
+  .screen-head h2,
+  .home-section-title,
+  .section-title {
+    font-size: 20px;
+    line-height: 1.05;
+  }
+
+  .featured-promo {
+    min-height: 168px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .featured-chip {
+    font-size: 10px;
+    padding: 4px 9px;
+    margin-bottom: 7px;
+  }
+
+  .featured-title {
+    font-size: 16px;
+    line-height: 1.06;
+  }
+
+  .featured-text {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.28;
+  }
+
+  .home-info-grid {
+    gap: 8px;
+  }
+
+  .home-info-card {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .home-info-card strong {
+    font-size: 14px;
+  }
+
+  .home-info-card span {
+    font-size: 11px;
+  }
+
+  .product-card {
+    grid-template-columns: 76px 1fr;
+    padding: 8px;
+    gap: 7px;
+    border-radius: 14px;
+  }
+
+  .product-card img {
+    width: 76px;
+    height: 76px;
+  }
+
+  .product-title {
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .product-meta {
+    font-size: 11px;
+    margin: 3px 0;
+  }
+
+  .product-price {
+    font-size: 14px;
+  }
+
+  .bottom-nav {
+    left: 6px;
+    right: 6px;
+    bottom: 0;
+    border-radius: 16px;
+    padding: 4px 4px calc(2px + env(safe-area-inset-bottom));
+    gap: 4px;
+  }
+
+  .bottom-item {
+    min-height: 44px;
+    border-radius: 11px;
+    padding: 2px 1px;
+    gap: 2px;
+  }
+
+  .bottom-item .icon-svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .bottom-item span {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+
+  .bottom-item .badge {
+    top: -2px;
+    right: 4px;
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+}
