@@ -23,11 +23,15 @@ const state = {
   orders: [],
   promoCode: '',
   promoPercent: 0,
+  promoKind: '',
   recentlyViewed: [],
   theme: 'dark',
   stores: [],
   selectedStoreId: null,
   searchHistory: [],
+  promoUsage: {},
+  homeBannerIndex: 0,
+  homeBannerTimer: null,
 };
 
 const menuCatalogTree = [
@@ -105,6 +109,8 @@ const ui = {
   contactsCard: document.getElementById('contactsCard'),
   productionText: document.getElementById('productionText'),
   productionTrack: document.getElementById('productionTrack'),
+  homeBannerTrack: document.getElementById('homeBannerTrack'),
+  homeBannerDots: document.getElementById('homeBannerDots'),
   promoTrack: document.getElementById('promoTrack'),
   promoList: document.getElementById('promoList'),
   productsSort: document.getElementById('productsSort'),
@@ -135,7 +141,6 @@ const ui = {
   themeLabel: document.getElementById('themeLabel'),
   themeToggleButton: document.getElementById('themeToggleButton'),
   themeToggleValue: document.getElementById('themeToggleValue'),
-  featuredPromo: document.getElementById('featuredPromo'),
   promoCodeInput: document.getElementById('promoCodeInput'),
   promoApplyButton: document.getElementById('promoApplyButton'),
   promoStatus: document.getElementById('promoStatus'),
@@ -161,10 +166,9 @@ function debounce(fn, delay = 220) {
   };
 }
 
-const PROMO_CODES = {
-  WELCOME10: 10,
-  DEMO5: 5,
-  STYLE15: 15,
+const FIRST_ORDER_PROMO = {
+  code: 'ПЕРВЫЙ',
+  percent: 10,
 };
 
 function getTelegramUser() {
@@ -184,6 +188,30 @@ function getTelegramUsername() {
 function getTelegramFirstName() {
   const firstName = getTelegramUser().first_name;
   return firstName ? String(firstName) : '';
+}
+
+function getPromoOwnerKey() {
+  const tgId = getTelegramId();
+  if (tgId) return `tg:${tgId}`;
+  return 'guest';
+}
+
+function hasUsedFirstOrderPromo() {
+  const key = getPromoOwnerKey();
+  return Boolean(state.promoUsage?.[key]?.firstOrderUsed);
+}
+
+function isProductOnSale(product) {
+  if (!product) return false;
+  if (Number(product.discountPercent || 0) > 0) return true;
+  if (Number(product.oldPrice || 0) > Number(product.price || 0)) return true;
+  if (typeof product.badge === 'string' && /скид|sale|promo/i.test(product.badge)) return true;
+  if (Array.isArray(product.tags) && product.tags.some((tag) => /скид|sale|promo/i.test(String(tag)))) return true;
+  return false;
+}
+
+function isEligibleFirstOrderPromoItem(product) {
+  return hasPrice(product) && !isProductOnSale(product);
 }
 
 function updateDeliveryAddressVisibility() {
@@ -348,6 +376,12 @@ function setScreen(name) {
     renderProfile();
     renderOrders();
   }
+  if (name === 'home') {
+    startHomeBannerAutoplay();
+  } else if (state.homeBannerTimer) {
+    window.clearInterval(state.homeBannerTimer);
+    state.homeBannerTimer = null;
+  }
   updateBottomNav(name);
   scrollToTop();
 }
@@ -457,9 +491,11 @@ function loadStorage() {
   state.orders = safeParse(localStorage.getItem('demo_catalog_orders') || '[]', []);
   state.promoCode = String(localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
   state.promoPercent = Number(localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
+  state.promoKind = String(localStorage.getItem('demo_catalog_promo_kind') || '').trim();
   state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
   state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
   state.selectedStoreId = localStorage.getItem('demo_catalog_selected_store') || null;
+  state.promoUsage = safeParse(localStorage.getItem('demo_catalog_promo_usage') || '{}', {});
   state.searchHistory = safeParse(localStorage.getItem('demo_catalog_search_history') || '[]', [])
     .filter((item) => typeof item === 'string' && item.trim())
     .slice(0, 8);
@@ -474,9 +510,11 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_orders', JSON.stringify(state.orders));
   localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
   localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
+  localStorage.setItem('demo_catalog_promo_kind', state.promoKind || '');
   localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
   localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
   localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
+  localStorage.setItem('demo_catalog_promo_usage', JSON.stringify(state.promoUsage || {}));
   localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
 }
 
@@ -541,6 +579,7 @@ function cartSummary() {
   if (!state.selectedCart.size) return { sum: 0, missing: false, count: 0, requestCount: 0 };
   const selected = cartItems().filter((i) => state.selectedCart.has(i.id));
   let sum = 0;
+  let eligibleSum = 0;
   let missing = false;
   let count = 0;
   let requestCount = 0;
@@ -551,12 +590,26 @@ function cartSummary() {
       requestCount += item.qty || 0;
       return;
     }
-    sum += item.price * item.qty;
+    const lineSum = item.price * item.qty;
+    sum += lineSum;
+    if (state.promoKind === 'first_order' && isEligibleFirstOrderPromoItem(item)) {
+      eligibleSum += lineSum;
+    }
   });
   const discountPercent = Number(state.promoPercent || 0);
-  const discountAmount = discountPercent > 0 ? Math.round(sum * (discountPercent / 100)) : 0;
+  const discountBase = state.promoKind === 'first_order' ? eligibleSum : sum;
+  const discountAmount = discountPercent > 0 ? Math.round(discountBase * (discountPercent / 100)) : 0;
   const finalSum = Math.max(0, sum - discountAmount);
-  return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, missing, count, requestCount };
+  return {
+    sum: finalSum,
+    baseSum: sum,
+    eligibleSum,
+    discountAmount,
+    discountPercent,
+    missing,
+    count,
+    requestCount,
+  };
 }
 
 function formatSummaryTotal(summary) {
@@ -699,12 +752,6 @@ function getRecommendedProducts(product, limit = 8) {
 function renderPromos() {
   const list = getPromoProducts();
   const filtered = applyFilters(list, state.filters.promo);
-  if (ui.featuredPromo && list.length) {
-    const lead = list[0];
-    ui.featuredPromo.style.background = `linear-gradient(180deg, rgba(7, 9, 15, 0.14), rgba(7, 9, 15, 0.78)), url('${safeSrc(lead.images[0])}') center/cover`;
-    ui.featuredPromo.querySelector('.featured-title').textContent = lead.title || 'Новая коллекция';
-    ui.featuredPromo.querySelector('.featured-text').textContent = lead.shortDescription || 'Подборка лучших товаров в каталоге';
-  }
   if (ui.promoTrack) {
     ui.promoTrack.innerHTML = list.map((p) => {
       const newPrice = Math.round((p.price || 0) * 0.9);
@@ -733,6 +780,33 @@ function renderPromos() {
       ui.promoList.innerHTML = buildProductCards(filtered, { promo: true });
     }
   }
+}
+
+function setHomeBanner(index) {
+  if (!ui.homeBannerTrack) return;
+  const slidesCount = ui.homeBannerTrack.children.length || 1;
+  const nextIndex = Math.max(0, Math.min(slidesCount - 1, Number(index || 0)));
+  state.homeBannerIndex = nextIndex;
+  ui.homeBannerTrack.style.transform = `translateX(-${nextIndex * 100}%)`;
+  if (ui.homeBannerDots) {
+    ui.homeBannerDots.querySelectorAll('[data-home-banner-dot]').forEach((dot) => {
+      dot.classList.toggle('active', Number(dot.dataset.homeBannerDot) === nextIndex);
+    });
+  }
+}
+
+function startHomeBannerAutoplay() {
+  if (state.homeBannerTimer) {
+    window.clearInterval(state.homeBannerTimer);
+    state.homeBannerTimer = null;
+  }
+  if (!ui.homeBannerTrack) return;
+  const slidesCount = ui.homeBannerTrack.children.length || 1;
+  if (slidesCount <= 1) return;
+  state.homeBannerTimer = window.setInterval(() => {
+    const next = (state.homeBannerIndex + 1) % slidesCount;
+    setHomeBanner(next);
+  }, 10000);
 }
 
 function touchRecentlyViewed(productId) {
@@ -980,7 +1054,10 @@ function renderCart() {
   if (ui.promoCodeInput) ui.promoCodeInput.value = state.promoCode || '';
   if (ui.promoStatus) {
     if (state.promoPercent > 0) {
-      ui.promoStatus.textContent = `Скидка ${state.promoPercent}% активна (${state.promoCode}). Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
+      const kindLabel = state.promoKind === 'first_order'
+        ? 'на товары без скидки'
+        : '';
+      ui.promoStatus.textContent = `Скидка ${state.promoPercent}% активна (${state.promoCode}) ${kindLabel}. Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
     } else if (/активна/.test(ui.promoStatus.textContent || '')) {
       ui.promoStatus.textContent = '';
     }
@@ -1050,23 +1127,44 @@ function applyPromoCode() {
   if (!code) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoKind = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод очищен.';
     saveStorage();
     renderCart();
     return;
   }
-  const percent = Number(PROMO_CODES[code] || 0);
-  if (!percent) {
+  if (code !== FIRST_ORDER_PROMO.code) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoKind = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод не найден.';
     saveStorage();
     renderCart();
     return;
   }
-  state.promoCode = code;
-  state.promoPercent = percent;
-  if (ui.promoStatus) ui.promoStatus.textContent = `Промокод ${code} активирован: скидка ${percent}%.`;
+  if (hasUsedFirstOrderPromo()) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    state.promoKind = '';
+    if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" уже использован для этого Telegram аккаунта.';
+    saveStorage();
+    renderCart();
+    return;
+  }
+  const selected = cartItems().filter((i) => state.selectedCart.has(i.id));
+  const eligibleCount = selected.filter((item) => isEligibleFirstOrderPromoItem(item)).length;
+  if (!eligibleCount) {
+    if (ui.promoStatus) {
+      ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" действует только на товары без скидки.';
+    }
+    return;
+  }
+  state.promoCode = FIRST_ORDER_PROMO.code;
+  state.promoPercent = FIRST_ORDER_PROMO.percent;
+  state.promoKind = 'first_order';
+  if (ui.promoStatus) {
+    ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" активирован: -10% на товары без скидки.';
+  }
   saveStorage();
   renderCart();
 }
@@ -1163,6 +1261,15 @@ function bindEvents() {
     setScreen('product');
     closeSearchOverlay();
   });
+  if (ui.homeBannerDots) {
+    ui.homeBannerDots.querySelectorAll('[data-home-banner-dot]').forEach((dot) => {
+      dot.addEventListener('click', () => {
+        const idx = Number(dot.dataset.homeBannerDot || 0);
+        setHomeBanner(idx);
+        startHomeBannerAutoplay();
+      });
+    });
+  }
   on(ui.profileManagerButton, 'click', openManagerChat);
 
 
@@ -1643,6 +1750,7 @@ function bindEvents() {
 
     const summary = (() => {
       let sum = 0;
+      let eligibleSum = 0;
       let missing = false;
       let count = 0;
       let requestCount = 0;
@@ -1653,10 +1761,15 @@ function bindEvents() {
           requestCount += item.qty || 0;
           return;
         }
-        sum += Number(item.price || 0) * (item.qty || 0);
+        const lineSum = Number(item.price || 0) * (item.qty || 0);
+        sum += lineSum;
+        if (state.promoKind === 'first_order' && isEligibleFirstOrderPromoItem(item)) {
+          eligibleSum += lineSum;
+        }
       });
       const discountPercent = Number(state.promoPercent || 0);
-      const discountAmount = discountPercent > 0 ? Math.round(sum * (discountPercent / 100)) : 0;
+      const discountBase = state.promoKind === 'first_order' ? eligibleSum : sum;
+      const discountAmount = discountPercent > 0 ? Math.round(discountBase * (discountPercent / 100)) : 0;
       const finalSum = Math.max(0, sum - discountAmount);
       return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, missing, count, requestCount };
     })();
@@ -1725,6 +1838,17 @@ function bindEvents() {
       if (!result.ok) throw new Error(result.error || 'SEND_FAILED');
 
       state.orders.push(order);
+      if (state.promoKind === 'first_order' && state.promoCode === FIRST_ORDER_PROMO.code) {
+        const key = getPromoOwnerKey();
+        state.promoUsage[key] = {
+          ...(state.promoUsage[key] || {}),
+          firstOrderUsed: true,
+          usedAt: new Date().toISOString(),
+        };
+      }
+      state.promoCode = '';
+      state.promoPercent = 0;
+      state.promoKind = '';
       state.profile = profile;
       saveStorage();
       ui.orderStatus.textContent = 'Счёт отправлен в чат бота.';
@@ -1988,6 +2112,16 @@ async function loadData() {
 
 async function init() {
   loadStorage();
+  if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    state.promoKind = '';
+  }
+  if (state.promoCode === FIRST_ORDER_PROMO.code && hasUsedFirstOrderPromo()) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    state.promoKind = '';
+  }
   applyTheme(state.theme);
   state.stores = getFallbackStores();
   if (!state.selectedStoreId) state.selectedStoreId = state.stores[0]?.id || null;
@@ -2004,6 +2138,8 @@ async function init() {
   renderFavorites();
   renderCart();
   renderHomeRecent();
+  setHomeBanner(0);
+  startHomeBannerAutoplay();
   renderHeaderStore();
   closeDrawer();
   buildMenuCatalog();

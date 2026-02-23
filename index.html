@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260223-9" />
+    <link rel="stylesheet" href="style.css?v=20260223-10" />
   </head>
   <body>
     <header class="header">
@@ -54,10 +54,23 @@
 
       <section id="screen-home" class="screen active">
         <section class="home-feature-wrap">
-          <div class="featured-promo info-hero">
-            <div class="featured-chip">О компании</div>
-            <div class="featured-title">Демо каталог</div>
-            <div id="homeAboutText" class="featured-text">Современный mini app для интернет‑магазинов и офлайн точек продаж.</div>
+          <div class="home-banner-slider">
+            <div id="homeBannerTrack" class="home-banner-track">
+              <div class="featured-promo banner-slide banner-slide-promo">
+                <div class="featured-chip">Промокод</div>
+                <div class="featured-title">-10% на первый заказ</div>
+                <div class="featured-text">Скидка по промокоду "ПЕРВЫЙ" для новых клиентов.</div>
+              </div>
+              <div class="featured-promo info-hero banner-slide banner-slide-about">
+                <div class="featured-chip">О компании</div>
+                <div class="featured-title">Демо каталог</div>
+                <div id="homeAboutText" class="featured-text">Современный mini app для интернет‑магазинов и офлайн точек продаж.</div>
+              </div>
+            </div>
+            <div id="homeBannerDots" class="home-banner-dots">
+              <button class="dot active" data-home-banner-dot="0" type="button" aria-label="Баннер 1"></button>
+              <button class="dot" data-home-banner-dot="1" type="button" aria-label="Баннер 2"></button>
+            </div>
           </div>
         </section>
 
@@ -428,6 +441,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260223-2"></script>
-    <script src="app.js?v=20260223-6"></script>
+    <script src="app.js?v=20260223-7"></script>
   </body>
 </html>
