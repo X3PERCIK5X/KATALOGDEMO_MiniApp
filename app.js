@@ -509,6 +509,26 @@ function dismissKeyboardIfNeeded(eventTarget) {
   active.blur();
 }
 
+function saveProfileDraft() {
+  state.profile = {
+    ...state.profile,
+    name: String(ui.inputName?.value || '').trim(),
+    phone: String(ui.inputPhone?.value || '').trim(),
+    email: String(ui.inputEmail?.value || '').trim(),
+  };
+  saveStorage();
+}
+
+function getTelegramPhoneCandidate() {
+  const source = window.HORECA_TG?.initDataUnsafe || {};
+  return String(
+    source?.user?.phone_number ||
+    source?.phone_number ||
+    source?.contact?.phone_number ||
+    ''
+  ).trim();
+}
+
 function getProduct(id) { return state.products.find((p) => p.id === id); }
 
 function cartItems() {
@@ -1569,15 +1589,27 @@ function bindEvents() {
 
   on(ui.inputDeliveryType, 'change', updateDeliveryAddressVisibility);
 
+  on(ui.inputName, 'input', saveProfileDraft);
+  on(ui.inputPhone, 'input', saveProfileDraft);
+  on(ui.inputEmail, 'input', saveProfileDraft);
+
   on(ui.sharePhoneButton, 'click', async () => {
     if (!window.HORECA_TG?.isTelegram) {
       ui.orderStatus.textContent = 'Поделиться номером можно только внутри Telegram.';
+      return;
+    }
+    const immediatePhone = getTelegramPhoneCandidate();
+    if (immediatePhone) {
+      ui.inputPhone.value = immediatePhone;
+      saveProfileDraft();
+      ui.orderStatus.textContent = 'Номер автоматически подставлен из Telegram.';
       return;
     }
     ui.orderStatus.textContent = 'Запрашиваем номер телефона...';
     const result = await window.HORECA_TG.requestContact();
     if (result.ok && result.phone) {
       ui.inputPhone.value = result.phone;
+      saveProfileDraft();
       ui.orderStatus.textContent = 'Номер получен из Telegram.';
     } else {
       ui.orderStatus.textContent = 'Не удалось получить номер. Укажите его вручную.';
@@ -1888,7 +1920,9 @@ async function loadConfig() {
   ui.inputPhone.value = state.profile.phone || '';
   ui.inputEmail.value = state.profile.email || '';
   if (!ui.inputName.value) ui.inputName.value = getTelegramFirstName();
+  if (!ui.inputPhone.value) ui.inputPhone.value = getTelegramPhoneCandidate();
   if (ui.inputTelegramId) ui.inputTelegramId.value = getTelegramId();
+  saveProfileDraft();
   updateDeliveryAddressVisibility();
   renderProfile();
   if (ui.feedbackName) ui.feedbackName.value = state.profile.name || '';

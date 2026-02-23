@@ -43,21 +43,35 @@ console.log("✅ telegram.js loaded");
     return new Promise((resolve) => {
       let settled = false;
 
-      function done(ok) {
+      function extractPhone(payload) {
+        if (!payload) return "";
+        const direct =
+          payload.phone_number ||
+          payload.phone ||
+          payload.contact?.phone_number ||
+          payload.user?.phone_number ||
+          "";
+        return String(direct || "").trim();
+      }
+
+      function done(ok, payload) {
         if (settled) return;
         settled = true;
-        const phone = Telegram.WebApp.initDataUnsafe?.user?.phone_number || "";
+        const fromPayload = extractPhone(payload);
+        const fromInitData =
+          String(Telegram.WebApp?.initDataUnsafe?.user?.phone_number || "").trim();
+        const phone = fromPayload || fromInitData;
         resolve({ ok: Boolean(ok || phone), phone: String(phone || "") });
       }
 
       try {
-        Telegram.WebApp.requestContact((shared) => done(shared));
+        Telegram.WebApp.requestContact((shared) => done(shared, shared));
       } catch (e) {
         console.log(e);
-        done(false);
+        done(false, null);
       }
 
-      setTimeout(() => done(false), 6000);
+      setTimeout(() => done(false, null), 6000);
     });
   }
 

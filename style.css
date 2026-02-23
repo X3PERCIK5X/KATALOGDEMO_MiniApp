@@ -3108,6 +3108,74 @@ html[data-theme="light"] .store-item {
   }
 }
 
+/* 2026-02-23: checkout typography/scale cleanup */
+#screen-checkout .screen-head h2 {
+  font-size: clamp(20px, 5.4vw, 28px);
+}
+
+#screen-checkout .cart-checkout {
+  padding: 12px;
+  border-radius: 16px;
+}
+
+#screen-checkout .order-form {
+  gap: 10px;
+}
+
+#screen-checkout .order-form label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+#screen-checkout .order-form input,
+#screen-checkout .order-form select {
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 16px;
+}
+
+#screen-checkout .checkbox {
+  gap: 8px;
+}
+
+#screen-checkout .checkbox span {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+#screen-checkout .cart-totals {
+  padding-top: 4px;
+}
+
+#screen-checkout .cart-totals div {
+  font-size: 15px;
+}
+
+@media (max-width: 740px) {
+  #screen-checkout .screen-head h2 {
+    font-size: 22px;
+  }
+
+  #screen-checkout .cart-checkout {
+    padding: 10px;
+  }
+
+  #screen-checkout .order-form label {
+    font-size: 12px;
+  }
+
+  #screen-checkout .order-form input,
+  #screen-checkout .order-form select {
+    min-height: 42px;
+    font-size: 16px;
+  }
+}
+
 /* 2026-02-23: ensure readable product titles in dark theme */
 html[data-theme="dark"] .product-title,
 html[data-theme="dark"] .promo-title,
