@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260222-1" />
+    <link rel="stylesheet" href="style.css?v=20260223-2" />
   </head>
   <body>
     <header class="header">
@@ -23,42 +23,37 @@
       <div id="dataStatus" class="data-status hidden"></div>
 
       <section id="screen-home" class="screen active">
-        <section class="catalog-toolbar">
-          <div class="catalog-chips">
-            <button class="chip chip-active hero-tile" data-group="apparel" type="button">Все</button>
-            <button class="chip" data-home-category="catalog-1" type="button">Женское</button>
-            <button class="chip" data-home-category="catalog-2" type="button">Мужское</button>
-            <button class="chip" data-home-category="catalog-3" type="button">Обувь</button>
-            <button class="chip" data-home-category="catalog-4" type="button">Сумки</button>
-            <button class="chip" data-home-category="catalog-5" type="button">Аксессуары</button>
-          </div>
-          <div class="catalog-search-row">
-            <input id="homeProductsSearch" class="filter-input" type="search" placeholder="Поиск товаров..." />
-            <select id="homeProductsSort" class="filter-select filter-select-compact">
-              <option value="default">Популярные</option>
-              <option value="price-asc">По цене</option>
-            </select>
-          </div>
-        </section>
-
         <section class="home-feature-wrap">
-          <button id="featuredPromo" class="featured-promo" data-screen="promo" type="button">
-            <div class="featured-chip">NEW</div>
-            <div class="featured-title">Новая коллекция</div>
-            <div class="featured-text">Соберите стильный образ в одном Mini App</div>
-          </button>
+          <div class="featured-promo info-hero">
+            <div class="featured-chip">О компании</div>
+            <div class="featured-title">Демо каталог</div>
+            <div id="homeAboutText" class="featured-text">Современный mini app для интернет‑магазинов и офлайн точек продаж.</div>
+          </div>
         </section>
 
-        <div class="home-section-title">Популярное</div>
-        <div class="promo-row promo-row-home">
-          <div id="promoTrack" class="promo-track"></div>
+        <div class="home-section-title">Статьи и разделы</div>
+        <div class="home-info-grid">
+          <button class="text-card home-info-card" data-screen="about" type="button">
+            <strong>О компании</strong>
+            <span>Кто мы, чем занимаемся и какие задачи решаем для бизнеса.</span>
+          </button>
+          <button class="text-card home-info-card" data-screen="production" type="button">
+            <strong>Механика mini app</strong>
+            <span>Как работает каталог, корзина, оформление заказа и оплата.</span>
+          </button>
+          <button class="text-card home-info-card" data-screen="payment" type="button">
+            <strong>Оплата и условия</strong>
+            <span>Поддержка касс, Telegram Payments и форматы доставки.</span>
+          </button>
+          <button class="text-card home-info-card" data-screen="contacts" type="button">
+            <strong>Контакты</strong>
+            <span>Связь с менеджером и быстрый переход в Telegram.</span>
+          </button>
         </div>
-        <div class="home-section-title">Недавно смотрели</div>
-        <div id="homeRecentTrack" class="promo-track"></div>
 
         <div class="home-actions-row">
-          <button class="primary-button" data-screen="categories" type="button">Открыть каталог</button>
-          <button class="ghost-button" data-screen="about" type="button">О демо</button>
+          <button class="primary-button" data-screen="categories" type="button">Перейти в каталог</button>
+          <button class="ghost-button" data-screen="contacts" type="button">Связаться</button>
         </div>
       </section>
 
@@ -232,8 +227,10 @@
             </div>
           </div>
           <div class="profile-theme-row">
-            <span>🌙 Тема оформления</span>
-            <strong>Тёмная</strong>
+            <span id="themeLabel">🌙 Тема оформления</span>
+            <button id="themeToggleButton" class="ghost-button theme-toggle-button" type="button">
+              <span id="themeToggleValue">Тёмная</span>
+            </button>
           </div>
         </div>
         <button class="profile-manager-button" data-screen="contacts" type="button">
@@ -397,6 +394,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260221-1"></script>
-    <script src="app.js?v=20260222-1"></script>
+    <script src="app.js?v=20260223-2"></script>
   </body>
 </html>

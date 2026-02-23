@@ -24,6 +24,7 @@ const state = {
   promoCode: '',
   promoPercent: 0,
   recentlyViewed: [],
+  theme: 'dark',
 };
 
 const menuCatalogTree = [
@@ -114,6 +115,10 @@ const ui = {
   profileAvatar: document.getElementById('profileAvatar'),
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
+  homeAboutText: document.getElementById('homeAboutText'),
+  themeLabel: document.getElementById('themeLabel'),
+  themeToggleButton: document.getElementById('themeToggleButton'),
+  themeToggleValue: document.getElementById('themeToggleValue'),
   featuredPromo: document.getElementById('featuredPromo'),
   promoCodeInput: document.getElementById('promoCodeInput'),
   promoApplyButton: document.getElementById('promoApplyButton'),
@@ -330,6 +335,7 @@ function loadStorage() {
   state.promoCode = String(localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
   state.promoPercent = Number(localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
   state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
+  state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
 }
 
 function saveStorage() {
@@ -342,6 +348,20 @@ function saveStorage() {
   localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
   localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
   localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
+  localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
+}
+
+function applyTheme(theme) {
+  const nextTheme = theme === 'light' ? 'light' : 'dark';
+  state.theme = nextTheme;
+  document.documentElement.setAttribute('data-theme', nextTheme);
+  if (ui.themeToggleValue) ui.themeToggleValue.textContent = nextTheme === 'light' ? 'Светлая' : 'Тёмная';
+  if (ui.themeLabel) ui.themeLabel.textContent = nextTheme === 'light' ? '☀️ Тема оформления' : '🌙 Тема оформления';
+}
+
+function toggleTheme() {
+  applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+  saveStorage();
 }
 
 function getProduct(id) { return state.products.find((p) => p.id === id); }
@@ -795,9 +815,18 @@ function renderProfile() {
   const user = getTelegramUser();
   const firstName = String(user.first_name || state.profile.name || 'Пользователь').trim();
   const username = String(user.username || '').trim();
+  const photoUrl = String(user.photo_url || '').trim();
   if (ui.profileName) ui.profileName.textContent = firstName || 'Пользователь';
   if (ui.profileHandle) ui.profileHandle.textContent = username ? `@${username}` : `ID: ${getTelegramId() || '—'}`;
-  if (ui.profileAvatar) ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
+  if (ui.profileAvatar) {
+    if (photoUrl) {
+      ui.profileAvatar.classList.add('has-photo');
+      ui.profileAvatar.innerHTML = `<img src="${safeSrc(photoUrl)}" alt="Аватар" loading="lazy" decoding="async" />`;
+    } else {
+      ui.profileAvatar.classList.remove('has-photo');
+      ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
+    }
+  }
 }
 
 function validatePhone(value) {
@@ -1112,6 +1141,11 @@ function bindEvents() {
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
     setScreen('product');
+  });
+
+  on(ui.themeToggleButton, 'click', () => {
+    toggleTheme();
+    renderProfile();
   });
 
 
@@ -1557,6 +1591,12 @@ async function loadConfig() {
       }
     }
   }
+  if (ui.homeAboutText) {
+    const aboutRaw = String(state.config.aboutText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    ui.homeAboutText.textContent = aboutRaw
+      ? `${aboutRaw.slice(0, 140)}${aboutRaw.length > 140 ? '…' : ''}`
+      : 'Современный mini app для интернет-магазинов и офлайн точек продаж.';
+  }
   ui.paymentText.innerHTML = formatMultiline(state.config.paymentText || 'Информация будет добавлена позже.');
   if (ui.productionText) {
     const prodRaw = state.config.productionText || 'Информация будет добавлена позже.';
@@ -1656,6 +1696,7 @@ async function loadData() {
 
 async function init() {
   loadStorage();
+  applyTheme(state.theme);
   state.screenStack = ['home'];
   state.currentScreen = 'home';
   bindEvents();
