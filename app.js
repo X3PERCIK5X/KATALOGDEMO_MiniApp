@@ -247,7 +247,7 @@ function scrollToTop() {
 }
 
 function openMenu() {
-  setScreen('menu');
+  setScreen('categories');
 }
 
 function closeDrawer() {
@@ -258,15 +258,19 @@ function closeDrawer() {
 function updateBottomNav(screen) {
   const map = {
     home: ui.homeButton,
+    categories: ui.menuButton,
+    products: ui.menuButton,
+    product: ui.menuButton,
+    promo: ui.menuButton,
     cart: ui.cartButton,
     profile: ui.profileButton,
     orders: ui.profileButton,
-    favorites: ui.profileButton,
-    menu: ui.profileButton,
+    favorites: ui.favoritesButton,
+    menu: ui.menuButton,
   };
   const defaultButton = ui.homeButton;
   const activeButton = map[screen] || defaultButton;
-  [ui.homeButton, ui.cartButton, ui.profileButton].forEach((btn) => {
+  [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton].forEach((btn) => {
     if (!btn) return;
     btn.classList.toggle('active', btn === activeButton);
   });

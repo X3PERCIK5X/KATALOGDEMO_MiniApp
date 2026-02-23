@@ -10,7 +10,7 @@
     <header class="header">
       <div class="header-brand">
         <div class="brand-logo-line">
-          <span class="brand-name">DEMO CATALOG</span>
+          <span class="brand-name">DEMO STORE</span>
         </div>
         <div id="headerAddress" class="header-address">📍 Адрес магазина</div>
       </div>
@@ -352,7 +352,14 @@
     </main>
 
     <nav class="bottom-nav bottom-nav-lite">
-      <button id="homeButton" class="bottom-item" type="button" aria-label="Каталог">
+      <button id="homeButton" class="bottom-item" type="button" aria-label="Главная">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 11.5 12 4l9 7.5" />
+          <path d="M5 10.5V20h14v-9.5" />
+        </svg>
+        <span>Главная</span>
+      </button>
+      <button id="menuButton" class="bottom-item" type="button" aria-label="Каталог">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 3h8v8H3z" />
           <path d="M13 3h8v8h-8z" />
@@ -371,6 +378,13 @@
         <span>Корзина</span>
         <span id="cartCount" class="badge">0</span>
       </button>
+      <button id="favoritesButton" class="bottom-item" type="button" aria-label="Избранное">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
+        </svg>
+        <span>Избранное</span>
+        <span id="favoritesCount" class="badge">0</span>
+      </button>
       <button id="profileButton" class="bottom-item" type="button" aria-label="Профиль">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M20 21a8 8 0 0 0-16 0" />
@@ -378,11 +392,7 @@
         </svg>
         <span>Профиль</span>
       </button>
-
-      <button id="menuButton" class="bottom-item nav-hidden" type="button" aria-label="Меню"></button>
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
-      <button id="favoritesButton" class="bottom-item nav-hidden" type="button" aria-label="Избранное"></button>
-      <span id="favoritesCount" class="badge nav-hidden">0</span>
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
