@@ -2923,6 +2923,17 @@ body {
   letter-spacing: 0.02em;
 }
 
+.brand-build {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.9;
+  text-align: center;
+}
+
 .header-search-form {
   justify-self: end;
   width: 100%;
