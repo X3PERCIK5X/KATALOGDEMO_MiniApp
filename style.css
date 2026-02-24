@@ -3296,33 +3296,60 @@ html[data-theme="light"] .banner-slide-sales .featured-text strong {
   color: #fbfdff;
 }
 
-/* Product page readability fix: white cards need dark text in both themes */
-#screen-product .product-price-row {
+/* Product page readability fix with theme-aware surfaces */
+#screen-product .product-price-row,
+#screen-product .detail-section,
+#screen-product .recommended-card {
+  border: 1px solid var(--stroke);
+}
+
+html[data-theme="dark"] #screen-product .product-price-row,
+html[data-theme="dark"] #screen-product .detail-section,
+html[data-theme="dark"] #screen-product .recommended-card {
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  border-color: var(--stroke);
+}
+
+html[data-theme="dark"] #screen-product .product-title,
+html[data-theme="dark"] #screen-product .product-price,
+html[data-theme="dark"] #screen-product .section-title,
+html[data-theme="dark"] #screen-product .recommended-title {
+  color: #f3f6ff;
+}
+
+html[data-theme="dark"] #screen-product .product-meta,
+html[data-theme="dark"] #screen-product .section-body,
+html[data-theme="dark"] #screen-product .product-specs,
+html[data-theme="dark"] #screen-product .recommended-price {
+  color: #c6cfdf;
+}
+
+html[data-theme="dark"] #screen-product .recommended-card img {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme="light"] #screen-product .product-price-row,
+html[data-theme="light"] #screen-product .detail-section,
+html[data-theme="light"] #screen-product .recommended-card {
   background: #ffffff;
   border-color: #d7deeb;
 }
 
-#screen-product .product-title,
-#screen-product .product-price,
-#screen-product .section-title,
-#screen-product .recommended-title {
+html[data-theme="light"] #screen-product .product-title,
+html[data-theme="light"] #screen-product .product-price,
+html[data-theme="light"] #screen-product .section-title,
+html[data-theme="light"] #screen-product .recommended-title {
   color: #1a2436;
 }
 
-#screen-product .product-meta,
-#screen-product .section-body,
-#screen-product .product-specs,
-#screen-product .recommended-price {
+html[data-theme="light"] #screen-product .product-meta,
+html[data-theme="light"] #screen-product .section-body,
+html[data-theme="light"] #screen-product .product-specs,
+html[data-theme="light"] #screen-product .recommended-price {
   color: #44536a;
 }
 
-#screen-product .detail-section,
-#screen-product .recommended-card {
-  background: #ffffff;
-  border-color: #d7deeb;
-}
-
-#screen-product .recommended-card img {
+html[data-theme="light"] #screen-product .recommended-card img {
   background: #f3f6fb;
 }
 
