@@ -2002,6 +2002,10 @@ html {
   color: var(--text);
 }
 
+.select-actions .icon-btn {
+  color: var(--primary);
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
