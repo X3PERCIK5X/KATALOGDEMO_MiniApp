@@ -2309,6 +2309,16 @@ body {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
 }
 
+.text-card {
+  color: var(--text);
+}
+
+.text-card p,
+.about-lead,
+.about-list li {
+  color: rgba(240, 244, 255, 0.95);
+}
+
 .featured-promo {
   min-height: 260px;
   border-radius: 26px;
@@ -2504,7 +2514,7 @@ body {
 }
 
 .home-info-card span {
-  color: var(--muted);
+  color: #d6ddf0;
   font-size: 13px;
   line-height: 1.35;
 }
@@ -2582,7 +2592,7 @@ body {
 .home-article-slide span {
   font-size: 13px;
   line-height: 1.35;
-  color: rgba(246, 249, 255, 0.9);
+  color: rgba(250, 252, 255, 0.98);
 }
 
 .theme-toggle-button {
@@ -2662,12 +2672,25 @@ html[data-theme="light"] .featured-promo {
 
 html[data-theme="light"] .featured-text,
 html[data-theme="light"] .home-info-card span,
-html[data-theme="light"] .home-article-slide span,
 html[data-theme="light"] .product-meta,
 html[data-theme="light"] .profile-handle,
 html[data-theme="light"] .status,
 html[data-theme="light"] .cart-sku {
   color: var(--muted);
+}
+
+html[data-theme="light"] .home-info-card span {
+  color: #4b5569;
+}
+
+html[data-theme="light"] .home-article-slide span {
+  color: rgba(250, 252, 255, 0.97);
+}
+
+html[data-theme="light"] .text-card p,
+html[data-theme="light"] .about-lead,
+html[data-theme="light"] .about-list li {
+  color: #3f4b5d;
 }
 
 html[data-theme="light"] .home-article-slide {
