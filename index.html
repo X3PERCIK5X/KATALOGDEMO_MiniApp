@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260224-13" />
+    <link rel="stylesheet" href="style.css?v=20260224-14" />
   </head>
   <body>
     <header class="header">
@@ -15,7 +15,6 @@
         </button>
         <div class="brand-logo-line">
           <span class="brand-name">DEMO STORE</span>
-          <span class="brand-build">build 12d8388</span>
         </div>
         <button id="headerSearchButton" class="header-search-button" type="button" aria-label="Поиск по товарам">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -78,24 +77,30 @@
         </section>
 
         <div class="home-section-title">Статьи и разделы</div>
-        <div class="home-info-grid">
-          <button class="text-card home-info-card" data-screen="about" type="button">
-            <strong>Что такое DEMOKATALOG</strong>
-            <span>Готовый продукт для запуска продаж в Telegram: быстро, современно и масштабируемо.</span>
-          </button>
-          <button class="text-card home-info-card" data-screen="production" type="button">
-            <strong>Механика продаж</strong>
-            <span>Как клиент проходит путь: каталог, карточка товара, корзина, оформление и оплата.</span>
-          </button>
-          <button class="text-card home-info-card" data-screen="payment" type="button">
-            <strong>Оплата и интеграции</strong>
-            <span>Подключение Telegram Payments, касс, промокодов и сбор данных клиента.</span>
-          </button>
-          <button class="text-card home-info-card" data-screen="contacts" type="button">
-            <strong>Запуск под ключ</strong>
-            <span>Связь с менеджером, настройка под бренд и поэтапный запуск проекта.</span>
-          </button>
-        </div>
+        <section class="home-article-slider">
+          <div class="home-article-track">
+            <button class="home-article-slide" data-screen="about" type="button">
+              <span class="home-article-kicker">О продукте</span>
+              <strong>Что такое DEMOKATALOG</strong>
+              <span>Готовый mini app для запуска продаж в Telegram за короткий срок.</span>
+            </button>
+            <button class="home-article-slide" data-screen="production" type="button">
+              <span class="home-article-kicker">Механика</span>
+              <strong>Как работает воронка</strong>
+              <span>Каталог, карточка, корзина, оформление, оплата и уведомления в боте.</span>
+            </button>
+            <button class="home-article-slide" data-screen="payment" type="button">
+              <span class="home-article-kicker">Оплата</span>
+              <strong>Кассы и интеграции</strong>
+              <span>Telegram Payments, провайдеры, промокоды, сбор контактов и Telegram ID.</span>
+            </button>
+            <button class="home-article-slide" data-screen="contacts" type="button">
+              <span class="home-article-kicker">Запуск</span>
+              <strong>Внедрение под ключ</strong>
+              <span>Настраиваем структуру, визуал и логику под твою нишу и бренд.</span>
+            </button>
+          </div>
+        </section>
 
         <div class="home-section-title">Акции</div>
         <section class="promo-row promo-row-home">
@@ -492,6 +497,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260224-11"></script>
+    <script src="app.js?v=20260224-12"></script>
   </body>
 </html>
