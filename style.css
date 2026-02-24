@@ -3296,6 +3296,36 @@ html[data-theme="light"] .banner-slide-sales .featured-text strong {
   color: #fbfdff;
 }
 
+/* Product page readability fix: white cards need dark text in both themes */
+#screen-product .product-price-row {
+  background: #ffffff;
+  border-color: #d7deeb;
+}
+
+#screen-product .product-title,
+#screen-product .product-price,
+#screen-product .section-title,
+#screen-product .recommended-title {
+  color: #1a2436;
+}
+
+#screen-product .product-meta,
+#screen-product .section-body,
+#screen-product .product-specs,
+#screen-product .recommended-price {
+  color: #44536a;
+}
+
+#screen-product .detail-section,
+#screen-product .recommended-card {
+  background: #ffffff;
+  border-color: #d7deeb;
+}
+
+#screen-product .recommended-card img {
+  background: #f3f6fb;
+}
+
 @media (max-width: 740px) {
   .header {
     padding: calc(env(safe-area-inset-top) + 6px) 10px 4px;
