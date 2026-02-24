@@ -1852,18 +1852,6 @@ html {
   min-width: 100%;
 }
 
-.banner-slide-promo {
-  background:
-    linear-gradient(180deg, rgba(6, 10, 20, 0.1), rgba(6, 10, 20, 0.86)),
-    radial-gradient(700px 260px at 20% 16%, rgba(255, 76, 144, 0.32), transparent 70%),
-    radial-gradient(760px 280px at 84% 82%, rgba(92, 141, 255, 0.24), transparent 72%),
-    url("https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1800&q=80") center/cover;
-}
-
-.banner-slide-promo .featured-chip {
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
 .home-banner-dots {
   margin-top: 8px;
   display: flex;
@@ -1892,11 +1880,54 @@ html {
   border-radius: var(--radius-xl);
   padding: 24px;
   min-height: 240px;
-  background:
-    linear-gradient(180deg, rgba(7, 9, 15, 0.14), rgba(7, 9, 15, 0.78)),
-    url('https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=1500&q=80') center/cover;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(160deg, #1b2030 0%, #1a1c27 48%, #151722 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+  position: relative;
+  overflow: hidden;
+}
+
+.banner-slide-clean::before {
+  content: "";
+  position: absolute;
+  inset: -30% -20% auto auto;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.banner-slide-clean::after {
+  content: "";
+  position: absolute;
+  left: -70px;
+  bottom: -100px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.banner-slide-promo {
+  background: linear-gradient(140deg, #7d2148 0%, #b73668 58%, #d24c79 100%);
+}
+
+.banner-slide-sales {
+  background: linear-gradient(140deg, #1d2a5d 0%, #24407f 56%, #3566b3 100%);
+}
+
+.banner-slide-promo .featured-chip,
+.banner-slide-sales .featured-chip {
+  border-color: rgba(255, 255, 255, 0.56);
+}
+
+.banner-slide-promo .featured-text,
+.banner-slide-sales .featured-text,
+.banner-slide-promo .featured-text strong,
+.banner-slide-sales .featured-text strong {
+  color: #ffffff;
 }
 
 .featured-chip {
@@ -3144,16 +3175,10 @@ html[data-theme="light"] .store-item {
   background: #fff;
 }
 
-html[data-theme="light"] .banner-slide-promo {
-  background:
-    linear-gradient(180deg, rgba(244, 224, 237, 0.24), rgba(231, 198, 224, 0.7)),
-    radial-gradient(560px 250px at 18% 20%, rgba(241, 109, 180, 0.2), transparent 72%),
-    radial-gradient(700px 280px at 82% 80%, rgba(126, 157, 255, 0.2), transparent 72%),
-    url("https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=1800&q=80") center/cover;
-}
-
 html[data-theme="light"] .banner-slide-promo .featured-text,
-html[data-theme="light"] .banner-slide-promo .featured-text strong {
+html[data-theme="light"] .banner-slide-sales .featured-text,
+html[data-theme="light"] .banner-slide-promo .featured-text strong,
+html[data-theme="light"] .banner-slide-sales .featured-text strong {
   color: #fbfdff;
 }
 
