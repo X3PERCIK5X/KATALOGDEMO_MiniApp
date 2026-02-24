@@ -3271,6 +3271,16 @@ html[data-theme="light"] .banner-slide-promo .featured-text strong {
   color: #f5f8ff;
 }
 
+#screen-checkout #inputDeliveryType {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M2.5 5.25L7 9.25L11.5 5.25' stroke='%23DDE4F7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px 14px;
+}
+
 #screen-checkout .order-form.flat input::placeholder {
   color: #a7afc2;
 }
@@ -3289,13 +3299,21 @@ html[data-theme="light"] .banner-slide-promo .featured-text strong {
 }
 
 #screen-checkout .checkbox {
-  gap: 8px;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+#screen-checkout .checkbox input {
+  width: 24px;
+  height: 24px;
 }
 
 #screen-checkout .checkbox span {
   font-size: 14px;
   line-height: 1.35;
   color: var(--muted);
+  padding-top: 1px;
 }
 
 #screen-checkout .cart-totals {
