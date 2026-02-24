@@ -877,7 +877,7 @@ function startHomeBannerAutoplay() {
   state.homeBannerTimer = window.setInterval(() => {
     const next = (state.homeBannerIndex + 1) % slidesCount;
     setHomeBanner(next);
-  }, 300000);
+  }, 5000);
 }
 
 function touchRecentlyViewed(productId) {
