@@ -3578,3 +3578,9 @@ html[data-theme="dark"] .cart-title-link,
 html[data-theme="dark"] .search-item-title {
   color: #f5f7ff !important;
 }
+
+html[data-theme="dark"] .order-toggle {
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--stroke);
+  color: #eef2ff;
+}
