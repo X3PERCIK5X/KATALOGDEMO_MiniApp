@@ -3584,3 +3584,94 @@ html[data-theme="dark"] .order-toggle {
   border: 1px solid var(--stroke);
   color: #eef2ff;
 }
+
+/* 2026-02-24: global readability + light-theme border polish */
+html[data-theme="dark"] .section-body,
+html[data-theme="dark"] .product-specs,
+html[data-theme="dark"] .order-status,
+html[data-theme="dark"] .order-date,
+html[data-theme="dark"] .status,
+html[data-theme="dark"] .cart-sku,
+html[data-theme="dark"] .product-meta {
+  color: #c7d0e2;
+}
+
+html[data-theme="dark"] .order-title,
+html[data-theme="dark"] .order-total,
+html[data-theme="dark"] .order-item-title,
+html[data-theme="dark"] .section-title {
+  color: #f4f7ff;
+}
+
+html[data-theme="light"] .featured-title,
+html[data-theme="light"] .featured-text,
+html[data-theme="light"] .featured-text strong,
+html[data-theme="light"] .featured-chip,
+html[data-theme="light"] .featured-cta {
+  color: #f8fbff;
+}
+
+html[data-theme="light"] .featured-chip {
+  border-color: rgba(255, 255, 255, 0.52);
+}
+
+html[data-theme="light"] .home-article-slide strong {
+  color: #101a2b;
+}
+
+html[data-theme="light"] .home-article-slide span {
+  color: #2e3d53;
+}
+
+html[data-theme="light"] .home-article-kicker {
+  color: #1f2d40;
+  border-color: rgba(16, 26, 43, 0.18);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+html[data-theme="light"] .section-body,
+html[data-theme="light"] .product-specs,
+html[data-theme="light"] .order-status,
+html[data-theme="light"] .order-date,
+html[data-theme="light"] .status,
+html[data-theme="light"] .cart-sku,
+html[data-theme="light"] .product-meta {
+  color: #526178;
+}
+
+html[data-theme="light"] .product-title,
+html[data-theme="light"] .order-title,
+html[data-theme="light"] .order-total,
+html[data-theme="light"] .order-item-title,
+html[data-theme="light"] .section-title {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .catalog-toolbar,
+html[data-theme="light"] .category-card,
+html[data-theme="light"] .product-card,
+html[data-theme="light"] .promo-card,
+html[data-theme="light"] .cart-item,
+html[data-theme="light"] .cart-summary-row,
+html[data-theme="light"] .profile-card,
+html[data-theme="light"] .profile-manager-button,
+html[data-theme="light"] .text-card,
+html[data-theme="light"] .feedback-card,
+html[data-theme="light"] .order-card,
+html[data-theme="light"] .cart-checkout,
+html[data-theme="light"] .order-form,
+html[data-theme="light"] .menu-catalog-card,
+html[data-theme="light"] .home-info-card,
+html[data-theme="light"] .home-article-slide,
+html[data-theme="light"] .order-toggle,
+html[data-theme="light"] .recommended-card,
+html[data-theme="light"] .detail-section,
+html[data-theme="light"] .product-price-row {
+  border-color: rgba(14, 18, 26, 0.06) !important;
+  box-shadow: 0 10px 24px rgba(22, 36, 64, 0.08);
+}
+
+html[data-theme="light"] .bottom-item {
+  border-color: rgba(14, 18, 26, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(14, 18, 26, 0.04);
+}
