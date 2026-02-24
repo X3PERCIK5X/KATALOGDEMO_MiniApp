@@ -1833,10 +1833,11 @@ function bindEvents() {
       return;
     }
 
-    if (!window.HORECA_TG?.isTelegram) {
-      ui.orderStatus.textContent = 'Оплата доступна только внутри Telegram Mini App.';
-      return;
-    }
+    state.profile = profile;
+    saveStorage();
+    ui.orderStatus.textContent = '';
+    setScreen('pay');
+    return;
 
     const summary = (() => {
       let sum = 0;
