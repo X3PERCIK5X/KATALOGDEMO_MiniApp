@@ -50,6 +50,8 @@ console.log("✅ telegram.js loaded");
           payload.phone ||
           payload.contact?.phone_number ||
           payload.user?.phone_number ||
+          payload.user?.contact?.phone_number ||
+          payload.receiver?.phone_number ||
           "";
         return String(direct || "").trim();
       }
@@ -59,13 +61,27 @@ console.log("✅ telegram.js loaded");
         settled = true;
         const fromPayload = extractPhone(payload);
         const fromInitData =
-          String(Telegram.WebApp?.initDataUnsafe?.user?.phone_number || "").trim();
+          String(
+            Telegram.WebApp?.initDataUnsafe?.user?.phone_number ||
+            Telegram.WebApp?.initDataUnsafe?.user?.contact?.phone_number ||
+            Telegram.WebApp?.initDataUnsafe?.contact?.phone_number ||
+            Telegram.WebApp?.initDataUnsafe?.phone_number ||
+            ""
+          ).trim();
         const phone = fromPayload || fromInitData;
         resolve({ ok: Boolean(ok || phone), phone: String(phone || "") });
       }
 
       try {
-        Telegram.WebApp.requestContact((shared) => done(shared, shared));
+        const maybePromise = Telegram.WebApp.requestContact((shared) => done(shared, null));
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise
+            .then((result) => done(true, result))
+            .catch((error) => {
+              console.log(error);
+              done(false, null);
+            });
+        }
       } catch (e) {
         console.log(e);
         done(false, null);
