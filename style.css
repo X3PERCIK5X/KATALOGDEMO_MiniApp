@@ -2910,6 +2910,7 @@ body {
   font-size: 22px;
   line-height: 1;
   opacity: 0.9;
+  color: var(--primary);
 }
 
 .header .brand-logo-line {
@@ -3275,7 +3276,7 @@ html[data-theme="light"] .banner-slide-promo .featured-text strong {
   -webkit-appearance: none;
   appearance: none;
   padding-right: 44px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M2.5 5.25L7 9.25L11.5 5.25' stroke='%23DDE4F7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M2.5 5.25L7 9.25L11.5 5.25' stroke='%23E46A2C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   background-size: 14px 14px;
