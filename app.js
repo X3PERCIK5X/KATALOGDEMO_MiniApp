@@ -215,6 +215,8 @@ const FIRST_ORDER_PROMO = {
 };
 
 const ADMIN_MARGIN_RATE = 0.3;
+const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
+const PUBLISHED_STATE_TS_KEY = 'demo_catalog_published_state_ts_v1';
 
 function getTelegramUser() {
   return window.HORECA_TG?.initDataUnsafe?.user || {};
@@ -812,11 +814,24 @@ function adminSaveDraft(silent = false) {
     products: state.products,
   };
   localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
+  localStorage.setItem(PUBLISHED_STATE_KEY, JSON.stringify(payload));
+  localStorage.setItem(PUBLISHED_STATE_TS_KEY, String(Date.now()));
   if (!silent) reportStatus('Админ-черновик сохранен локально');
 }
 
 function adminRestoreDraft() {
   const raw = localStorage.getItem(state.admin.draftKey);
+  if (!raw) return false;
+  const parsed = safeParse(raw, null);
+  if (!parsed || typeof parsed !== 'object') return false;
+  if (parsed.config && typeof parsed.config === 'object') state.config = parsed.config;
+  if (Array.isArray(parsed.categories)) state.categories = parsed.categories;
+  if (Array.isArray(parsed.products)) state.products = parsed.products;
+  return true;
+}
+
+function restorePublishedState() {
+  const raw = localStorage.getItem(PUBLISHED_STATE_KEY);
   if (!raw) return false;
   const parsed = safeParse(raw, null);
   if (!parsed || typeof parsed !== 'object') return false;
@@ -919,6 +934,7 @@ function adminBindHome() {
       if (value == null || value.__delete) return;
       state.config.aboutText = value;
       ui.aboutText.innerHTML = formatMultiline(value);
+      adminSaveDraft(true);
     });
   });
   adminBindHold(ui.paymentText, () => {
@@ -926,6 +942,7 @@ function adminBindHome() {
       if (value == null || value.__delete) return;
       state.config.paymentText = value;
       ui.paymentText.innerHTML = formatMultiline(value);
+      adminSaveDraft(true);
     });
   });
   adminBindHold(ui.productionText, () => {
@@ -933,6 +950,7 @@ function adminBindHome() {
       if (value == null || value.__delete) return;
       state.config.productionText = value;
       ui.productionText.innerHTML = formatMultiline(value);
+      adminSaveDraft(true);
     });
   });
   adminBindHold(ui.contactsCard, () => {
@@ -940,6 +958,7 @@ function adminBindHome() {
       if (value == null || value.__delete) return;
       state.config.contactsText = value;
       ui.contactsCard.innerHTML = formatMultiline(value);
+      adminSaveDraft(true);
     });
   });
 }
@@ -1677,6 +1696,7 @@ function renderStores() {
             store.address = String(addressRaw || '').trim() || store.address;
             state.config.storeLocations = state.stores;
           }
+          adminSaveDraft(true);
           renderStores();
           renderHeaderStore();
         });
@@ -3118,6 +3138,17 @@ async function init() {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
   }
+  if (!state.admin.enabled && restorePublishedState()) {
+    renderHomeBanners();
+    renderHomeArticles();
+    renderHeaderStore();
+    renderStores();
+    renderCategories();
+    if (state.currentScreen === 'products') renderProducts();
+    if (state.currentScreen === 'product') renderProductView();
+    renderPromos();
+    renderHomePopular();
+  }
   if (state.admin.enabled && adminRestoreDraft()) {
     renderHomeBanners();
     renderHomeArticles();
@@ -3141,4 +3172,19 @@ window.addEventListener('error', (e) => {
 });
 window.addEventListener('unhandledrejection', (e) => {
   reportStatus(`Ошибка JS: ${e.reason || 'unknown'}`);
+});
+
+window.addEventListener('storage', (event) => {
+  if (state.admin.enabled) return;
+  if (event.key !== PUBLISHED_STATE_KEY && event.key !== PUBLISHED_STATE_TS_KEY) return;
+  if (!restorePublishedState()) return;
+  renderHomeBanners();
+  renderHomeArticles();
+  renderHeaderStore();
+  renderStores();
+  renderCategories();
+  if (state.currentScreen === 'products') renderProducts();
+  if (state.currentScreen === 'product') renderProductView();
+  renderPromos();
+  renderHomePopular();
 });
