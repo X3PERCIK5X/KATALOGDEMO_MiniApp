@@ -37,6 +37,34 @@ const state = {
   phoneAutofillSucceeded: false,
 };
 
+// Базовый контент главной страницы.
+// Если в config.json нет своих значений — используем эти.
+const DEFAULT_HOME_BANNERS = [
+  {
+    id: 'promo-first',
+    style: 'promo',
+    kicker: 'Спецпредложение',
+    title: 'Промокод ПЕРВЫЙ',
+    text: 'Скидка 10% на первый заказ для новых клиентов. Применяется в корзине после активации.',
+    cta: 'Активировать в корзине',
+  },
+  {
+    id: 'sales-offer',
+    style: 'sales',
+    kicker: 'Продающий оффер',
+    title: 'Каталог, корзина и оплата в Telegram',
+    text: 'Запусти продажи в mini app без сайта: клиент выбирает товар, оформляет заказ и оплачивает в одном окне.',
+    cta: 'Запустить под ключ',
+  },
+];
+
+const DEFAULT_HOME_ARTICLES = [
+  { id: 'about', kicker: 'О продукте', title: 'Что такое DEMOKATALOG', text: 'Готовый mini app для запуска продаж в Telegram за короткий срок.', screen: 'about' },
+  { id: 'production', kicker: 'Механика', title: 'Как работает воронка', text: 'Каталог, карточка, корзина, оформление, оплата и уведомления в боте.', screen: 'production' },
+  { id: 'payment', kicker: 'Оплата', title: 'Кассы и интеграции', text: 'Telegram Payments, провайдеры, промокоды, сбор контактов и Telegram ID.', screen: 'payment' },
+  { id: 'contacts', kicker: 'Запуск', title: 'Внедрение под ключ', text: 'Настраиваем структуру, визуал и логику под нишу и бренд.', screen: 'contacts' },
+];
+
 const menuCatalogTree = [
   { title: 'Женская одежда' },
   { title: 'Мужская одежда' },
@@ -140,7 +168,7 @@ const ui = {
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
   profileManagerButton: document.getElementById('profileManagerButton'),
-  homeAboutText: document.getElementById('homeAboutText'),
+  homeArticleTrack: document.getElementById('homeArticleTrack'),
   themeLabel: document.getElementById('themeLabel'),
   themeToggleButton: document.getElementById('themeToggleButton'),
   themeToggleValue: document.getElementById('themeToggleValue'),
@@ -461,6 +489,81 @@ function safeSrc(src) {
     return src;
   }
 }
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeHomeBanners(list) {
+  const source = Array.isArray(list) && list.length ? list : DEFAULT_HOME_BANNERS;
+  return source
+    .map((item, index) => {
+      const style = item?.style === 'sales' ? 'sales' : 'promo';
+      const fallback = DEFAULT_HOME_BANNERS[index % DEFAULT_HOME_BANNERS.length];
+      return {
+        id: String(item?.id || `banner-${index + 1}`),
+        style,
+        kicker: String(item?.kicker || fallback.kicker),
+        title: String(item?.title || fallback.title),
+        text: String(item?.text || fallback.text),
+        cta: String(item?.cta || fallback.cta),
+      };
+    })
+    .filter((item) => item.title && item.text);
+}
+
+function normalizeHomeArticles(list) {
+  const source = Array.isArray(list) && list.length ? list : DEFAULT_HOME_ARTICLES;
+  return source
+    .map((item, index) => {
+      const fallback = DEFAULT_HOME_ARTICLES[index % DEFAULT_HOME_ARTICLES.length];
+      return {
+        id: String(item?.id || `article-${index + 1}`),
+        kicker: String(item?.kicker || fallback.kicker),
+        title: String(item?.title || fallback.title),
+        text: String(item?.text || fallback.text),
+        screen: String(item?.screen || fallback.screen || 'about'),
+      };
+    })
+    .filter((item) => item.title && item.text && item.screen);
+}
+
+// Рендерим главный слайдер полностью из config.json.
+function renderHomeBanners() {
+  if (!ui.homeBannerTrack || !ui.homeBannerDots) return;
+  const banners = normalizeHomeBanners(state.config.homeBanners);
+  ui.homeBannerTrack.innerHTML = banners.map((banner) => `
+    <div class="featured-promo banner-slide banner-slide-clean banner-slide-${banner.style}" data-banner-id="${escapeHtml(banner.id)}">
+      <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
+      <div class="featured-title">${escapeHtml(banner.title)}</div>
+      <div class="featured-text">${escapeHtml(banner.text)}</div>
+      <div class="featured-cta">${escapeHtml(banner.cta)}</div>
+    </div>
+  `).join('');
+  ui.homeBannerDots.innerHTML = banners.map((_, index) => `
+    <button class="dot ${index === 0 ? 'active' : ''}" data-home-banner-dot="${index}" type="button" aria-label="Баннер ${index + 1}"></button>
+  `).join('');
+  setHomeBanner(0);
+}
+
+// Статьи главной также приходят из конфига и готовы к редактированию через админку.
+function renderHomeArticles() {
+  if (!ui.homeArticleTrack) return;
+  const articles = normalizeHomeArticles(state.config.homeArticles);
+  ui.homeArticleTrack.innerHTML = articles.map((article) => `
+    <button class="home-article-slide" data-screen="${escapeHtml(article.screen)}" type="button" data-article-id="${escapeHtml(article.id)}">
+      <span class="home-article-kicker">${escapeHtml(article.kicker)}</span>
+      <strong>${escapeHtml(article.title)}</strong>
+      <span>${escapeHtml(article.text)}</span>
+    </button>
+  `).join('');
+}
+
 function formatMultiline(text) {
   const raw = String(text || '').trim();
   if (!raw) return '';
@@ -1295,12 +1398,7 @@ function addToCart(id) {
   updateBadges();
 }
 
-function setActiveHomeChip(targetButton) {
-  document.querySelectorAll('.catalog-chips .chip').forEach((chip) => {
-    chip.classList.toggle('chip-active', chip === targetButton);
-  });
-}
-
+// Центральная регистрация всех обработчиков интерфейса.
 function bindEvents() {
   on(document, 'touchstart', (e) => {
     dismissKeyboardIfNeeded(e.target);
@@ -1360,63 +1458,38 @@ function bindEvents() {
     setScreen('product');
     closeSearchOverlay();
   });
-  if (ui.homeBannerDots) {
-    ui.homeBannerDots.querySelectorAll('[data-home-banner-dot]').forEach((dot) => {
-      dot.addEventListener('click', () => {
-        const idx = Number(dot.dataset.homeBannerDot || 0);
-        setHomeBanner(idx);
-        startHomeBannerAutoplay();
-      });
-    });
-  }
+  on(ui.homeBannerDots, 'click', (e) => {
+    const dot = e.target.closest('[data-home-banner-dot]');
+    if (!dot) return;
+    const idx = Number(dot.dataset.homeBannerDot || 0);
+    setHomeBanner(idx);
+    startHomeBannerAutoplay();
+  });
   on(ui.profileManagerButton, 'click', openManagerChat);
 
-
-  document.querySelectorAll('[data-screen]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.screen;
-      if (target) setScreen(target);
-    });
-  });
-  document.querySelectorAll('.menu-item[data-screen]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setScreen(btn.dataset.screen);
-      if (btn.dataset.screen === 'orders') renderOrders();
-      if (btn.dataset.screen === 'profile') {
-        renderProfile();
-        renderOrders();
-      }
-    });
+  on(document, 'click', (e) => {
+    const btn = e.target.closest('[data-screen]');
+    if (!btn) return;
+    const target = btn.dataset.screen;
+    if (!target) return;
+    setScreen(target);
+    if (target === 'orders') renderOrders();
+    if (target === 'profile') {
+      renderProfile();
+      renderOrders();
+    }
   });
 
   on(ui.menuCatalogToggle, 'click', () => {
     if (ui.menuCatalogList) ui.menuCatalogList.classList.toggle('hidden');
   });
 
-  document.querySelectorAll('.hero-tile').forEach((tile) => {
-    tile.addEventListener('click', () => {
-      setActiveHomeChip(tile);
-      state.currentGroup = tile.dataset.group;
-      ui.categoriesTitle.textContent = tile.dataset.group === 'accessories' ? 'Аксессуары и подборки' : 'Каталог';
-      renderCategories();
-      setScreen('categories');
-    });
-  });
-  // Ensure categories grid has data on load
+  // На старте фиксируем основную витрину каталога.
   if (!state.currentGroup) {
     state.currentGroup = 'apparel';
     ui.categoriesTitle.textContent = 'Каталог';
     renderCategories();
   }
-
-  document.querySelectorAll('[data-home-category]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setActiveHomeChip(btn);
-      const categoryId = btn.dataset.homeCategory;
-      if (!categoryId) return;
-      openCategoryById(categoryId);
-    });
-  });
 
   if (ui.menuCatalogList) {
     ui.menuCatalogList.addEventListener('click', (e) => {
@@ -2086,6 +2159,7 @@ function setProductionSlide(index) {
   });
 }
 
+// Загружает конфигурацию витрины (тексты, баннеры, статьи, контакты).
 async function loadConfig() {
   const res = await fetch('config.json', { cache: 'no-store' });
   state.config = await res.json();
@@ -2106,12 +2180,9 @@ async function loadConfig() {
       }
     }
   }
-  if (ui.homeAboutText) {
-    const aboutRaw = String(state.config.aboutText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    ui.homeAboutText.textContent = aboutRaw
-      ? `${aboutRaw.slice(0, 140)}${aboutRaw.length > 140 ? '…' : ''}`
-      : 'Современный mini app для интернет-магазинов и офлайн точек продаж.';
-  }
+  renderHomeBanners();
+  renderHomeArticles();
+  startHomeBannerAutoplay();
   ui.paymentText.innerHTML = formatMultiline(state.config.paymentText || 'Информация будет добавлена позже.');
   if (ui.productionText) {
     const prodRaw = state.config.productionText || 'Информация будет добавлена позже.';
@@ -2156,6 +2227,7 @@ async function loadConfig() {
 }
 
 const DATA_VERSION = '20260210-3';
+// Загружает товарные данные каталога.
 async function loadData() {
   reportStatus('Загружаем каталог…');
   const catRes = await fetch(`data/categories.json?v=${DATA_VERSION}`, { cache: 'no-store' });
@@ -2211,6 +2283,7 @@ async function loadData() {
   }
 }
 
+// Главная точка входа приложения.
 async function init() {
   loadStorage();
   if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
@@ -2228,6 +2301,9 @@ async function init() {
   if (!state.selectedStoreId) state.selectedStoreId = state.stores[0]?.id || null;
   state.screenStack = ['home'];
   state.currentScreen = 'home';
+  // Рисуем стартовый контент главной, даже если конфиг ещё не загрузился.
+  renderHomeBanners();
+  renderHomeArticles();
   bindEvents();
   if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
   if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
@@ -2239,7 +2315,6 @@ async function init() {
   renderFavorites();
   renderCart();
   renderHomePopular();
-  setHomeBanner(0);
   startHomeBannerAutoplay();
   renderHeaderStore();
   closeDrawer();

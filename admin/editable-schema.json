@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "title": "Схема редактируемого контента Mini App",
+  "sources": {
+    "config": "config.json",
+    "categories": "data/categories.json",
+    "products": "data/products.json"
+  },
+  "editable": {
+    "homeBanners": {
+      "path": "config.homeBanners[]",
+      "fields": ["id", "style", "kicker", "title", "text", "cta"],
+      "styleEnum": ["promo", "sales"]
+    },
+    "homeArticles": {
+      "path": "config.homeArticles[]",
+      "fields": ["id", "kicker", "title", "text", "screen"],
+      "screenEnum": ["about", "production", "payment", "contacts"]
+    },
+    "articles": {
+      "path": "config",
+      "fields": ["aboutText", "paymentText", "productionText", "contactsText"]
+    },
+    "stores": {
+      "path": "config.storeLocations[]",
+      "fields": ["id", "city", "address"]
+    },
+    "categories": {
+      "path": "categories[]",
+      "fields": ["id", "groupId", "title", "image"]
+    },
+    "products": {
+      "path": "products[]",
+      "fields": [
+        "id",
+        "categoryId",
+        "title",
+        "shortDescription",
+        "description",
+        "specs[]",
+        "images[]",
+        "price",
+        "oldPrice",
+        "discountPercent",
+        "badge",
+        "tags[]",
+        "sku"
+      ]
+    }
+  }
+}
