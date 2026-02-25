@@ -1542,6 +1542,63 @@ img { max-width: 100%; display: block; }
   box-shadow: 0 0 0 2px rgba(255, 122, 69, 0.82) inset !important;
 }
 
+.admin-edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(5, 8, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.admin-edit-card {
+  width: min(620px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  background: #121a2b;
+  padding: 12px;
+}
+
+.admin-edit-title {
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.admin-edit-input,
+.admin-edit-textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: #0d1322;
+  color: #f2f6ff;
+  padding: 10px 12px;
+}
+
+.admin-edit-textarea {
+  min-height: 170px;
+  resize: vertical;
+}
+
+.admin-edit-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-edit-actions button.primary {
+  background: #ff8d5d;
+  color: #22150f;
+}
+
+.admin-edit-actions button.danger {
+  background: #d45454;
+  color: #fff;
+}
+
 .icon-only.active {
   background: var(--primary);
   color: #fff;

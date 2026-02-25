@@ -604,17 +604,89 @@ function adminDownloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
-function adminEditValue(title, currentValue, { numeric = false, multiline = false } = {}) {
+function adminEnsureModal() {
+  if (state.admin.ui.modal) return state.admin.ui.modal;
+  const modal = document.createElement('div');
+  modal.className = 'admin-edit-modal hidden';
+  modal.innerHTML = `
+    <div class="admin-edit-card">
+      <div class="admin-edit-title"></div>
+      <input class="admin-edit-input hidden" type="text" />
+      <textarea class="admin-edit-textarea hidden" rows="8"></textarea>
+      <div class="admin-edit-actions">
+        <button type="button" data-admin-modal="cancel">Отмена</button>
+        <button type="button" data-admin-modal="delete" class="danger hidden">Удалить</button>
+        <button type="button" data-admin-modal="save" class="primary">Сохранить</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  state.admin.ui.modal = modal;
+  return modal;
+}
+
+function adminEditValue(title, currentValue, { numeric = false, multiline = false, allowDelete = false } = {}) {
   const current = currentValue == null ? '' : String(currentValue);
-  const next = window.prompt(title, current);
-  if (next == null) return null;
-  if (numeric) {
-    const num = Number(next);
-    if (!Number.isFinite(num) || num < 0) return 0;
-    return Math.round(num);
+  const modal = adminEnsureModal();
+  const titleEl = modal.querySelector('.admin-edit-title');
+  const input = modal.querySelector('.admin-edit-input');
+  const textarea = modal.querySelector('.admin-edit-textarea');
+  const deleteBtn = modal.querySelector('[data-admin-modal="delete"]');
+  const cancelBtn = modal.querySelector('[data-admin-modal="cancel"]');
+  const saveBtn = modal.querySelector('[data-admin-modal="save"]');
+
+  titleEl.textContent = title;
+  input.classList.toggle('hidden', multiline);
+  textarea.classList.toggle('hidden', !multiline);
+  deleteBtn.classList.toggle('hidden', !allowDelete);
+
+  if (multiline) {
+    textarea.value = current;
+    window.setTimeout(() => textarea.focus(), 0);
+  } else {
+    input.value = current;
+    window.setTimeout(() => input.focus(), 0);
   }
-  if (multiline) return String(next);
-  return String(next).trim();
+
+  modal.classList.remove('hidden');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.classList.add('hidden');
+      cancelBtn.removeEventListener('click', onCancel);
+      saveBtn.removeEventListener('click', onSave);
+      deleteBtn.removeEventListener('click', onDelete);
+      modal.removeEventListener('click', onOverlay);
+      resolve(value);
+    };
+
+    const onCancel = () => settle(null);
+    const onDelete = () => settle({ __delete: true });
+    const onOverlay = (event) => {
+      if (event.target === modal) settle(null);
+    };
+    const onSave = () => {
+      const raw = multiline ? textarea.value : input.value;
+      if (numeric) {
+        const num = Number(raw);
+        if (!Number.isFinite(num) || num < 0) {
+          settle(0);
+          return;
+        }
+        settle(Math.round(num));
+        return;
+      }
+      settle(multiline ? String(raw) : String(raw).trim());
+    };
+
+    cancelBtn.addEventListener('click', onCancel);
+    saveBtn.addEventListener('click', onSave);
+    deleteBtn.addEventListener('click', onDelete);
+    modal.addEventListener('click', onOverlay);
+  });
 }
 
 function adminBindHold(el, handler) {
@@ -740,45 +812,54 @@ function adminRestoreDraft() {
 }
 
 function adminBindHome() {
-  const banners = normalizeHomeBanners(state.config.homeBanners);
   const bannerCards = ui.homeBannerTrack ? Array.from(ui.homeBannerTrack.querySelectorAll('[data-banner-id]')) : [];
   bannerCards.forEach((card, index) => {
     const source = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
     if (!source[index]) return;
     const item = source[index];
+    const itemId = item.id || `banner-${index}`;
     const title = card.querySelector('.featured-title');
     const text = card.querySelector('.featured-text');
     const kicker = card.querySelector('.featured-chip');
     const cta = card.querySelector('.featured-cta');
     adminBindHold(card, () => {
-      const value = adminEditValue('URL фонового изображения баннера', item.image || '');
-      if (value == null) return;
-      item.image = value;
-      renderHomeBanners();
+      adminEditValue('URL фонового изображения баннера', item.image || '', { allowDelete: true }).then((value) => {
+        if (value == null) return;
+        const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
+        const idx = list.findIndex((x, i) => (x?.id || `banner-${i}`) === itemId);
+        if (idx < 0) return;
+        if (value.__delete) list.splice(idx, 1);
+        else list[idx].image = value;
+        renderHomeBanners();
+      });
     });
     adminBindHold(title, () => {
-      const value = adminEditValue('Заголовок баннера', item.title || '');
-      if (value == null) return;
-      item.title = value;
-      renderHomeBanners();
+      adminEditValue('Заголовок баннера', item.title || '').then((value) => {
+        if (value == null || value.__delete) return;
+        item.title = value;
+        renderHomeBanners();
+      });
     });
     adminBindHold(text, () => {
-      const value = adminEditValue('Текст баннера', item.text || '', { multiline: true });
-      if (value == null) return;
-      item.text = value;
-      renderHomeBanners();
+      adminEditValue('Текст баннера', item.text || '', { multiline: true }).then((value) => {
+        if (value == null || value.__delete) return;
+        item.text = value;
+        renderHomeBanners();
+      });
     });
     adminBindHold(kicker, () => {
-      const value = adminEditValue('Кикер баннера', item.kicker || '');
-      if (value == null) return;
-      item.kicker = value;
-      renderHomeBanners();
+      adminEditValue('Кикер баннера', item.kicker || '').then((value) => {
+        if (value == null || value.__delete) return;
+        item.kicker = value;
+        renderHomeBanners();
+      });
     });
     adminBindHold(cta, () => {
-      const value = adminEditValue('CTA баннера', item.cta || '');
-      if (value == null) return;
-      item.cta = value;
-      renderHomeBanners();
+      adminEditValue('CTA баннера', item.cta || '').then((value) => {
+        if (value == null || value.__delete) return;
+        item.cta = value;
+        renderHomeBanners();
+      });
     });
   });
 
@@ -787,52 +868,64 @@ function adminBindHome() {
     const source = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
     if (!source[index]) return;
     const item = source[index];
+    const itemId = item.id || `article-${index}`;
     const title = card.querySelector('strong');
     const text = card.querySelector('span:last-child');
     const kicker = card.querySelector('.home-article-kicker');
     adminBindHold(title, () => {
-      const value = adminEditValue('Заголовок статьи', item.title || '');
-      if (value == null) return;
-      item.title = value;
-      renderHomeArticles();
+      adminEditValue('Заголовок статьи', item.title || '', { allowDelete: true }).then((value) => {
+        if (value == null) return;
+        const list = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
+        const idx = list.findIndex((x, i) => (x?.id || `article-${i}`) === itemId);
+        if (idx < 0) return;
+        if (value.__delete) list.splice(idx, 1);
+        else list[idx].title = value;
+        renderHomeArticles();
+      });
     });
     adminBindHold(text, () => {
-      const value = adminEditValue('Текст статьи', item.text || '', { multiline: true });
-      if (value == null) return;
-      item.text = value;
-      renderHomeArticles();
+      adminEditValue('Текст статьи', item.text || '', { multiline: true }).then((value) => {
+        if (value == null || value.__delete) return;
+        item.text = value;
+        renderHomeArticles();
+      });
     });
     adminBindHold(kicker, () => {
-      const value = adminEditValue('Кикер статьи', item.kicker || '');
-      if (value == null) return;
-      item.kicker = value;
-      renderHomeArticles();
+      adminEditValue('Кикер статьи', item.kicker || '').then((value) => {
+        if (value == null || value.__delete) return;
+        item.kicker = value;
+        renderHomeArticles();
+      });
     });
   });
 
   adminBindHold(ui.aboutText, () => {
-    const value = adminEditValue('aboutText', state.config.aboutText || '', { multiline: true });
-    if (value == null) return;
-    state.config.aboutText = value;
-    ui.aboutText.innerHTML = formatMultiline(value);
+    adminEditValue('aboutText', state.config.aboutText || '', { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      state.config.aboutText = value;
+      ui.aboutText.innerHTML = formatMultiline(value);
+    });
   });
   adminBindHold(ui.paymentText, () => {
-    const value = adminEditValue('paymentText', state.config.paymentText || '', { multiline: true });
-    if (value == null) return;
-    state.config.paymentText = value;
-    ui.paymentText.innerHTML = formatMultiline(value);
+    adminEditValue('paymentText', state.config.paymentText || '', { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      state.config.paymentText = value;
+      ui.paymentText.innerHTML = formatMultiline(value);
+    });
   });
   adminBindHold(ui.productionText, () => {
-    const value = adminEditValue('productionText', state.config.productionText || '', { multiline: true });
-    if (value == null) return;
-    state.config.productionText = value;
-    ui.productionText.innerHTML = formatMultiline(value);
+    adminEditValue('productionText', state.config.productionText || '', { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      state.config.productionText = value;
+      ui.productionText.innerHTML = formatMultiline(value);
+    });
   });
   adminBindHold(ui.contactsCard, () => {
-    const value = adminEditValue('contactsText', state.config.contactsText || '', { multiline: true });
-    if (value == null) return;
-    state.config.contactsText = value;
-    ui.contactsCard.innerHTML = formatMultiline(value);
+    adminEditValue('contactsText', state.config.contactsText || '', { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      state.config.contactsText = value;
+      ui.contactsCard.innerHTML = formatMultiline(value);
+    });
   });
 }
 
@@ -845,16 +938,23 @@ function adminBindCategories() {
     const image = card.querySelector('img');
     const title = card.querySelector('span');
     adminBindHold(image, () => {
-      const value = adminEditValue(`Фото категории ${category.title}`, category.image || '');
-      if (value == null) return;
-      category.image = value;
-      renderCategories();
+      adminEditValue(`Фото категории ${category.title}`, category.image || '').then((value) => {
+        if (value == null || value.__delete) return;
+        category.image = value;
+        renderCategories();
+      });
     });
     adminBindHold(title, () => {
-      const value = adminEditValue(`Название категории ${category.title}`, category.title || '');
-      if (value == null) return;
-      category.title = value;
-      renderCategories();
+      adminEditValue(`Название категории ${category.title}`, category.title || '', { allowDelete: true }).then((value) => {
+        if (value == null) return;
+        if (value.__delete) {
+          state.categories = state.categories.filter((c) => c.id !== category.id);
+          state.products = state.products.filter((p) => p.categoryId !== category.id);
+        } else {
+          category.title = value;
+        }
+        renderCategories();
+      });
     });
   });
 }
@@ -870,29 +970,37 @@ function adminBindProducts() {
     const meta = card.querySelector('.product-meta');
     const price = card.querySelector('.product-price');
     adminBindHold(image, () => {
-      const value = adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '');
-      if (value == null) return;
-      if (!Array.isArray(p.images)) p.images = [];
-      p.images[0] = value;
-      renderProducts();
+      adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '').then((value) => {
+        if (value == null || value.__delete) return;
+        if (!Array.isArray(p.images)) p.images = [];
+        p.images[0] = value;
+        renderProducts();
+      });
     });
     adminBindHold(title, () => {
-      const value = adminEditValue(`Название товара ${p.id}`, p.title || '');
-      if (value == null) return;
-      p.title = value;
-      renderProducts();
+      adminEditValue(`Название товара ${p.id}`, p.title || '', { allowDelete: true }).then((value) => {
+        if (value == null) return;
+        if (value.__delete) {
+          state.products = state.products.filter((x) => x.id !== p.id);
+        } else {
+          p.title = value;
+        }
+        renderProducts();
+      });
     });
     adminBindHold(meta, () => {
-      const value = adminEditValue(`Краткое описание товара ${p.id}`, p.shortDescription || '', { multiline: true });
-      if (value == null) return;
-      p.shortDescription = value;
-      renderProducts();
+      adminEditValue(`Краткое описание товара ${p.id}`, p.shortDescription || '', { multiline: true }).then((value) => {
+        if (value == null || value.__delete) return;
+        p.shortDescription = value;
+        renderProducts();
+      });
     });
     adminBindHold(price, () => {
-      const value = adminEditValue(`Цена товара ${p.id}`, p.price || 0, { numeric: true });
-      if (value == null) return;
-      p.price = value;
-      renderProducts();
+      adminEditValue(`Цена товара ${p.id}`, p.price || 0, { numeric: true }).then((value) => {
+        if (value == null || value.__delete) return;
+        p.price = value;
+        renderProducts();
+      });
     });
   });
 }
@@ -905,25 +1013,40 @@ function adminBindProductView() {
   const title = ui.productView.querySelector('.product-title');
   const desc = ui.productView.querySelector('.section-body');
   adminBindHold(title, () => {
-    const value = adminEditValue(`Название товара ${p.id}`, p.title || '');
-    if (value == null) return;
-    p.title = value;
-    renderProductView();
+    adminEditValue(`Название товара ${p.id}`, p.title || '', { allowDelete: true }).then((value) => {
+      if (value == null) return;
+      if (value.__delete) {
+        state.products = state.products.filter((x) => x.id !== p.id);
+        state.currentProduct = null;
+        renderProducts();
+        goBack();
+        return;
+      }
+      p.title = value;
+      renderProductView();
+    });
   });
   adminBindHold(desc, () => {
-    const value = adminEditValue(`Описание товара ${p.id}`, p.description || '', { multiline: true });
-    if (value == null) return;
-    p.description = value;
-    renderProductView();
+    adminEditValue(`Описание товара ${p.id}`, p.description || '', { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      p.description = value;
+      renderProductView();
+    });
   });
 
   ui.productView.querySelectorAll('.product-gallery img').forEach((img, index) => {
     adminBindHold(img, () => {
-      const value = adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '');
-      if (value == null) return;
-      if (!Array.isArray(p.images)) p.images = [];
-      p.images[index] = value;
-      renderProductView();
+      adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '', { allowDelete: true }).then((value) => {
+        if (value == null) return;
+        if (!Array.isArray(p.images)) p.images = [];
+        if (value.__delete) {
+          p.images.splice(index, 1);
+          if (!p.images.length) p.images.push('assets/placeholder.svg');
+        } else {
+          p.images[index] = value;
+        }
+        renderProductView();
+      });
     });
   });
 
@@ -932,10 +1055,12 @@ function adminBindProductView() {
     adminBindHold(row, () => {
       if (!Array.isArray(p.specs)) p.specs = [];
       const current = typeof p.specs[index] === 'string' ? p.specs[index] : '';
-      const value = adminEditValue(`Характеристика #${index + 1} товара ${p.id}`, current, { multiline: true });
-      if (value == null) return;
-      p.specs[index] = value;
-      renderProductView();
+      adminEditValue(`Характеристика #${index + 1} товара ${p.id}`, current, { multiline: true, allowDelete: true }).then((value) => {
+        if (value == null) return;
+        if (value.__delete) p.specs.splice(index, 1);
+        else p.specs[index] = value;
+        renderProductView();
+      });
     });
   });
 }
@@ -1505,13 +1630,21 @@ function renderStores() {
       const store = state.stores.find((item) => item.id === storeId);
       if (!store) return;
       adminBindHold(btn, () => {
-        const value = adminEditValue(`Магазин ${store.city}: city|address`, `${store.city}|${store.address}`);
-        if (value == null) return;
-        const [cityRaw, addressRaw] = String(value).split('|');
-        store.city = String(cityRaw || '').trim() || store.city;
-        store.address = String(addressRaw || '').trim() || store.address;
-        renderStores();
-        renderHeaderStore();
+        adminEditValue(`Магазин ${store.city}: city|address`, `${store.city}|${store.address}`, { allowDelete: true }).then((value) => {
+          if (value == null) return;
+          if (value.__delete) {
+            state.stores = state.stores.filter((item) => item.id !== store.id);
+            state.config.storeLocations = state.stores;
+            if (!state.stores.length) state.stores = getFallbackStores();
+          } else {
+            const [cityRaw, addressRaw] = String(value).split('|');
+            store.city = String(cityRaw || '').trim() || store.city;
+            store.address = String(addressRaw || '').trim() || store.address;
+            state.config.storeLocations = state.stores;
+          }
+          renderStores();
+          renderHeaderStore();
+        });
       });
     });
   }
