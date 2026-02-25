@@ -2529,8 +2529,24 @@ html[data-theme="light"] .bottom-item.active {
   color: #111827;
 }
 
+html[data-theme="light"] .bottom-center {
+  background: #eef2f8;
+  color: #1f2a3d;
+  border-color: rgba(12, 16, 24, 0.16);
+}
+
+html[data-theme="light"] .bottom-center .icon-svg {
+  stroke: #1f2a3d;
+}
+
 html[data-theme="light"] .bottom-center.active {
+  background: linear-gradient(140deg, var(--accent), var(--accent-dark));
   color: #fff;
+  border-color: rgba(12, 16, 24, 0.05);
+}
+
+html[data-theme="light"] .bottom-center.active .icon-svg {
+  stroke: #fff;
 }
 
 @media (max-width: 740px) {
