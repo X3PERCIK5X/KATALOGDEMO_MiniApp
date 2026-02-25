@@ -35,6 +35,12 @@ const state = {
   homeBannerTimer: null,
   phoneAutofillAttempted: false,
   phoneAutofillSucceeded: false,
+  admin: {
+    enabled: false,
+    holdMs: 5000,
+    draftKey: 'demo_catalog_admin_draft_v1',
+    ui: {},
+  },
 };
 
 // Базовый контент главной страницы.
@@ -195,6 +201,15 @@ function debounce(fn, delay = 220) {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => fn(...args), delay);
   };
+}
+
+function isAdminModeRequested() {
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.get('admin') === '1') {
+    localStorage.setItem('demo_catalog_admin_enabled', '1');
+    return true;
+  }
+  return localStorage.getItem('demo_catalog_admin_enabled') === '1';
 }
 
 const FIRST_ORDER_PROMO = {
@@ -415,6 +430,7 @@ function setScreen(name) {
   }
   updateBottomNav(name);
   scrollToTop();
+  adminRefreshBindings();
   if (name === 'checkout' && !state.phoneAutofillSucceeded) {
     window.setTimeout(() => {
       tryAutofillPhoneFromTelegram().catch((error) => console.error('Phone autofill failed', error));
@@ -508,6 +524,7 @@ function normalizeHomeBanners(list) {
       return {
         id: String(item?.id || `banner-${index + 1}`),
         style,
+        image: String(item?.image || ''),
         kicker: String(item?.kicker || fallback.kicker),
         title: String(item?.title || fallback.title),
         text: String(item?.text || fallback.text),
@@ -538,7 +555,7 @@ function renderHomeBanners() {
   if (!ui.homeBannerTrack || !ui.homeBannerDots) return;
   const banners = normalizeHomeBanners(state.config.homeBanners);
   ui.homeBannerTrack.innerHTML = banners.map((banner) => `
-    <div class="featured-promo banner-slide banner-slide-clean banner-slide-${banner.style}" data-banner-id="${escapeHtml(banner.id)}">
+    <div class="featured-promo banner-slide banner-slide-clean banner-slide-${banner.style}" data-banner-id="${escapeHtml(banner.id)}" ${banner.image ? `style="background-image:url('${safeSrc(banner.image)}')"` : ''}>
       <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
       <div class="featured-title">${escapeHtml(banner.title)}</div>
       <div class="featured-text">${escapeHtml(banner.text)}</div>
@@ -549,6 +566,7 @@ function renderHomeBanners() {
     <button class="dot ${index === 0 ? 'active' : ''}" data-home-banner-dot="${index}" type="button" aria-label="Баннер ${index + 1}"></button>
   `).join('');
   setHomeBanner(0);
+  adminRefreshBindings();
 }
 
 // Статьи главной также приходят из конфига и готовы к редактированию через админку.
@@ -562,6 +580,7 @@ function renderHomeArticles() {
       <span>${escapeHtml(article.text)}</span>
     </button>
   `).join('');
+  adminRefreshBindings();
 }
 
 function formatMultiline(text) {
@@ -571,6 +590,401 @@ function formatMultiline(text) {
   return parts
     .map((part) => `<p>${part.replace(/\n/g, '<br>')}</p>`)
     .join('');
+}
+
+function adminDownloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function adminEditValue(title, currentValue, { numeric = false, multiline = false } = {}) {
+  const current = currentValue == null ? '' : String(currentValue);
+  const next = window.prompt(title, current);
+  if (next == null) return null;
+  if (numeric) {
+    const num = Number(next);
+    if (!Number.isFinite(num) || num < 0) return 0;
+    return Math.round(num);
+  }
+  if (multiline) return String(next);
+  return String(next).trim();
+}
+
+function adminBindHold(el, handler) {
+  if (!state.admin.enabled || !el || el.dataset.adminHoldBound === '1') return;
+  el.dataset.adminHoldBound = '1';
+  let timer = null;
+
+  const clear = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = null;
+    el.classList.remove('admin-hold-pending');
+  };
+
+  const start = (event) => {
+    if (event.type === 'mousedown' && event.button !== 0) return;
+    clear();
+    el.classList.add('admin-hold-pending');
+    timer = window.setTimeout(() => {
+      clear();
+      handler();
+    }, state.admin.holdMs);
+  };
+
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, { passive: true });
+  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((eventName) => {
+    el.addEventListener(eventName, clear, { passive: true });
+  });
+}
+
+function adminAddBannerTemplate() {
+  if (!Array.isArray(state.config.homeBanners)) state.config.homeBanners = [];
+  state.config.homeBanners.unshift({
+    id: `banner-${Date.now()}`,
+    style: 'promo',
+    image: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1400&q=70',
+    kicker: 'Новый баннер',
+    title: 'Заголовок баннера',
+    text: 'Описание предложения',
+    cta: 'Подробнее',
+  });
+  renderHomeBanners();
+}
+
+function adminAddArticleTemplate() {
+  if (!Array.isArray(state.config.homeArticles)) state.config.homeArticles = [];
+  state.config.homeArticles.unshift({
+    id: `article-${Date.now()}`,
+    kicker: 'Новая статья',
+    title: 'Заголовок статьи',
+    text: 'Текст статьи',
+    screen: 'about',
+  });
+  renderHomeArticles();
+}
+
+function adminAddCategoryTemplate() {
+  state.categories.unshift({
+    id: `catalog-${Date.now()}`,
+    groupId: state.currentGroup || 'apparel',
+    title: 'Новая категория',
+    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=70',
+  });
+  renderCategories();
+}
+
+function adminAddProductTemplate() {
+  const categoryId = state.currentCategory || state.categories[0]?.id || '';
+  if (!categoryId) return;
+  state.products.unshift({
+    id: `product-${Date.now()}`,
+    title: 'Новый товар',
+    price: 0,
+    sku: '',
+    shortDescription: 'Короткое описание',
+    description: 'Полное описание товара',
+    specs: ['Характеристика'],
+    images: ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=70'],
+    categoryId,
+    oldPrice: 0,
+    discountPercent: 0,
+    badge: '',
+    tags: [],
+  });
+  renderProducts();
+}
+
+function adminAddProductImage() {
+  const p = getProduct(state.currentProduct);
+  if (!p) return;
+  if (!Array.isArray(p.images)) p.images = [];
+  p.images.push('https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=70');
+  renderProductView();
+}
+
+function adminAddProductSpec() {
+  const p = getProduct(state.currentProduct);
+  if (!p) return;
+  if (!Array.isArray(p.specs)) p.specs = [];
+  p.specs.push('Новая характеристика');
+  renderProductView();
+}
+
+function adminSaveDraft() {
+  const payload = {
+    config: state.config,
+    categories: state.categories,
+    products: state.products,
+  };
+  localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
+  reportStatus('Админ-черновик сохранен локально');
+}
+
+function adminRestoreDraft() {
+  const raw = localStorage.getItem(state.admin.draftKey);
+  if (!raw) return false;
+  const parsed = safeParse(raw, null);
+  if (!parsed || typeof parsed !== 'object') return false;
+  if (parsed.config && typeof parsed.config === 'object') state.config = parsed.config;
+  if (Array.isArray(parsed.categories)) state.categories = parsed.categories;
+  if (Array.isArray(parsed.products)) state.products = parsed.products;
+  return true;
+}
+
+function adminBindHome() {
+  const banners = normalizeHomeBanners(state.config.homeBanners);
+  const bannerCards = ui.homeBannerTrack ? Array.from(ui.homeBannerTrack.querySelectorAll('[data-banner-id]')) : [];
+  bannerCards.forEach((card, index) => {
+    const source = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
+    if (!source[index]) return;
+    const item = source[index];
+    const title = card.querySelector('.featured-title');
+    const text = card.querySelector('.featured-text');
+    const kicker = card.querySelector('.featured-chip');
+    const cta = card.querySelector('.featured-cta');
+    adminBindHold(card, () => {
+      const value = adminEditValue('URL фонового изображения баннера', item.image || '');
+      if (value == null) return;
+      item.image = value;
+      renderHomeBanners();
+    });
+    adminBindHold(title, () => {
+      const value = adminEditValue('Заголовок баннера', item.title || '');
+      if (value == null) return;
+      item.title = value;
+      renderHomeBanners();
+    });
+    adminBindHold(text, () => {
+      const value = adminEditValue('Текст баннера', item.text || '', { multiline: true });
+      if (value == null) return;
+      item.text = value;
+      renderHomeBanners();
+    });
+    adminBindHold(kicker, () => {
+      const value = adminEditValue('Кикер баннера', item.kicker || '');
+      if (value == null) return;
+      item.kicker = value;
+      renderHomeBanners();
+    });
+    adminBindHold(cta, () => {
+      const value = adminEditValue('CTA баннера', item.cta || '');
+      if (value == null) return;
+      item.cta = value;
+      renderHomeBanners();
+    });
+  });
+
+  const articleCards = ui.homeArticleTrack ? Array.from(ui.homeArticleTrack.querySelectorAll('[data-article-id]')) : [];
+  articleCards.forEach((card, index) => {
+    const source = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
+    if (!source[index]) return;
+    const item = source[index];
+    const title = card.querySelector('strong');
+    const text = card.querySelector('span:last-child');
+    const kicker = card.querySelector('.home-article-kicker');
+    adminBindHold(title, () => {
+      const value = adminEditValue('Заголовок статьи', item.title || '');
+      if (value == null) return;
+      item.title = value;
+      renderHomeArticles();
+    });
+    adminBindHold(text, () => {
+      const value = adminEditValue('Текст статьи', item.text || '', { multiline: true });
+      if (value == null) return;
+      item.text = value;
+      renderHomeArticles();
+    });
+    adminBindHold(kicker, () => {
+      const value = adminEditValue('Кикер статьи', item.kicker || '');
+      if (value == null) return;
+      item.kicker = value;
+      renderHomeArticles();
+    });
+  });
+
+  adminBindHold(ui.aboutText, () => {
+    const value = adminEditValue('aboutText', state.config.aboutText || '', { multiline: true });
+    if (value == null) return;
+    state.config.aboutText = value;
+    ui.aboutText.innerHTML = formatMultiline(value);
+  });
+  adminBindHold(ui.paymentText, () => {
+    const value = adminEditValue('paymentText', state.config.paymentText || '', { multiline: true });
+    if (value == null) return;
+    state.config.paymentText = value;
+    ui.paymentText.innerHTML = formatMultiline(value);
+  });
+  adminBindHold(ui.productionText, () => {
+    const value = adminEditValue('productionText', state.config.productionText || '', { multiline: true });
+    if (value == null) return;
+    state.config.productionText = value;
+    ui.productionText.innerHTML = formatMultiline(value);
+  });
+  adminBindHold(ui.contactsCard, () => {
+    const value = adminEditValue('contactsText', state.config.contactsText || '', { multiline: true });
+    if (value == null) return;
+    state.config.contactsText = value;
+    ui.contactsCard.innerHTML = formatMultiline(value);
+  });
+}
+
+function adminBindCategories() {
+  if (!ui.categoriesGrid) return;
+  ui.categoriesGrid.querySelectorAll('[data-category]').forEach((card) => {
+    const categoryId = card.dataset.category;
+    const category = state.categories.find((c) => c.id === categoryId);
+    if (!category) return;
+    const image = card.querySelector('img');
+    const title = card.querySelector('span');
+    adminBindHold(image, () => {
+      const value = adminEditValue(`Фото категории ${category.title}`, category.image || '');
+      if (value == null) return;
+      category.image = value;
+      renderCategories();
+    });
+    adminBindHold(title, () => {
+      const value = adminEditValue(`Название категории ${category.title}`, category.title || '');
+      if (value == null) return;
+      category.title = value;
+      renderCategories();
+    });
+  });
+}
+
+function adminBindProducts() {
+  if (!ui.productsList) return;
+  ui.productsList.querySelectorAll('[data-open]').forEach((card) => {
+    const productId = card.dataset.open;
+    const p = getProduct(productId);
+    if (!p) return;
+    const image = card.querySelector('img');
+    const title = card.querySelector('.product-title');
+    const meta = card.querySelector('.product-meta');
+    const price = card.querySelector('.product-price');
+    adminBindHold(image, () => {
+      const value = adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '');
+      if (value == null) return;
+      if (!Array.isArray(p.images)) p.images = [];
+      p.images[0] = value;
+      renderProducts();
+    });
+    adminBindHold(title, () => {
+      const value = adminEditValue(`Название товара ${p.id}`, p.title || '');
+      if (value == null) return;
+      p.title = value;
+      renderProducts();
+    });
+    adminBindHold(meta, () => {
+      const value = adminEditValue(`Краткое описание товара ${p.id}`, p.shortDescription || '', { multiline: true });
+      if (value == null) return;
+      p.shortDescription = value;
+      renderProducts();
+    });
+    adminBindHold(price, () => {
+      const value = adminEditValue(`Цена товара ${p.id}`, p.price || 0, { numeric: true });
+      if (value == null) return;
+      p.price = value;
+      renderProducts();
+    });
+  });
+}
+
+function adminBindProductView() {
+  if (!ui.productView) return;
+  const p = getProduct(state.currentProduct);
+  if (!p) return;
+
+  const title = ui.productView.querySelector('.product-title');
+  const desc = ui.productView.querySelector('.section-body');
+  adminBindHold(title, () => {
+    const value = adminEditValue(`Название товара ${p.id}`, p.title || '');
+    if (value == null) return;
+    p.title = value;
+    renderProductView();
+  });
+  adminBindHold(desc, () => {
+    const value = adminEditValue(`Описание товара ${p.id}`, p.description || '', { multiline: true });
+    if (value == null) return;
+    p.description = value;
+    renderProductView();
+  });
+
+  ui.productView.querySelectorAll('.product-gallery img').forEach((img, index) => {
+    adminBindHold(img, () => {
+      const value = adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '');
+      if (value == null) return;
+      if (!Array.isArray(p.images)) p.images = [];
+      p.images[index] = value;
+      renderProductView();
+    });
+  });
+
+  const specRows = ui.productView.querySelectorAll('.product-specs > div');
+  specRows.forEach((row, index) => {
+    adminBindHold(row, () => {
+      if (!Array.isArray(p.specs)) p.specs = [];
+      const current = typeof p.specs[index] === 'string' ? p.specs[index] : '';
+      const value = adminEditValue(`Характеристика #${index + 1} товара ${p.id}`, current, { multiline: true });
+      if (value == null) return;
+      p.specs[index] = value;
+      renderProductView();
+    });
+  });
+}
+
+function adminRefreshBindings() {
+  if (!state.admin.enabled) return;
+  adminBindHome();
+  adminBindCategories();
+  adminBindProducts();
+  adminBindProductView();
+}
+
+function adminBuildPanel() {
+  if (!state.admin.enabled || state.admin.ui.panel) return;
+  const panel = document.createElement('div');
+  panel.className = 'admin-panel';
+  panel.innerHTML = `
+    <div class="admin-panel-row">
+      <button type="button" data-admin-action="add-banner">+ Баннер</button>
+      <button type="button" data-admin-action="add-article">+ Статья</button>
+      <button type="button" data-admin-action="add-category">+ Категория</button>
+      <button type="button" data-admin-action="add-product">+ Товар</button>
+      <button type="button" data-admin-action="add-image">+ Фото</button>
+      <button type="button" data-admin-action="add-spec">+ Характеристика</button>
+      <button type="button" data-admin-action="save-draft">Сохранить</button>
+      <button type="button" data-admin-action="download-all">Скачать JSON</button>
+    </div>
+    <div class="admin-panel-hint">ADMIN MODE: удержание 5 сек на зоне для редактирования</div>
+  `;
+  document.body.appendChild(panel);
+  state.admin.ui.panel = panel;
+  panel.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-admin-action]');
+    if (!btn) return;
+    const action = btn.dataset.adminAction;
+    if (action === 'add-banner') adminAddBannerTemplate();
+    if (action === 'add-article') adminAddArticleTemplate();
+    if (action === 'add-category') adminAddCategoryTemplate();
+    if (action === 'add-product') adminAddProductTemplate();
+    if (action === 'add-image') adminAddProductImage();
+    if (action === 'add-spec') adminAddProductSpec();
+    if (action === 'save-draft') adminSaveDraft();
+    if (action === 'download-all') {
+      adminDownloadJson('config.json', state.config);
+      adminDownloadJson('categories.json', state.categories);
+      adminDownloadJson('products.json', state.products);
+    }
+    adminRefreshBindings();
+  });
 }
 
 function getSku(p) {
@@ -827,6 +1241,7 @@ function renderCategories() {
       <span>Акции</span>
     </button>
   `;
+  adminRefreshBindings();
 }
 
 function buildProductCards(list, options = {}) {
@@ -908,6 +1323,7 @@ function renderProducts() {
     return;
   }
   ui.productsList.innerHTML = buildProductCards(list);
+  adminRefreshBindings();
 }
 
 function getPromoProducts() {
@@ -1083,6 +1499,22 @@ function renderStores() {
       <div class="store-address">${store.address}</div>
     </button>
   `).join('');
+  if (state.admin.enabled && ui.storesList) {
+    ui.storesList.querySelectorAll('[data-store-id]').forEach((btn) => {
+      const storeId = btn.dataset.storeId;
+      const store = state.stores.find((item) => item.id === storeId);
+      if (!store) return;
+      adminBindHold(btn, () => {
+        const value = adminEditValue(`Магазин ${store.city}: city|address`, `${store.city}|${store.address}`);
+        if (value == null) return;
+        const [cityRaw, addressRaw] = String(value).split('|');
+        store.city = String(cityRaw || '').trim() || store.city;
+        store.address = String(addressRaw || '').trim() || store.address;
+        renderStores();
+        renderHeaderStore();
+      });
+    });
+  }
 }
 
 function renderProductView() {
@@ -1157,6 +1589,7 @@ function renderProductView() {
       </div>
     ` : ''}
   `;
+  adminRefreshBindings();
 }
 
 function renderFavorites() {
@@ -2286,6 +2719,7 @@ async function loadData() {
 // Главная точка входа приложения.
 async function init() {
   loadStorage();
+  state.admin.enabled = isAdminModeRequested();
   if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
     state.promoCode = '';
     state.promoPercent = 0;
@@ -2305,6 +2739,9 @@ async function init() {
   renderHomeBanners();
   renderHomeArticles();
   bindEvents();
+  if (state.admin.enabled) {
+    adminBuildPanel();
+  }
   if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
   if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
   if (ui.productsSearch) ui.productsSearch.value = state.filters.products.search;
@@ -2335,6 +2772,19 @@ async function init() {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
   }
+  if (state.admin.enabled && adminRestoreDraft()) {
+    renderHomeBanners();
+    renderHomeArticles();
+    renderHeaderStore();
+    renderStores();
+    renderCategories();
+    if (state.currentScreen === 'products') renderProducts();
+    if (state.currentScreen === 'product') renderProductView();
+    renderPromos();
+    renderHomePopular();
+    reportStatus('Админ-черновик восстановлен');
+  }
+  adminRefreshBindings();
   buildMenuCatalog();
 }
 
