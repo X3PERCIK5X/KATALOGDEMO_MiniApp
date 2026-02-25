@@ -1599,6 +1599,85 @@ img { max-width: 100%; display: block; }
   color: #fff;
 }
 
+.admin-header-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-header-button {
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-header-button-primary {
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+  border-color: #f08f52;
+  color: #fff;
+}
+
+.admin-actions-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(5, 8, 16, 0.76);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+.admin-actions-card {
+  width: min(560px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background: #121a2b;
+  padding: 10px;
+}
+
+.admin-actions-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f3f7ff;
+  margin-bottom: 8px;
+}
+
+.admin-actions-list {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-actions-item,
+.admin-actions-cancel {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4f7ff;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.admin-actions-item.danger {
+  border-color: rgba(220, 89, 89, 0.55);
+  color: #ff9f9f;
+}
+
+.admin-actions-cancel {
+  margin-top: 8px;
+  text-align: center;
+}
+
 .icon-only.active {
   background: var(--primary);
   color: #fff;
@@ -3756,6 +3835,34 @@ html[data-theme="light"] .admin-report-body hr {
 html[data-theme="light"] .admin-modal-order {
   border-color: rgba(18, 42, 62, 0.16);
   background: #f7f9fc;
+}
+
+html[data-theme="light"] .admin-header-button {
+  color: #162033;
+  border-color: rgba(18, 42, 62, 0.22);
+  background: #ffffff;
+}
+
+html[data-theme="light"] .admin-header-button-primary {
+  color: #ffffff;
+  border-color: #e46a2c;
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+}
+
+html[data-theme="light"] .admin-actions-card {
+  background: #ffffff;
+  border-color: rgba(18, 42, 62, 0.2);
+}
+
+html[data-theme="light"] .admin-actions-title {
+  color: #111c2e;
+}
+
+html[data-theme="light"] .admin-actions-item,
+html[data-theme="light"] .admin-actions-cancel {
+  color: #162033;
+  border-color: rgba(18, 42, 62, 0.2);
+  background: #f8fbff;
 }
 
 /* Inline admin controls */

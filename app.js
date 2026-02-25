@@ -160,6 +160,9 @@ const ui = {
   headerStoreButton: document.getElementById('headerStoreButton'),
   headerStoreCity: document.getElementById('headerStoreCity'),
   headerSearchButton: document.getElementById('headerSearchButton'),
+  adminHeaderActions: document.getElementById('adminHeaderActions'),
+  adminSaveDraftButton: document.getElementById('adminSaveDraftButton'),
+  adminPublishButton: document.getElementById('adminPublishButton'),
   storesList: document.getElementById('storesList'),
   searchOverlay: document.getElementById('searchOverlay'),
   globalSearchForm: document.getElementById('globalSearchForm'),
@@ -607,6 +610,30 @@ function adminDownloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
+function adminBuildPayload() {
+  return {
+    config: state.config,
+    categories: state.categories,
+    products: state.products,
+  };
+}
+
+function moveArrayItem(list, from, to) {
+  if (!Array.isArray(list)) return false;
+  if (from < 0 || to < 0 || from >= list.length || to >= list.length || from === to) return false;
+  const [item] = list.splice(from, 1);
+  list.splice(to, 0, item);
+  return true;
+}
+
+function moveItemById(list, id, direction) {
+  if (!Array.isArray(list)) return false;
+  const from = list.findIndex((item, index) => String(item?.id || `${index}`) === String(id));
+  if (from < 0) return false;
+  const to = direction === 'up' ? from - 1 : from + 1;
+  return moveArrayItem(list, from, to);
+}
+
 function adminEnsureModal() {
   if (state.admin.ui.modal) return state.admin.ui.modal;
   const modal = document.createElement('div');
@@ -626,6 +653,61 @@ function adminEnsureModal() {
   document.body.appendChild(modal);
   state.admin.ui.modal = modal;
   return modal;
+}
+
+function adminEnsureActionSheet() {
+  if (state.admin.ui.actionSheet) return state.admin.ui.actionSheet;
+  const modal = document.createElement('div');
+  modal.className = 'admin-actions-modal hidden';
+  modal.innerHTML = `
+    <div class="admin-actions-card">
+      <div class="admin-actions-title"></div>
+      <div class="admin-actions-list"></div>
+      <button type="button" class="admin-actions-cancel">Отмена</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  state.admin.ui.actionSheet = modal;
+  return modal;
+}
+
+function adminOpenActionSheet(title, actions = []) {
+  const modal = adminEnsureActionSheet();
+  const titleEl = modal.querySelector('.admin-actions-title');
+  const listEl = modal.querySelector('.admin-actions-list');
+  const cancelBtn = modal.querySelector('.admin-actions-cancel');
+  titleEl.textContent = title || 'Действие';
+  listEl.innerHTML = actions.map((action) => `
+    <button type="button" class="admin-actions-item ${action.danger ? 'danger' : ''}" data-admin-action-id="${escapeHtml(action.id)}">
+      ${escapeHtml(action.label)}
+    </button>
+  `).join('');
+  modal.classList.remove('hidden');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.classList.add('hidden');
+      listEl.removeEventListener('click', onClick);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      resolve(value);
+    };
+    const onClick = (event) => {
+      const btn = event.target.closest('[data-admin-action-id]');
+      if (!btn) return;
+      settle(btn.dataset.adminActionId || null);
+    };
+    const onCancel = () => settle(null);
+    const onOverlay = (event) => {
+      if (event.target === modal) settle(null);
+    };
+    listEl.addEventListener('click', onClick);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+  });
 }
 
 function adminEditValue(title, currentValue, { numeric = false, multiline = false, allowDelete = false } = {}) {
@@ -808,15 +890,17 @@ function adminAddProductSpec() {
 }
 
 function adminSaveDraft(silent = false) {
-  const payload = {
-    config: state.config,
-    categories: state.categories,
-    products: state.products,
-  };
+  const payload = adminBuildPayload();
   localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
+  if (!silent) reportStatus('Черновик админки сохранен');
+}
+
+function adminPublishToCatalog() {
+  adminSaveDraft(true);
+  const payload = adminBuildPayload();
   localStorage.setItem(PUBLISHED_STATE_KEY, JSON.stringify(payload));
   localStorage.setItem(PUBLISHED_STATE_TS_KEY, String(Date.now()));
-  if (!silent) reportStatus('Админ-черновик сохранен локально');
+  reportStatus('Изменения выгружены в каталог');
 }
 
 function adminRestoreDraft() {
@@ -853,14 +937,52 @@ function adminBindHome() {
     const kicker = card.querySelector('.featured-chip');
     const cta = card.querySelector('.featured-cta');
     adminBindHold(card, () => {
-      adminEditValue('URL фонового изображения баннера', item.image || '', { allowDelete: true }).then((value) => {
-        if (value == null) return;
+      adminOpenActionSheet('Баннер', [
+        { id: 'edit-image', label: 'Изменить фото' },
+        { id: 'edit-title', label: 'Редактировать заголовок' },
+        { id: 'edit-text', label: 'Редактировать текст' },
+        { id: 'move-up', label: 'Сдвинуть вверх' },
+        { id: 'move-down', label: 'Сдвинуть вниз' },
+        { id: 'delete', label: 'Удалить', danger: true },
+      ]).then((action) => {
+        if (!action) return;
         const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
         const idx = list.findIndex((x, i) => (x?.id || `banner-${i}`) === itemId);
         if (idx < 0) return;
-        if (value.__delete) list.splice(idx, 1);
-        else list[idx].image = value;
-        renderHomeBanners();
+        if (action === 'edit-image') {
+          adminEditValue('URL фонового изображения баннера', list[idx].image || '').then((value) => {
+            if (value == null || value.__delete) return;
+            list[idx].image = value;
+            renderHomeBanners();
+          });
+          return;
+        }
+        if (action === 'edit-title') {
+          adminEditValue('Заголовок баннера', list[idx].title || '').then((value) => {
+            if (value == null || value.__delete) return;
+            list[idx].title = value;
+            renderHomeBanners();
+          });
+          return;
+        }
+        if (action === 'edit-text') {
+          adminEditValue('Текст баннера', list[idx].text || '', { multiline: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            list[idx].text = value;
+            renderHomeBanners();
+          });
+          return;
+        }
+        if (action === 'move-up' || action === 'move-down') {
+          if (moveItemById(list, itemId, action === 'move-up' ? 'up' : 'down')) {
+            renderHomeBanners();
+          }
+          return;
+        }
+        if (action === 'delete') {
+          list.splice(idx, 1);
+          renderHomeBanners();
+        }
       });
     });
     adminBindHold(title, () => {
@@ -902,6 +1024,46 @@ function adminBindHome() {
     const title = card.querySelector('strong');
     const text = card.querySelector('span:last-child');
     const kicker = card.querySelector('.home-article-kicker');
+    adminBindHold(card, () => {
+      adminOpenActionSheet('Статья', [
+        { id: 'edit-title', label: 'Редактировать заголовок' },
+        { id: 'edit-text', label: 'Редактировать текст' },
+        { id: 'move-up', label: 'Сдвинуть вверх' },
+        { id: 'move-down', label: 'Сдвинуть вниз' },
+        { id: 'delete', label: 'Удалить', danger: true },
+      ]).then((action) => {
+        if (!action) return;
+        const list = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
+        const idx = list.findIndex((x, i) => (x?.id || `article-${i}`) === itemId);
+        if (idx < 0) return;
+        if (action === 'edit-title') {
+          adminEditValue('Заголовок статьи', list[idx].title || '').then((value) => {
+            if (value == null || value.__delete) return;
+            list[idx].title = value;
+            renderHomeArticles();
+          });
+          return;
+        }
+        if (action === 'edit-text') {
+          adminEditValue('Текст статьи', list[idx].text || '', { multiline: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            list[idx].text = value;
+            renderHomeArticles();
+          });
+          return;
+        }
+        if (action === 'move-up' || action === 'move-down') {
+          if (moveItemById(list, itemId, action === 'move-up' ? 'up' : 'down')) {
+            renderHomeArticles();
+          }
+          return;
+        }
+        if (action === 'delete') {
+          list.splice(idx, 1);
+          renderHomeArticles();
+        }
+      });
+    });
     adminBindHold(title, () => {
       adminEditValue('Заголовок статьи', item.title || '', { allowDelete: true }).then((value) => {
         if (value == null) return;
@@ -969,25 +1131,42 @@ function adminBindCategories() {
     const categoryId = card.dataset.category;
     const category = state.categories.find((c) => c.id === categoryId);
     if (!category) return;
-    const image = card.querySelector('img');
-    const title = card.querySelector('span');
-    adminBindHold(image, () => {
-      adminEditValue(`Фото категории ${category.title}`, category.image || '').then((value) => {
-        if (value == null || value.__delete) return;
-        category.image = value;
-        renderCategories();
-      });
-    });
-    adminBindHold(title, () => {
-      adminEditValue(`Название категории ${category.title}`, category.title || '', { allowDelete: true }).then((value) => {
-        if (value == null) return;
-        if (value.__delete) {
+    adminBindHold(card, () => {
+      adminOpenActionSheet(`Категория: ${category.title}`, [
+        { id: 'edit-title', label: 'Редактировать заголовок' },
+        { id: 'edit-image', label: 'Изменить фото' },
+        { id: 'move-up', label: 'Сдвинуть вверх' },
+        { id: 'move-down', label: 'Сдвинуть вниз' },
+        { id: 'delete', label: 'Удалить', danger: true },
+      ]).then((action) => {
+        if (!action) return;
+        if (action === 'edit-title') {
+          adminEditValue(`Название категории ${category.title}`, category.title || '').then((value) => {
+            if (value == null || value.__delete) return;
+            category.title = value;
+            renderCategories();
+          });
+          return;
+        }
+        if (action === 'edit-image') {
+          adminEditValue(`Фото категории ${category.title}`, category.image || '').then((value) => {
+            if (value == null || value.__delete) return;
+            category.image = value;
+            renderCategories();
+          });
+          return;
+        }
+        if (action === 'move-up' || action === 'move-down') {
+          if (moveItemById(state.categories, category.id, action === 'move-up' ? 'up' : 'down')) {
+            renderCategories();
+          }
+          return;
+        }
+        if (action === 'delete') {
           state.categories = state.categories.filter((c) => c.id !== category.id);
           state.products = state.products.filter((p) => p.categoryId !== category.id);
-        } else {
-          category.title = value;
+          renderCategories();
         }
-        renderCategories();
       });
     });
   });
@@ -999,41 +1178,60 @@ function adminBindProducts() {
     const productId = card.dataset.open;
     const p = getProduct(productId);
     if (!p) return;
-    const image = card.querySelector('img');
-    const title = card.querySelector('.product-title');
-    const meta = card.querySelector('.product-meta');
-    const price = card.querySelector('.product-price');
-    adminBindHold(image, () => {
-      adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '').then((value) => {
-        if (value == null || value.__delete) return;
-        if (!Array.isArray(p.images)) p.images = [];
-        p.images[0] = value;
-        renderProducts();
-      });
-    });
-    adminBindHold(title, () => {
-      adminEditValue(`Название товара ${p.id}`, p.title || '', { allowDelete: true }).then((value) => {
-        if (value == null) return;
-        if (value.__delete) {
-          state.products = state.products.filter((x) => x.id !== p.id);
-        } else {
-          p.title = value;
+    adminBindHold(card, () => {
+      adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
+        { id: 'edit-title', label: 'Редактировать заголовок' },
+        { id: 'edit-image', label: 'Изменить фото' },
+        { id: 'edit-description', label: 'Редактировать описание' },
+        { id: 'edit-price', label: 'Изменить цену' },
+        { id: 'move-up', label: 'Сдвинуть вверх' },
+        { id: 'move-down', label: 'Сдвинуть вниз' },
+        { id: 'delete', label: 'Удалить', danger: true },
+      ]).then((action) => {
+        if (!action) return;
+        if (action === 'edit-title') {
+          adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
+            if (value == null || value.__delete) return;
+            p.title = value;
+            renderProducts();
+          });
+          return;
         }
-        renderProducts();
-      });
-    });
-    adminBindHold(meta, () => {
-      adminEditValue(`Краткое описание товара ${p.id}`, p.shortDescription || '', { multiline: true }).then((value) => {
-        if (value == null || value.__delete) return;
-        p.shortDescription = value;
-        renderProducts();
-      });
-    });
-    adminBindHold(price, () => {
-      adminEditValue(`Цена товара ${p.id}`, p.price || 0, { numeric: true }).then((value) => {
-        if (value == null || value.__delete) return;
-        p.price = value;
-        renderProducts();
+        if (action === 'edit-image') {
+          adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '').then((value) => {
+            if (value == null || value.__delete) return;
+            if (!Array.isArray(p.images)) p.images = [];
+            p.images[0] = value;
+            renderProducts();
+          });
+          return;
+        }
+        if (action === 'edit-description') {
+          adminEditValue(`Краткое описание товара ${p.id}`, p.shortDescription || '', { multiline: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            p.shortDescription = value;
+            renderProducts();
+          });
+          return;
+        }
+        if (action === 'edit-price') {
+          adminEditValue(`Цена товара ${p.id}`, p.price || 0, { numeric: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            p.price = value;
+            renderProducts();
+          });
+          return;
+        }
+        if (action === 'move-up' || action === 'move-down') {
+          if (moveItemById(state.products, p.id, action === 'move-up' ? 'up' : 'down')) {
+            renderProducts();
+          }
+          return;
+        }
+        if (action === 'delete') {
+          state.products = state.products.filter((x) => x.id !== p.id);
+          renderProducts();
+        }
       });
     });
   });
@@ -1047,17 +1245,25 @@ function adminBindProductView() {
   const title = ui.productView.querySelector('.product-title');
   const desc = ui.productView.querySelector('.section-body');
   adminBindHold(title, () => {
-    adminEditValue(`Название товара ${p.id}`, p.title || '', { allowDelete: true }).then((value) => {
-      if (value == null) return;
-      if (value.__delete) {
+    adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
+      { id: 'edit', label: 'Редактировать заголовок' },
+      { id: 'delete', label: 'Удалить товар', danger: true },
+    ]).then((action) => {
+      if (!action) return;
+      if (action === 'edit') {
+        adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
+          if (value == null || value.__delete) return;
+          p.title = value;
+          renderProductView();
+        });
+        return;
+      }
+      if (action === 'delete') {
         state.products = state.products.filter((x) => x.id !== p.id);
         state.currentProduct = null;
         renderProducts();
         goBack();
-        return;
       }
-      p.title = value;
-      renderProductView();
     });
   });
   adminBindHold(desc, () => {
@@ -1070,16 +1276,25 @@ function adminBindProductView() {
 
   ui.productView.querySelectorAll('.product-gallery img').forEach((img, index) => {
     adminBindHold(img, () => {
-      adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '', { allowDelete: true }).then((value) => {
-        if (value == null) return;
+      adminOpenActionSheet(`Фото #${index + 1}`, [
+        { id: 'edit', label: 'Изменить фото' },
+        { id: 'delete', label: 'Удалить фото', danger: true },
+      ]).then((action) => {
+        if (!action) return;
         if (!Array.isArray(p.images)) p.images = [];
-        if (value.__delete) {
+        if (action === 'edit') {
+          adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '').then((value) => {
+            if (value == null || value.__delete) return;
+            p.images[index] = value;
+            renderProductView();
+          });
+          return;
+        }
+        if (action === 'delete') {
           p.images.splice(index, 1);
           if (!p.images.length) p.images.push('assets/placeholder.svg');
-        } else {
-          p.images[index] = value;
+          renderProductView();
         }
-        renderProductView();
       });
     });
   });
@@ -1089,11 +1304,23 @@ function adminBindProductView() {
     adminBindHold(row, () => {
       if (!Array.isArray(p.specs)) p.specs = [];
       const current = typeof p.specs[index] === 'string' ? p.specs[index] : '';
-      adminEditValue(`Характеристика #${index + 1} товара ${p.id}`, current, { multiline: true, allowDelete: true }).then((value) => {
-        if (value == null) return;
-        if (value.__delete) p.specs.splice(index, 1);
-        else p.specs[index] = value;
-        renderProductView();
+      adminOpenActionSheet(`Характеристика #${index + 1}`, [
+        { id: 'edit', label: 'Редактировать' },
+        { id: 'delete', label: 'Удалить', danger: true },
+      ]).then((action) => {
+        if (!action) return;
+        if (action === 'edit') {
+          adminEditValue(`Характеристика #${index + 1} товара ${p.id}`, current, { multiline: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            p.specs[index] = value;
+            renderProductView();
+          });
+          return;
+        }
+        if (action === 'delete') {
+          p.specs.splice(index, 1);
+          renderProductView();
+        }
       });
     });
   });
@@ -1148,6 +1375,7 @@ function adminBuildPanel() {
 
 function applyAdminModeUi() {
   document.body.classList.toggle('admin-mode', state.admin.enabled);
+  if (ui.adminHeaderActions) ui.adminHeaderActions.classList.toggle('hidden', !state.admin.enabled);
   if (!state.admin.enabled) return;
   if (ui.cartButton) ui.cartButton.classList.add('admin-hidden-nav');
   if (ui.favoritesButton) ui.favoritesButton.classList.add('admin-hidden-nav');
@@ -2203,6 +2431,14 @@ function bindEvents() {
 
   on(ui.menuButton, 'click', openMenu);
   on(ui.headerSearchButton, 'click', openSearchOverlay);
+  on(ui.adminSaveDraftButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminSaveDraft();
+  });
+  on(ui.adminPublishButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminPublishToCatalog();
+  });
   on(ui.headerStoreButton, 'click', () => {
     renderStores();
     setScreen('stores');
