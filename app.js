@@ -607,6 +607,7 @@ function renderHomeBanners() {
     <button class="dot ${index === 0 ? 'active' : ''}" data-home-banner-dot="${index}" type="button" aria-label="Баннер ${index + 1}"></button>
   `).join('');
   setHomeBanner(0);
+  if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
@@ -621,6 +622,7 @@ function renderHomeArticles() {
       <span>${escapeHtml(article.text)}</span>
     </button>
   `).join('');
+  if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
@@ -681,12 +683,20 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
   textarea.classList.toggle('hidden', !multiline);
   deleteBtn.classList.toggle('hidden', !allowDelete);
 
+  const focusEditor = (el) => {
+    try {
+      el.focus({ preventScroll: true });
+      if (typeof el.select === 'function') el.select();
+    } catch {
+      el.focus();
+    }
+  };
   if (multiline) {
     textarea.value = current;
-    window.setTimeout(() => textarea.focus(), 0);
+    focusEditor(textarea);
   } else {
     input.value = current;
-    window.setTimeout(() => input.focus(), 0);
+    focusEditor(input);
   }
 
   modal.classList.remove('hidden');
@@ -769,6 +779,7 @@ function adminAddBannerTemplate() {
     text: 'Описание предложения',
     cta: 'Подробнее',
   });
+  adminSaveDraft(true);
   renderHomeBanners();
 }
 
@@ -781,6 +792,7 @@ function adminAddArticleTemplate() {
     text: 'Текст статьи',
     screen: 'about',
   });
+  adminSaveDraft(true);
   renderHomeArticles();
 }
 
@@ -791,6 +803,7 @@ function adminAddCategoryTemplate() {
     title: 'Новая категория',
     image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=70',
   });
+  adminSaveDraft(true);
   renderCategories();
 }
 
@@ -812,6 +825,7 @@ function adminAddProductTemplate() {
     badge: '',
     tags: [],
   });
+  adminSaveDraft(true);
   renderProducts();
 }
 
@@ -820,6 +834,7 @@ function adminAddProductImage() {
   if (!p) return;
   if (!Array.isArray(p.images)) p.images = [];
   p.images.push('https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=70');
+  adminSaveDraft(true);
   renderProductView();
 }
 
@@ -828,17 +843,18 @@ function adminAddProductSpec() {
   if (!p) return;
   if (!Array.isArray(p.specs)) p.specs = [];
   p.specs.push('Новая характеристика');
+  adminSaveDraft(true);
   renderProductView();
 }
 
-function adminSaveDraft() {
+function adminSaveDraft(silent = false) {
   const payload = {
     config: state.config,
     categories: state.categories,
     products: state.products,
   };
   localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
-  reportStatus('Админ-черновик сохранен локально');
+  if (!silent) reportStatus('Админ-черновик сохранен локально');
 }
 
 function adminRestoreDraft() {
@@ -1160,6 +1176,17 @@ function applyAdminModeUi() {
   if (ui.favoritesButton) ui.favoritesButton.classList.add('admin-hidden-nav');
 }
 
+function handleAdminInlineAdd(action) {
+  if (!state.admin.enabled) return;
+  if (action === 'banner') adminAddBannerTemplate();
+  if (action === 'article') adminAddArticleTemplate();
+  if (action === 'category') adminAddCategoryTemplate();
+  if (action === 'product') adminAddProductTemplate();
+  if (action === 'image') adminAddProductImage();
+  if (action === 'spec') adminAddProductSpec();
+  adminSaveDraft(true);
+}
+
 function getSku(p) {
   if (p && p.sku) return p.sku;
   if (p && Array.isArray(p.specs)) {
@@ -1414,6 +1441,7 @@ function renderCategories() {
       <span>Акции</span>
     </button>
   `;
+  if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
@@ -1496,6 +1524,7 @@ function renderProducts() {
     return;
   }
   ui.productsList.innerHTML = buildProductCards(list);
+  if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
@@ -1729,6 +1758,7 @@ function renderProductView() {
   const recommended = getRecommendedProducts(p, 10);
   ui.productView.innerHTML = `
     <div class="product-hero">
+      ${state.admin.enabled ? '<button class="admin-inline-plus admin-inline-plus-hero" data-admin-add="image" type="button" aria-label="Добавить фото">+</button>' : ''}
       <div class="product-gallery">${p.images.map((src) => `<img src="${safeSrc(src)}" alt="${p.title}" loading="lazy" decoding="async" />`).join('')}</div>
     </div>
     <div class="product-title">${p.title}</div>
@@ -1748,11 +1778,16 @@ function renderProductView() {
           : `<button class="primary-button" data-request="${p.id}">Запросить</button>`}
     </div>
     <div class="detail-section">
-      <div class="section-title">Описание</div>
+      <div class="section-title section-title-admin">
+        <span>Описание</span>
+      </div>
       <div class="section-body">${desc || 'Описание будет добавлено позже.'}</div>
     </div>
     <div class="detail-section">
-      <div class="section-title">Характеристики</div>
+      <div class="section-title section-title-admin">
+        <span>Характеристики</span>
+        <button class="admin-inline-plus" data-admin-add="spec" type="button" aria-label="Добавить характеристику">+</button>
+      </div>
       <div class="product-specs">${specs}</div>
     </div>
     ${recommended.length ? `
@@ -1770,6 +1805,7 @@ function renderProductView() {
       </div>
     ` : ''}
   `;
+  if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
@@ -2246,6 +2282,13 @@ function bindEvents() {
     startHomeBannerAutoplay();
   });
   on(ui.profileManagerButton, 'click', openManagerChat);
+  on(document, 'click', (e) => {
+    const addBtn = e.target.closest('[data-admin-add]');
+    if (!addBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleAdminInlineAdd(addBtn.dataset.adminAdd || '');
+  });
 
   on(document, 'click', (e) => {
     const btn = e.target.closest('[data-screen]');
@@ -3088,9 +3131,6 @@ async function init() {
   renderHomeBanners();
   renderHomeArticles();
   bindEvents();
-  if (state.admin.enabled) {
-    adminBuildPanel();
-  }
   if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
   if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
   if (ui.productsSearch) ui.productsSearch.value = state.filters.products.search;
@@ -3121,7 +3161,7 @@ async function init() {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
   }
-  if (state.admin.enabled && adminRestoreDraft()) {
+  if (adminRestoreDraft()) {
     renderHomeBanners();
     renderHomeArticles();
     renderHeaderStore();
@@ -3131,7 +3171,7 @@ async function init() {
     if (state.currentScreen === 'product') renderProductView();
     renderPromos();
     renderHomePopular();
-    reportStatus('Админ-черновик восстановлен');
+    if (state.admin.enabled) reportStatus('Админ-черновик восстановлен');
   }
   adminRefreshBindings();
   buildMenuCatalog();

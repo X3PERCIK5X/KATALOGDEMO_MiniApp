@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260226-01" />
+    <link rel="stylesheet" href="style.css?v=20260226-03" />
   </head>
   <body>
     <header class="header">
@@ -54,13 +54,17 @@
 
       <section id="screen-home" class="screen active">
         <section class="home-feature-wrap">
+          <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
           <div class="home-banner-slider">
             <div id="homeBannerTrack" class="home-banner-track"></div>
             <div id="homeBannerDots" class="home-banner-dots"></div>
           </div>
         </section>
 
-        <div class="home-section-title">Статьи и разделы</div>
+        <div class="home-section-title home-section-title-admin">
+          <span>Статьи и разделы</span>
+          <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
+        </div>
         <section class="home-article-slider">
           <div id="homeArticleTrack" class="home-article-track"></div>
         </section>
@@ -88,6 +92,7 @@
       <section id="screen-categories" class="screen">
         <div class="screen-head">
           <h2 id="categoriesTitle">Каталог</h2>
+          <button class="admin-inline-plus" data-admin-add="category" type="button" aria-label="Добавить категорию">+</button>
         </div>
         <div id="categoriesGrid" class="category-grid"></div>
       </section>
@@ -121,6 +126,7 @@
         <div class="screen-head">
           <button class="back-button icon-only" data-back="categories" aria-label="Назад">←</button>
           <h2 id="productsTitle">Категория</h2>
+          <button class="admin-inline-plus" data-admin-add="product" type="button" aria-label="Добавить товар">+</button>
         </div>
         <div class="filter-bar filter-bar-sticky">
           <input id="productsSearch" class="filter-input" type="search" placeholder="Поиск по названию" />
@@ -460,6 +466,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260226-02"></script>
+    <script src="app.js?v=20260226-03"></script>
   </body>
 </html>

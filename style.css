@@ -3757,3 +3757,56 @@ html[data-theme="light"] .admin-modal-order {
   border-color: rgba(18, 42, 62, 0.16);
   background: #f7f9fc;
 }
+
+/* Inline admin controls */
+.admin-inline-plus {
+  display: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+body.admin-mode .admin-inline-plus {
+  display: inline-flex;
+}
+
+.home-feature-wrap {
+  position: relative;
+}
+
+.home-feature-wrap > .admin-inline-plus {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+}
+
+.home-section-title-admin {
+  justify-content: space-between;
+}
+
+.section-title-admin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-inline-plus-hero {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 3;
+}
+
+html[data-theme="light"] .admin-inline-plus {
+  color: #1c2735;
+  border-color: rgba(18, 42, 62, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+}
