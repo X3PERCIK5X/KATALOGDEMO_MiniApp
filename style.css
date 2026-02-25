@@ -3573,3 +3573,187 @@ html[data-theme="light"] .bottom-item {
   border-color: rgba(14, 18, 26, 0.08);
   box-shadow: inset 0 0 0 1px rgba(14, 18, 26, 0.04);
 }
+
+/* Admin analytics */
+body.admin-mode .admin-hidden-nav {
+  display: none !important;
+}
+
+body.admin-mode .bottom-nav {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-analytics-card,
+.admin-month-card,
+.admin-order-card {
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  color: var(--text);
+  text-align: left;
+}
+
+.admin-analytics-card {
+  padding: 12px;
+}
+
+.admin-analytics-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-analytics-value {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.admin-analytics-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-analytics-months,
+.admin-analytics-orders {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-month-card,
+.admin-order-card {
+  padding: 10px 12px;
+}
+
+.admin-month-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.admin-month-meta,
+.admin-order-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-order-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.admin-order-head strong {
+  color: var(--text);
+}
+
+.admin-order-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.admin-report-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(5, 8, 16, 0.76);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.admin-report-card {
+  width: min(760px, 100%);
+  max-height: 82vh;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid var(--stroke);
+  background: #121a2b;
+  color: #f2f6ff;
+  padding: 12px;
+}
+
+.admin-report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.admin-report-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.admin-report-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2f6ff;
+}
+
+.admin-report-body {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.admin-report-body hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin: 4px 0;
+}
+
+.admin-modal-order {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme="light"] .admin-analytics-card,
+html[data-theme="light"] .admin-month-card,
+html[data-theme="light"] .admin-order-card {
+  border-color: rgba(18, 42, 62, 0.16);
+  background: linear-gradient(150deg, #ffffff, #f6f8fc);
+  color: #1c2735;
+}
+
+html[data-theme="light"] .admin-analytics-label,
+html[data-theme="light"] .admin-analytics-meta,
+html[data-theme="light"] .admin-month-meta,
+html[data-theme="light"] .admin-order-meta,
+html[data-theme="light"] .admin-order-head span {
+  color: #5f6f82;
+}
+
+html[data-theme="light"] .admin-report-card {
+  background: #ffffff;
+  color: #1c2735;
+  border-color: rgba(18, 42, 62, 0.16);
+}
+
+html[data-theme="light"] .admin-report-close {
+  color: #1c2735;
+  border-color: rgba(18, 42, 62, 0.2);
+  background: #f5f7fa;
+}
+
+html[data-theme="light"] .admin-report-body hr {
+  border-top-color: rgba(18, 42, 62, 0.2);
+}
+
+html[data-theme="light"] .admin-modal-order {
+  border-color: rgba(18, 42, 62, 0.16);
+  background: #f7f9fc;
+}

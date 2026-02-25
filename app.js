@@ -174,6 +174,7 @@ const ui = {
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
   profileManagerButton: document.getElementById('profileManagerButton'),
+  profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   homeArticleTrack: document.getElementById('homeArticleTrack'),
   themeLabel: document.getElementById('themeLabel'),
   themeToggleButton: document.getElementById('themeToggleButton'),
@@ -216,6 +217,8 @@ const FIRST_ORDER_PROMO = {
   code: 'ПЕРВЫЙ',
   percent: 10,
 };
+
+const ADMIN_MARGIN_RATE = 0.3;
 
 function getTelegramUser() {
   return window.HORECA_TG?.initDataUnsafe?.user || {};
@@ -1112,6 +1115,13 @@ function adminBuildPanel() {
   });
 }
 
+function applyAdminModeUi() {
+  document.body.classList.toggle('admin-mode', state.admin.enabled);
+  if (!state.admin.enabled) return;
+  if (ui.cartButton) ui.cartButton.classList.add('admin-hidden-nav');
+  if (ui.favoritesButton) ui.favoritesButton.classList.add('admin-hidden-nav');
+}
+
 function getSku(p) {
   if (p && p.sku) return p.sku;
   if (p && Array.isArray(p.specs)) {
@@ -1833,6 +1843,11 @@ function renderCart() {
 }
 
 function renderOrders() {
+  if (state.admin.enabled) {
+    renderAdminSalesAnalytics();
+    return;
+  }
+  if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История заказов';
   if (!state.orders.length) {
     ui.ordersList.innerHTML = '<div class="text-card">История заказов пуста.</div>';
     return;
@@ -1861,6 +1876,167 @@ function renderOrders() {
       </div>
     </div>
   `).join('');
+}
+
+function adminMonthKey(dateValue) {
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return 'unknown';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function adminMonthLabel(key) {
+  if (!key || key === 'unknown') return 'Без даты';
+  const [y, m] = String(key).split('-');
+  const date = new Date(Number(y), Number(m) - 1, 1);
+  if (Number.isNaN(date.getTime())) return key;
+  return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+}
+
+function adminOrderTotal(order) {
+  const sum = Number(order?.total || 0);
+  return Number.isFinite(sum) ? Math.max(0, sum) : 0;
+}
+
+function adminOrderMargin(order) {
+  return Math.round(adminOrderTotal(order) * ADMIN_MARGIN_RATE);
+}
+
+function adminEnsureReportModal() {
+  if (state.admin.ui.reportModal) return state.admin.ui.reportModal;
+  const modal = document.createElement('div');
+  modal.className = 'admin-report-modal hidden';
+  modal.innerHTML = `
+    <div class="admin-report-card">
+      <div class="admin-report-head">
+        <h3 class="admin-report-title">Детали</h3>
+        <button type="button" class="admin-report-close">✕</button>
+      </div>
+      <div class="admin-report-body"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('.admin-report-close').addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) modal.classList.add('hidden');
+  });
+  state.admin.ui.reportModal = modal;
+  return modal;
+}
+
+function adminOpenReportModal(title, html) {
+  const modal = adminEnsureReportModal();
+  modal.querySelector('.admin-report-title').textContent = title;
+  modal.querySelector('.admin-report-body').innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function renderAdminSalesAnalytics() {
+  const orders = state.orders.slice().sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+  if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История покупок клиентов';
+  if (!orders.length) {
+    ui.ordersList.innerHTML = '<div class="text-card">Покупок пока нет.</div>';
+    return;
+  }
+
+  const monthMap = new Map();
+  orders.forEach((order) => {
+    const key = adminMonthKey(order.createdAt);
+    const stat = monthMap.get(key) || { total: 0, margin: 0, count: 0, orders: [] };
+    const total = adminOrderTotal(order);
+    const margin = adminOrderMargin(order);
+    stat.total += total;
+    stat.margin += margin;
+    stat.count += 1;
+    stat.orders.push(order);
+    monthMap.set(key, stat);
+  });
+
+  const thisMonthKey = adminMonthKey(new Date().toISOString());
+  const thisMonth = monthMap.get(thisMonthKey) || { total: 0, margin: 0, count: 0, orders: [] };
+  const monthEntries = Array.from(monthMap.entries()).sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+
+  ui.ordersList.innerHTML = `
+    <button class="admin-analytics-card" data-admin-report="month-current" type="button">
+      <div class="admin-analytics-label">Маржа за текущий месяц</div>
+      <div class="admin-analytics-value">${formatPrice(thisMonth.margin)} ₽</div>
+      <div class="admin-analytics-meta">${adminMonthLabel(thisMonthKey)} • заказов: ${thisMonth.count}</div>
+    </button>
+
+    <div class="admin-analytics-months">
+      ${monthEntries.map(([key, stat]) => `
+        <button class="admin-month-card" data-admin-month="${escapeHtml(key)}" type="button">
+          <div class="admin-month-title">${escapeHtml(adminMonthLabel(key))}</div>
+          <div class="admin-month-meta">Выручка: ${formatPrice(stat.total)} ₽</div>
+          <div class="admin-month-meta">Маржа: ${formatPrice(stat.margin)} ₽</div>
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="admin-analytics-orders">
+      ${orders.map((order) => `
+        <button class="admin-order-card" data-admin-order="${order.id}" type="button">
+          <div class="admin-order-head">
+            <strong>${escapeHtml(order.customer?.name || 'Клиент')}</strong>
+            <span>${new Date(order.createdAt).toLocaleString('ru-RU')}</span>
+          </div>
+          <div class="admin-order-meta">Сумма: ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
+          <div class="admin-order-meta">Маржа: ${formatPrice(adminOrderMargin(order))} ₽</div>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  const openMonthReport = (key) => {
+    const stat = monthMap.get(key);
+    if (!stat) return;
+    adminOpenReportModal(
+      `Месяц: ${adminMonthLabel(key)}`,
+      `
+        <div><strong>Заказов:</strong> ${stat.count}</div>
+        <div><strong>Выручка:</strong> ${formatPrice(stat.total)} ₽</div>
+        <div><strong>Маржа:</strong> ${formatPrice(stat.margin)} ₽</div>
+        <hr />
+        ${stat.orders.map((order) => `
+          <div class="admin-modal-order">
+            <div><strong>${escapeHtml(order.customer?.name || 'Клиент')}</strong> • ${new Date(order.createdAt).toLocaleString('ru-RU')}</div>
+            <div>Сумма: ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
+          </div>
+        `).join('')}
+      `
+    );
+  };
+
+  ui.ordersList.querySelector('[data-admin-report="month-current"]')?.addEventListener('click', () => openMonthReport(thisMonthKey));
+  ui.ordersList.querySelectorAll('[data-admin-month]').forEach((btn) => {
+    btn.addEventListener('click', () => openMonthReport(btn.dataset.adminMonth || ''));
+  });
+  ui.ordersList.querySelectorAll('[data-admin-order]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.adminOrder);
+      const order = orders.find((x) => Number(x.id) === id);
+      if (!order) return;
+      adminOpenReportModal(
+        `Заказ №${order.id}`,
+        `
+          <div><strong>Клиент:</strong> ${escapeHtml(order.customer?.name || '—')}</div>
+          <div><strong>Телефон:</strong> ${escapeHtml(order.customer?.phone || '—')}</div>
+          <div><strong>Email:</strong> ${escapeHtml(order.customer?.email || '—')}</div>
+          <div><strong>Дата:</strong> ${new Date(order.createdAt).toLocaleString('ru-RU')}</div>
+          <div><strong>Сумма:</strong> ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
+          <div><strong>Маржа:</strong> ${formatPrice(adminOrderMargin(order))} ₽</div>
+          <hr />
+          <strong>Состав:</strong>
+          <ul>
+            ${(order.items || []).map((i) => `<li>${escapeHtml(i.title || 'Товар')} × ${Number(i.qty || 1)}</li>`).join('')}
+          </ul>
+        `
+      );
+    });
+  });
 }
 
 function renderProfile() {
@@ -2853,6 +3029,7 @@ async function loadData() {
 async function init() {
   loadStorage();
   state.admin.enabled = isAdminModeRequested();
+  applyAdminModeUi();
   if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
     state.promoCode = '';
     state.promoPercent = 0;
