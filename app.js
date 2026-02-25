@@ -206,49 +206,7 @@ function debounce(fn, delay = 220) {
 
 function isAdminModeRequested() {
   const params = new URLSearchParams(window.location.search || '');
-  if (params.get('admin') === '1') {
-    localStorage.setItem('demo_catalog_admin_enabled', '1');
-    return true;
-  }
-  return localStorage.getItem('demo_catalog_admin_enabled') === '1';
-}
-
-function setupAdminQuickToggle() {
-  const brand = document.querySelector('.brand-name');
-  if (!brand || brand.dataset.adminToggleBound === '1') return;
-  brand.dataset.adminToggleBound = '1';
-
-  let holdTimer = null;
-  const clearHold = () => {
-    if (holdTimer) window.clearTimeout(holdTimer);
-    holdTimer = null;
-  };
-
-  const toggle = () => {
-    const enabled = localStorage.getItem('demo_catalog_admin_enabled') === '1';
-    const next = !enabled;
-    localStorage.setItem('demo_catalog_admin_enabled', next ? '1' : '0');
-    const message = next
-      ? 'Админ-режим включен. Страница обновится.'
-      : 'Админ-режим выключен. Страница обновится.';
-    if (window.Telegram?.WebApp?.showAlert) {
-      window.Telegram.WebApp.showAlert(message);
-    } else {
-      alert(message);
-    }
-    setTimeout(() => window.location.reload(), 120);
-  };
-
-  const startHold = () => {
-    clearHold();
-    holdTimer = window.setTimeout(toggle, 2200);
-  };
-
-  brand.addEventListener('mousedown', startHold);
-  brand.addEventListener('touchstart', startHold, { passive: true });
-  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((eventName) => {
-    brand.addEventListener(eventName, clearHold, { passive: true });
-  });
+  return params.get('admin') === '1';
 }
 
 const FIRST_ORDER_PROMO = {
@@ -3109,7 +3067,6 @@ async function loadData() {
 // Главная точка входа приложения.
 async function init() {
   loadStorage();
-  setupAdminQuickToggle();
   state.admin.enabled = isAdminModeRequested();
   applyAdminModeUi();
   if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
@@ -3161,7 +3118,7 @@ async function init() {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
   }
-  if (adminRestoreDraft()) {
+  if (state.admin.enabled && adminRestoreDraft()) {
     renderHomeBanners();
     renderHomeArticles();
     renderHeaderStore();
@@ -3171,7 +3128,7 @@ async function init() {
     if (state.currentScreen === 'product') renderProductView();
     renderPromos();
     renderHomePopular();
-    if (state.admin.enabled) reportStatus('Админ-черновик восстановлен');
+    reportStatus('Админ-черновик восстановлен');
   }
   adminRefreshBindings();
   buildMenuCatalog();
