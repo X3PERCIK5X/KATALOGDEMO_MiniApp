@@ -1559,6 +1559,9 @@ img { max-width: 100%; display: block; }
   border-radius: 14px;
   background: #121a2b;
   padding: 12px;
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-edit-title {
@@ -1587,6 +1590,12 @@ img { max-width: 100%; display: block; }
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  position: sticky;
+  bottom: 0;
+  background: #121a2b;
+  padding-top: 8px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
 }
 
 .admin-edit-actions button.primary {
@@ -3863,6 +3872,15 @@ html[data-theme="light"] .admin-actions-cancel {
   color: #162033;
   border-color: rgba(18, 42, 62, 0.2);
   background: #f8fbff;
+}
+
+html[data-theme="light"] .admin-edit-card {
+  background: #ffffff;
+  border-color: rgba(18, 42, 62, 0.2);
+}
+
+html[data-theme="light"] .admin-edit-actions {
+  background: #ffffff;
 }
 
 /* Inline admin controls */

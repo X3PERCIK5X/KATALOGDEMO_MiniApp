@@ -37,7 +37,7 @@ const state = {
   phoneAutofillSucceeded: false,
   admin: {
     enabled: false,
-    holdMs: 5000,
+    holdMs: 2000,
     draftKey: 'demo_catalog_admin_draft_v1',
     ui: {},
   },
@@ -645,6 +645,7 @@ function adminEnsureModal() {
       <input class="admin-edit-input hidden" type="text" />
       <textarea class="admin-edit-textarea hidden" rows="8"></textarea>
       <div class="admin-edit-actions">
+        <button type="button" data-admin-modal="hide-kb">Скрыть клавиатуру</button>
         <button type="button" data-admin-modal="cancel">Отмена</button>
         <button type="button" data-admin-modal="delete" class="danger hidden">Удалить</button>
         <button type="button" data-admin-modal="save" class="primary">Сохранить</button>
@@ -717,6 +718,7 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
   const titleEl = modal.querySelector('.admin-edit-title');
   const input = modal.querySelector('.admin-edit-input');
   const textarea = modal.querySelector('.admin-edit-textarea');
+  const hideKbBtn = modal.querySelector('[data-admin-modal="hide-kb"]');
   const deleteBtn = modal.querySelector('[data-admin-modal="delete"]');
   const cancelBtn = modal.querySelector('[data-admin-modal="cancel"]');
   const saveBtn = modal.querySelector('[data-admin-modal="save"]');
@@ -753,6 +755,7 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
       cancelBtn.removeEventListener('click', onCancel);
       saveBtn.removeEventListener('click', onSave);
       deleteBtn.removeEventListener('click', onDelete);
+      hideKbBtn.removeEventListener('click', onHideKeyboard);
       modal.removeEventListener('click', onOverlay);
       resolve(value);
     };
@@ -761,6 +764,10 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
     const onDelete = () => settle({ __delete: true });
     const onOverlay = (event) => {
       if (event.target === modal) settle(null);
+    };
+    const onHideKeyboard = () => {
+      const active = document.activeElement;
+      if (active && typeof active.blur === 'function') active.blur();
     };
     const onSave = () => {
       const raw = multiline ? textarea.value : input.value;
@@ -779,6 +786,7 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
     cancelBtn.addEventListener('click', onCancel);
     saveBtn.addEventListener('click', onSave);
     deleteBtn.addEventListener('click', onDelete);
+    hideKbBtn.addEventListener('click', onHideKeyboard);
     modal.addEventListener('click', onOverlay);
   });
 }
