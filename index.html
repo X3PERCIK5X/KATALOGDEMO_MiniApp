@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260226-04" />
+    <link rel="stylesheet" href="style.css?v=20260226-05" />
   </head>
   <body>
     <header class="header">
@@ -13,9 +13,7 @@
           <span id="headerStoreCity">Москва</span>
           <span class="header-store-arrow">›</span>
         </button>
-        <div class="brand-logo-line">
-          <span class="brand-name">DEMO STORE</span>
-        </div>
+        <div class="brand-logo-line" aria-hidden="true"></div>
         <button id="headerSearchButton" class="header-search-button" type="button" aria-label="Поиск по товарам">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -89,6 +87,7 @@
         <div class="screen-head">
           <button class="back-button icon-only" data-back="home" aria-label="Назад">←</button>
           <h2>Выбор магазина</h2>
+          <button id="storeAddButton" class="admin-inline-plus" type="button" aria-label="Добавить адрес">+</button>
         </div>
         <div id="storesList" class="stores-list"></div>
       </section>
@@ -470,6 +469,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260226-06"></script>
+    <script src="app.js?v=20260226-07"></script>
   </body>
 </html>

@@ -163,6 +163,7 @@ const ui = {
   adminHeaderActions: document.getElementById('adminHeaderActions'),
   adminSaveDraftButton: document.getElementById('adminSaveDraftButton'),
   adminPublishButton: document.getElementById('adminPublishButton'),
+  storeAddButton: document.getElementById('storeAddButton'),
   storesList: document.getElementById('storesList'),
   searchOverlay: document.getElementById('searchOverlay'),
   globalSearchForm: document.getElementById('globalSearchForm'),
@@ -887,6 +888,20 @@ function adminAddProductSpec() {
   p.specs.push('Новая характеристика');
   adminSaveDraft(true);
   renderProductView();
+}
+
+function adminAddStoreTemplate() {
+  if (!Array.isArray(state.stores)) state.stores = [];
+  const next = state.stores.length + 1;
+  state.stores.push({
+    id: `store-${Date.now()}`,
+    city: `Город ${next}`,
+    address: `Адрес магазина ${next}`,
+  });
+  state.config.storeLocations = state.stores;
+  adminSaveDraft(true);
+  renderHeaderStore();
+  renderStores();
 }
 
 function adminSaveDraft(silent = false) {
@@ -1912,21 +1927,52 @@ function renderStores() {
       const store = state.stores.find((item) => item.id === storeId);
       if (!store) return;
       adminBindHold(btn, () => {
-        adminEditValue(`Магазин ${store.city}: city|address`, `${store.city}|${store.address}`, { allowDelete: true }).then((value) => {
-          if (value == null) return;
-          if (value.__delete) {
-            state.stores = state.stores.filter((item) => item.id !== store.id);
-            state.config.storeLocations = state.stores;
-            if (!state.stores.length) state.stores = getFallbackStores();
-          } else {
-            const [cityRaw, addressRaw] = String(value).split('|');
-            store.city = String(cityRaw || '').trim() || store.city;
-            store.address = String(addressRaw || '').trim() || store.address;
-            state.config.storeLocations = state.stores;
+        adminOpenActionSheet(`Адрес: ${store.city}`, [
+          { id: 'edit-city', label: 'Изменить город' },
+          { id: 'edit-address', label: 'Изменить полный адрес' },
+          { id: 'move-up', label: 'Сдвинуть вверх' },
+          { id: 'move-down', label: 'Сдвинуть вниз' },
+          { id: 'delete', label: 'Удалить адрес', danger: true },
+        ]).then((action) => {
+          if (!action) return;
+          if (action === 'edit-city') {
+            adminEditValue('Город', store.city || '').then((value) => {
+              if (value == null || value.__delete) return;
+              store.city = String(value).trim() || store.city;
+              state.config.storeLocations = state.stores;
+              adminSaveDraft(true);
+              renderStores();
+              renderHeaderStore();
+            });
+            return;
           }
-          adminSaveDraft(true);
-          renderStores();
-          renderHeaderStore();
+          if (action === 'edit-address') {
+            adminEditValue('Полный адрес', store.address || '', { multiline: true }).then((value) => {
+              if (value == null || value.__delete) return;
+              store.address = String(value).trim() || store.address;
+              state.config.storeLocations = state.stores;
+              adminSaveDraft(true);
+              renderStores();
+            });
+            return;
+          }
+          if (action === 'move-up' || action === 'move-down') {
+            if (moveItemById(state.stores, store.id, action === 'move-up' ? 'up' : 'down')) {
+              state.config.storeLocations = state.stores;
+              adminSaveDraft(true);
+              renderStores();
+            }
+            return;
+          }
+          if (action === 'delete') {
+            state.stores = state.stores.filter((item) => item.id !== store.id);
+            if (!state.stores.length) state.stores = getFallbackStores();
+            state.config.storeLocations = state.stores;
+            if (state.selectedStoreId === store.id) state.selectedStoreId = state.stores[0]?.id || null;
+            adminSaveDraft(true);
+            renderStores();
+            renderHeaderStore();
+          }
         });
       });
     });
@@ -2442,6 +2488,41 @@ function bindEvents() {
   on(ui.headerStoreButton, 'click', () => {
     renderStores();
     setScreen('stores');
+  });
+  if (state.admin.enabled && ui.headerStoreButton) {
+    adminBindHold(ui.headerStoreButton, () => {
+      const selected = getSelectedStore();
+      if (!selected) return;
+      adminOpenActionSheet(`Текущий адрес: ${selected.city}`, [
+        { id: 'edit-city', label: 'Изменить город' },
+        { id: 'edit-address', label: 'Изменить полный адрес' },
+      ]).then((action) => {
+        if (!action) return;
+        if (action === 'edit-city') {
+          adminEditValue('Город', selected.city || '').then((value) => {
+            if (value == null || value.__delete) return;
+            selected.city = String(value).trim() || selected.city;
+            state.config.storeLocations = state.stores;
+            adminSaveDraft(true);
+            renderHeaderStore();
+            renderStores();
+          });
+        }
+        if (action === 'edit-address') {
+          adminEditValue('Полный адрес', selected.address || '', { multiline: true }).then((value) => {
+            if (value == null || value.__delete) return;
+            selected.address = String(value).trim() || selected.address;
+            state.config.storeLocations = state.stores;
+            adminSaveDraft(true);
+            renderStores();
+          });
+        }
+      });
+    });
+  }
+  on(ui.storeAddButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminAddStoreTemplate();
   });
   on(ui.globalSearchForm, 'submit', (e) => {
     e.preventDefault();
