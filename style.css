@@ -3952,7 +3952,7 @@ body.admin-mode .admin-inline-plus {
 
 .admin-add-row {
   min-height: 0;
-  margin: 8px 0 12px;
+  margin: 10px 0 14px;
   display: flex;
   justify-content: center;
   gap: 8px;
@@ -3993,7 +3993,11 @@ body.admin-mode .admin-inline-move {
 body.admin-mode .admin-add-row {
   display: flex !important;
   position: relative;
-  z-index: 6;
+  z-index: 20;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(16, 19, 29, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 body.admin-mode .admin-inline-plus,
@@ -4001,16 +4005,28 @@ body.admin-mode .admin-inline-move {
   opacity: 1;
   visibility: visible;
   border-width: 2px;
+  width: 40px !important;
+  height: 40px !important;
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+  border-color: #f08f52;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(228, 106, 44, 0.35);
 }
 
 html[data-theme="light"] .admin-inline-plus {
-  color: #1c2735;
-  border-color: rgba(18, 42, 62, 0.2);
-  background: rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  border-color: #e46a2c;
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
 }
 
 html[data-theme="light"] .admin-inline-move {
-  color: #1c2735;
-  border-color: rgba(18, 42, 62, 0.2);
-  background: rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  border-color: #e46a2c;
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+}
+
+html[data-theme="light"] body.admin-mode .admin-add-row {
+  background: rgba(244, 247, 252, 0.96);
+  border-color: rgba(18, 42, 62, 0.15);
 }
