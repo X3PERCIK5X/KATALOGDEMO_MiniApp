@@ -44,7 +44,18 @@ const state = {
     selectedId: '',
     ui: {},
   },
+  saas: {
+    enabled: false,
+    apiBase: '',
+    storeId: '',
+    token: '',
+    datasetLoaded: false,
+  },
 };
+
+const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
+const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
+const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
 
 // Базовый контент главной страницы.
 // Если в config.json нет своих значений — используем эти.
@@ -247,6 +258,11 @@ const ADMIN_MARGIN_RATE = 0.3;
 const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
 const PUBLISHED_STATE_TS_KEY = 'demo_catalog_published_state_ts_v1';
 const HOME_BLOCK_DEFAULT_ORDER = ['banners', 'articles', 'promo', 'popular'];
+
+function getAdminDraftKey() {
+  const storePart = (state.saas.storeId || '').trim().toUpperCase();
+  return storePart ? `demo_catalog_admin_draft_v1_${storePart}` : state.admin.draftKey;
+}
 
 function getTelegramUser() {
   return window.HORECA_TG?.initDataUnsafe?.user || {};
@@ -674,6 +690,7 @@ function adminDownloadJson(filename, payload) {
 }
 
 function getImageUploadEndpoint() {
+  if (state.saas.enabled) return '/upload-image';
   const endpoint = String(
     state.config?.imageUploadEndpoint
     || state.config?.uploadEndpoint
@@ -784,17 +801,21 @@ async function adminUploadImageFile(file) {
     reportStatus('Загрузка фото...');
     const form = new FormData();
     form.append('file', file, file.name || `image-${Date.now()}.jpg`);
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      body: form,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
     let payload = null;
-    if (contentType.includes('application/json')) {
-      payload = await response.json();
+    if (endpoint.startsWith('/')) {
+      payload = await saasRequestWithForm(endpoint, form, { auth: true });
     } else {
-      payload = await response.text();
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: form,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        payload = await response.json();
+      } else {
+        payload = await response.text();
+      }
     }
     const imageUrl = extractUploadedImageUrl(payload);
     if (!imageUrl) {
@@ -1180,16 +1201,30 @@ function adminAddStoreTemplate() {
 function adminSaveDraft(silent = false) {
   const payload = adminBuildPayload();
   try {
-    localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
+    localStorage.setItem(getAdminDraftKey(), JSON.stringify(payload));
     if (!silent) reportStatus('Черновик админки сохранен');
   } catch {
     reportStatus('Черновик не сохранен: переполнена память браузера');
   }
 }
 
-function adminPublishToCatalog() {
+async function adminPublishToCatalog() {
   adminSaveDraft(true);
   const payload = adminBuildPayload();
+  if (state.saas.enabled && state.admin.enabled && state.saas.storeId) {
+    try {
+      await saasRequest('/admin/data', {
+        method: 'PUT',
+        auth: true,
+        body: payload,
+      });
+      reportStatus(`Изменения выгружены в каталог ${state.saas.storeId}`);
+      return;
+    } catch (error) {
+      reportStatus(`Ошибка выгрузки: ${error.message || 'unknown'}`);
+      return;
+    }
+  }
   try {
     localStorage.setItem(PUBLISHED_STATE_KEY, JSON.stringify(payload));
     localStorage.setItem(PUBLISHED_STATE_TS_KEY, String(Date.now()));
@@ -1200,7 +1235,7 @@ function adminPublishToCatalog() {
 }
 
 function adminRestoreDraft() {
-  const raw = localStorage.getItem(state.admin.draftKey);
+  const raw = localStorage.getItem(getAdminDraftKey());
   if (!raw) return false;
   const parsed = safeParse(raw, null);
   if (!parsed || typeof parsed !== 'object') return false;
@@ -1211,6 +1246,7 @@ function adminRestoreDraft() {
 }
 
 function restorePublishedState() {
+  if (state.saas.datasetLoaded || state.saas.enabled) return false;
   const raw = localStorage.getItem(PUBLISHED_STATE_KEY);
   if (!raw) return false;
   const parsed = safeParse(raw, null);
@@ -1733,6 +1769,153 @@ function safeParse(value, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function getSaasApiBase() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const queryApi = String(params.get('api') || '').trim();
+    if (queryApi) {
+      const normalized = queryApi.replace(/\/$/, '');
+      localStorage.setItem(SAAS_API_BASE_KEY, normalized);
+      return normalized;
+    }
+  } catch {}
+  const fromStorage = String(localStorage.getItem(SAAS_API_BASE_KEY) || '').trim();
+  if (fromStorage) return fromStorage.replace(/\/$/, '');
+  const fallback = `${window.location.origin}/api`;
+  return fallback.replace(/\/$/, '');
+}
+
+function buildSaasUrl(path) {
+  const base = state.saas.apiBase || getSaasApiBase();
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+async function saasRequest(path, { method = 'GET', body, auth = false } = {}) {
+  const headers = {};
+  if (body != null) headers['Content-Type'] = 'application/json';
+  if (auth && state.saas.token) headers.Authorization = `Bearer ${state.saas.token}`;
+  const response = await fetch(buildSaasUrl(path), {
+    method,
+    headers,
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message = payload?.error || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload || {};
+}
+
+async function saasRequestWithForm(path, formData, { auth = false } = {}) {
+  const headers = {};
+  if (auth && state.saas.token) headers.Authorization = `Bearer ${state.saas.token}`;
+  const response = await fetch(buildSaasUrl(path), {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || `HTTP ${response.status}`);
+  }
+  return payload || {};
+}
+
+function applyStoreDataset(dataset) {
+  if (!dataset || typeof dataset !== 'object') return;
+  if (dataset.config && typeof dataset.config === 'object') state.config = dataset.config;
+  if (Array.isArray(dataset.categories)) state.categories = dataset.categories;
+  if (Array.isArray(dataset.products)) state.products = dataset.products;
+}
+
+function getRequestedStoreId() {
+  const params = new URLSearchParams(window.location.search || '');
+  const storeParam = String(params.get('store') || '').trim();
+  if (storeParam) return storeParam;
+  const tgStore = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').trim();
+  if (tgStore && !tgStore.toLowerCase().includes('admin')) return tgStore;
+  return '';
+}
+
+async function saasEnsureAdminSession() {
+  if (!state.admin.enabled) return false;
+  state.saas.apiBase = getSaasApiBase();
+  const storedToken = String(localStorage.getItem(SAAS_TOKEN_KEY) || '').trim();
+  const storedStoreId = String(localStorage.getItem(SAAS_STORE_KEY) || '').trim().toUpperCase();
+  if (storedToken && storedStoreId) {
+    state.saas.token = storedToken;
+    state.saas.storeId = storedStoreId;
+    state.saas.enabled = true;
+    try {
+      await saasRequest('/auth/me', { auth: true });
+      return true;
+    } catch {
+      state.saas.enabled = false;
+      state.saas.token = '';
+      state.saas.storeId = '';
+      localStorage.removeItem(SAAS_TOKEN_KEY);
+      localStorage.removeItem(SAAS_STORE_KEY);
+    }
+  }
+
+  const mode = window.prompt('SaaS админка: 1 - вход, 2 - регистрация', '1');
+  if (mode == null) return false;
+  if (String(mode).trim() === '2') {
+    const storeName = window.prompt('Название магазина', 'Demo Store');
+    const email = window.prompt('Email администратора', 'admin@example.com');
+    const password = window.prompt('Пароль');
+    if (!storeName || !email || !password) return false;
+    const reg = await saasRequest('/auth/register', {
+      method: 'POST',
+      body: { storeName, email, password },
+    });
+    window.alert(`Магазин создан. Store ID: ${reg.storeId}`);
+  }
+
+  const storeId = String(window.prompt('Введите Store ID (6 символов)') || '').trim().toUpperCase();
+  const password = window.prompt('Введите пароль');
+  if (!storeId || !password) return false;
+  if (!/^[A-Z0-9]{6}$/.test(storeId)) {
+    window.alert('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
+    return false;
+  }
+  const login = await saasRequest('/auth/login', {
+    method: 'POST',
+    body: { storeId, password },
+  });
+  state.saas.enabled = true;
+  state.saas.storeId = storeId;
+  state.saas.token = String(login.token || '');
+  localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+  localStorage.setItem(SAAS_TOKEN_KEY, state.saas.token);
+  return true;
+}
+
+async function saasLoadDatasetForCurrentContext() {
+  state.saas.apiBase = getSaasApiBase();
+  if (state.admin.enabled && state.saas.enabled && state.saas.storeId) {
+    const payload = await saasRequest('/admin/data', { auth: true });
+    applyStoreDataset(payload);
+    state.saas.datasetLoaded = true;
+    return true;
+  }
+  const publicStoreId = getRequestedStoreId();
+  if (!state.admin.enabled && publicStoreId) {
+    const payload = await saasRequest(`/store/${encodeURIComponent(publicStoreId)}/public`);
+    applyStoreDataset(payload);
+    state.saas.storeId = publicStoreId;
+    state.saas.datasetLoaded = true;
+    return true;
+  }
+  return false;
 }
 
 function loadStorage() {
@@ -2904,9 +3087,9 @@ function bindEvents() {
     if (!state.admin.enabled) return;
     adminMoveSelected('right');
   });
-  on(ui.adminPublishButton, 'click', () => {
+  on(ui.adminPublishButton, 'click', async () => {
     if (!state.admin.enabled) return;
-    adminPublishToCatalog();
+    await adminPublishToCatalog();
   });
   on(ui.headerStoreButton, 'click', () => {
     if (state.admin.enabled) return;
@@ -3787,8 +3970,10 @@ function setProductionSlide(index) {
 
 // Загружает конфигурацию витрины (тексты, баннеры, статьи, контакты).
 async function loadConfig() {
-  const res = await fetch('config.json', { cache: 'no-store' });
-  state.config = await res.json();
+  if (!state.saas.datasetLoaded) {
+    const res = await fetch('config.json', { cache: 'no-store' });
+    state.config = await res.json();
+  }
   state.stores = normalizeStores(state.config.storeLocations);
   if (!state.selectedStoreId || !state.stores.some((s) => s.id === state.selectedStoreId)) {
     state.selectedStoreId = state.stores[0]?.id || null;
@@ -3855,6 +4040,29 @@ async function loadConfig() {
 const DATA_VERSION = '20260210-3';
 // Загружает товарные данные каталога.
 async function loadData() {
+  if (state.saas.datasetLoaded) {
+    state.dataLoaded = true;
+    if (!state.currentGroup) state.currentGroup = 'apparel';
+    if (ui.categoriesTitle) {
+      ui.categoriesTitle.textContent = state.currentGroup === 'apparel' ? 'Каталог' : 'Аксессуары и подборки';
+    }
+    renderCategories();
+    renderPromos();
+    renderHomePopular();
+    buildMenuCatalog();
+    if (state.pendingCategory) {
+      const pending = state.pendingCategory;
+      state.pendingCategory = null;
+      openCategoryById(pending);
+    } else if (state.currentScreen === 'products') {
+      renderProducts();
+    }
+    if (ui.dataStatus && state.categories.length && state.products.length) {
+      ui.dataStatus.classList.add('hidden');
+      ui.dataStatus.textContent = '';
+    }
+    return;
+  }
   reportStatus('Загружаем каталог…');
   const catRes = await fetch(`data/categories.json?v=${DATA_VERSION}`, { cache: 'no-store' });
   if (catRes.ok) {
@@ -3952,6 +4160,21 @@ async function init() {
   buildMenuCatalog();
 
   try {
+    if (state.admin.enabled) {
+      const ready = await saasEnsureAdminSession();
+      if (ready) {
+        await saasLoadDatasetForCurrentContext();
+        reportStatus(`SaaS магазин подключен: ${state.saas.storeId}`);
+      }
+    } else {
+      await saasLoadDatasetForCurrentContext();
+    }
+  } catch (err) {
+    console.error('saas bootstrap failed', err);
+    reportStatus(`SaaS: ${err.message || 'ошибка подключения'}`);
+  }
+
+  try {
     await loadConfig();
   } catch (err) {
     console.error('loadConfig failed', err);
@@ -3966,7 +4189,7 @@ async function init() {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
   }
-  if (!state.admin.enabled && restorePublishedState()) {
+  if (!state.admin.enabled && !state.saas.datasetLoaded && restorePublishedState()) {
     renderHomeBanners();
     renderHomeArticles();
     renderHeaderStore();
@@ -4004,6 +4227,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 window.addEventListener('storage', (event) => {
   if (state.admin.enabled) return;
+  if (state.saas.datasetLoaded || state.saas.enabled) return;
   if (event.key !== PUBLISHED_STATE_KEY && event.key !== PUBLISHED_STATE_TS_KEY) return;
   if (!restorePublishedState()) return;
   renderHomeBanners();

@@ -7,3 +7,8 @@ storage.json
 .env.local
 .env.*
 !.env.example
+
+# SaaS runtime
+node_modules/
+storage/
+uploads/
