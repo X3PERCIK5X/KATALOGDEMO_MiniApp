@@ -3953,11 +3953,14 @@ body.admin-mode .admin-inline-plus {
 .admin-add-row {
   min-height: 0;
   margin: 10px 0 14px;
-  display: flex;
-  justify-content: flex-end;
+  display: inline-flex;
+  justify-content: center;
   gap: 8px;
-  padding: 0 8px;
-  max-width: 100%;
+  padding: 6px 8px;
+  max-width: calc(100% - 16px);
+  width: fit-content;
+  margin-left: auto;
+  margin-right: 8px;
   flex-wrap: wrap;
 }
 
@@ -3998,10 +4001,9 @@ body.admin-mode .admin-inline-move {
 }
 
 body.admin-mode .admin-add-row {
-  display: flex !important;
+  display: inline-flex !important;
   position: relative;
   z-index: 20;
-  padding: 6px 8px;
   border-radius: 12px;
   background: rgba(16, 19, 29, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.14);
