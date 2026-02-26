@@ -4012,6 +4012,36 @@ body.admin-mode .admin-inline-move {
   color: #ffffff;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(228, 106, 44, 0.35);
+  position: relative;
+  text-indent: -9999px;
+  overflow: hidden;
+}
+
+body.admin-mode .admin-inline-plus::before,
+body.admin-mode .admin-inline-move::before {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-weight: 900;
+  text-indent: 0;
+  line-height: 1;
+}
+
+body.admin-mode .admin-inline-plus::before {
+  content: "+";
+  font-size: 26px;
+}
+
+body.admin-mode .admin-inline-move[data-home-move="up"]::before {
+  content: "↑";
+  font-size: 24px;
+}
+
+body.admin-mode .admin-inline-move[data-home-move="down"]::before {
+  content: "↓";
+  font-size: 24px;
 }
 
 html[data-theme="light"] .admin-inline-plus {
