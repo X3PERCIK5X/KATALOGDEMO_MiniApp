@@ -2642,6 +2642,7 @@ function bindEvents() {
     adminPublishToCatalog();
   });
   on(ui.headerStoreButton, 'click', () => {
+    if (!adminCanOpenByTap('screen:stores')) return;
     renderStores();
     setScreen('stores');
   });
@@ -2746,6 +2747,7 @@ function bindEvents() {
     if (!btn) return;
     const target = btn.dataset.screen;
     if (!target) return;
+    if (!adminCanOpenByTap(`screen:${target}`)) return;
     setScreen(target);
     if (target === 'orders') renderOrders();
     if (target === 'profile') {
@@ -2830,7 +2832,7 @@ function bindEvents() {
     const screenBtn = e.target.closest('[data-open-screen]');
     if (screenBtn) {
       const target = screenBtn.dataset.openScreen;
-      if (target) setScreen(target);
+      if (target && adminCanOpenByTap(`open-screen:${target}`)) setScreen(target);
       return;
     }
     const btn = e.target.closest('[data-category]');
@@ -2991,6 +2993,7 @@ function bindEvents() {
 
 
   on(ui.homeProductionButton, 'click', () => {
+    if (!adminCanOpenByTap('screen:production')) return;
     setScreen('production');
   });
 
