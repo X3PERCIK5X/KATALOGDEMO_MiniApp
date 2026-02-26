@@ -3954,13 +3954,20 @@ body.admin-mode .admin-inline-plus {
   min-height: 0;
   margin: 10px 0 14px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 8px;
+  padding: 0 8px;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .home-blocks {
   display: grid;
   gap: 2px;
+}
+
+.home-admin-block {
+  overflow: visible;
 }
 
 body:not(.admin-mode) .admin-add-row {
@@ -4012,36 +4019,11 @@ body.admin-mode .admin-inline-move {
   color: #ffffff;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(228, 106, 44, 0.35);
-  position: relative;
-  text-indent: -9999px;
-  overflow: hidden;
-}
-
-body.admin-mode .admin-inline-plus::before,
-body.admin-mode .admin-inline-move::before {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #ffffff;
-  font-weight: 900;
-  text-indent: 0;
   line-height: 1;
-}
-
-body.admin-mode .admin-inline-plus::before {
-  content: "+";
-  font-size: 26px;
-}
-
-body.admin-mode .admin-inline-move[data-home-move="up"]::before {
-  content: "↑";
-  font-size: 24px;
-}
-
-body.admin-mode .admin-inline-move[data-home-move="down"]::before {
-  content: "↓";
-  font-size: 24px;
+  font-size: 22px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-indent: 0;
+  overflow: visible;
 }
 
 html[data-theme="light"] .admin-inline-plus {
