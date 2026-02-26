@@ -211,7 +211,23 @@ function debounce(fn, delay = 220) {
 
 function isAdminModeRequested() {
   const params = new URLSearchParams(window.location.search || '');
-  return params.get('admin') === '1';
+  const adminParam = params.get('admin');
+  if (adminParam === '1' || adminParam === 'true') return true;
+  if (params.get('mode') === 'admin') return true;
+
+  const hash = String(window.location.hash || '').toLowerCase();
+  if (hash.includes('admin')) return true;
+
+  const path = String(window.location.pathname || '').toLowerCase();
+  if (path.includes('admin')) return true;
+
+  const tgStartParam = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').toLowerCase();
+  if (tgStartParam.includes('admin')) return true;
+
+  const forced = String(localStorage.getItem('demo_catalog_force_admin') || '');
+  if (forced === '1') return true;
+
+  return false;
 }
 
 const FIRST_ORDER_PROMO = {
@@ -3490,6 +3506,9 @@ async function init() {
   loadStorage();
   state.admin.enabled = isAdminModeRequested();
   applyAdminModeUi();
+  if (state.admin.enabled) {
+    reportStatus('Админ-режим активен');
+  }
   if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
     state.promoCode = '';
     state.promoPercent = 0;
