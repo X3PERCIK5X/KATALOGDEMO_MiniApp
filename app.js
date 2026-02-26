@@ -37,7 +37,7 @@ const state = {
   phoneAutofillSucceeded: false,
   admin: {
     enabled: false,
-    holdMs: 2000,
+    holdMs: 450,
     draftKey: 'demo_catalog_admin_draft_v1',
     ui: {},
   },
@@ -619,22 +619,6 @@ function adminBuildPayload() {
   };
 }
 
-function moveArrayItem(list, from, to) {
-  if (!Array.isArray(list)) return false;
-  if (from < 0 || to < 0 || from >= list.length || to >= list.length || from === to) return false;
-  const [item] = list.splice(from, 1);
-  list.splice(to, 0, item);
-  return true;
-}
-
-function moveItemById(list, id, direction) {
-  if (!Array.isArray(list)) return false;
-  const from = list.findIndex((item, index) => String(item?.id || `${index}`) === String(id));
-  if (from < 0) return false;
-  const to = direction === 'up' ? from - 1 : from + 1;
-  return moveArrayItem(list, from, to);
-}
-
 function adminEnsureModal() {
   if (state.admin.ui.modal) return state.admin.ui.modal;
   const modal = document.createElement('div');
@@ -800,30 +784,148 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
 }
 
 function adminBindHold(el, handler) {
-  if (!state.admin.enabled || !el || el.dataset.adminHoldBound === '1') return;
-  el.dataset.adminHoldBound = '1';
-  let timer = null;
+  if (!state.admin.enabled || !el || el.dataset.adminEditBound === '1') return;
+  el.dataset.adminEditBound = '1';
+  let lastTouchTs = 0;
 
-  const clear = () => {
-    if (timer) window.clearTimeout(timer);
-    timer = null;
-    el.classList.remove('admin-hold-pending');
-  };
+  el.addEventListener('dblclick', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handler();
+  });
 
-  const start = (event) => {
-    if (event.type === 'mousedown' && event.button !== 0) return;
-    clear();
-    el.classList.add('admin-hold-pending');
-    timer = window.setTimeout(() => {
-      clear();
+  el.addEventListener('touchend', (event) => {
+    const now = Date.now();
+    if (now - lastTouchTs <= 320) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastTouchTs = 0;
       handler();
-    }, state.admin.holdMs);
-  };
+      return;
+    }
+    lastTouchTs = now;
+  }, { passive: false });
+}
 
-  el.addEventListener('mousedown', start);
-  el.addEventListener('touchstart', start, { passive: true });
-  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((eventName) => {
-    el.addEventListener(eventName, clear, { passive: true });
+function adminReorderByVisibleIds(list, orderedIds = []) {
+  if (!Array.isArray(list) || !Array.isArray(orderedIds) || !orderedIds.length) return list;
+  const indexMap = new Map();
+  orderedIds.forEach((id, index) => indexMap.set(String(id), index));
+  const slots = [];
+  list.forEach((item, index) => {
+    const id = String(item?.id || '');
+    if (indexMap.has(id)) slots.push(index);
+  });
+  if (!slots.length) return list;
+  const orderedItems = orderedIds
+    .map((id) => list.find((item) => String(item?.id || '') === String(id)))
+    .filter(Boolean);
+  if (!orderedItems.length) return list;
+  const next = [...list];
+  slots.forEach((slotIndex, i) => {
+    if (orderedItems[i]) next[slotIndex] = orderedItems[i];
+  });
+  return next;
+}
+
+function adminBindDragSort(container, itemSelector, { axis = 'y', onReorder } = {}) {
+  if (!state.admin.enabled || !container) return;
+  const items = Array.from(container.querySelectorAll(itemSelector));
+  items.forEach((item) => {
+    if (!item || item.dataset.adminDragBound === '1') return;
+    item.dataset.adminDragBound = '1';
+    let timer = null;
+    let dragging = false;
+    let moved = false;
+    let pressPoint = { x: 0, y: 0 };
+    let startOrder = [];
+    let activeMove = null;
+    let activeEnd = null;
+
+    const clearTimer = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = null;
+      item.classList.remove('admin-hold-pending');
+    };
+
+    const getPoint = (event) => {
+      if (event.touches?.[0]) return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      if (event.changedTouches?.[0]) return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+      return { x: event.clientX, y: event.clientY };
+    };
+
+    const currentOrder = () => Array.from(container.querySelectorAll(itemSelector))
+      .map((el) => String(el.dataset.bannerId || el.dataset.articleId || el.dataset.category || el.dataset.open || el.dataset.storeId || ''))
+      .filter(Boolean);
+
+    const start = (event) => {
+      if (event.type === 'mousedown' && event.button !== 0) return;
+      if (event.target && event.target.closest && event.target.closest('input, textarea, button, select, a')) return;
+      pressPoint = getPoint(event);
+      moved = false;
+      clearTimer();
+      item.classList.add('admin-hold-pending');
+      timer = window.setTimeout(() => {
+        dragging = true;
+        startOrder = currentOrder();
+        item.classList.remove('admin-hold-pending');
+        item.classList.add('admin-dragging');
+        item.style.pointerEvents = 'none';
+        activeMove = move;
+        activeEnd = end;
+        document.addEventListener('mousemove', activeMove, { passive: false });
+        document.addEventListener('touchmove', activeMove, { passive: false });
+        document.addEventListener('mouseup', activeEnd);
+        document.addEventListener('touchend', activeEnd, { passive: true });
+        document.addEventListener('touchcancel', activeEnd, { passive: true });
+      }, state.admin.holdMs);
+    };
+
+    const move = (event) => {
+      if (!dragging) return;
+      const p = getPoint(event);
+      moved = true;
+      if (event.cancelable) event.preventDefault();
+      const over = document.elementFromPoint(p.x, p.y);
+      const target = over && over.closest ? over.closest(itemSelector) : null;
+      if (!target || target === item || target.parentElement !== container) return;
+      const rect = target.getBoundingClientRect();
+      const placeBefore = axis === 'x'
+        ? p.x < rect.left + rect.width / 2
+        : p.y < rect.top + rect.height / 2;
+      container.insertBefore(item, placeBefore ? target : target.nextElementSibling);
+    };
+
+    const end = () => {
+      clearTimer();
+      if (activeMove) {
+        document.removeEventListener('mousemove', activeMove);
+        document.removeEventListener('touchmove', activeMove);
+        activeMove = null;
+      }
+      if (activeEnd) {
+        document.removeEventListener('mouseup', activeEnd);
+        document.removeEventListener('touchend', activeEnd);
+        document.removeEventListener('touchcancel', activeEnd);
+        activeEnd = null;
+      }
+      if (!dragging) return;
+      dragging = false;
+      item.classList.remove('admin-dragging');
+      item.style.pointerEvents = '';
+      const newOrder = currentOrder();
+      if (moved && startOrder.join('|') !== newOrder.join('|') && typeof onReorder === 'function') {
+        onReorder(newOrder);
+      }
+    };
+
+    item.addEventListener('mousedown', start);
+    item.addEventListener('touchstart', start, { passive: true });
+    item.addEventListener('mouseup', end);
+    item.addEventListener('mouseleave', end);
+    item.addEventListener('touchend', end, { passive: true });
+    item.addEventListener('touchcancel', end, { passive: true });
+    item.addEventListener('contextmenu', (event) => event.preventDefault());
   });
 }
 
@@ -972,8 +1074,6 @@ function adminBindHome() {
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
-        { id: 'move-up', label: 'Сдвинуть вверх' },
-        { id: 'move-down', label: 'Сдвинуть вниз' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
@@ -1002,12 +1102,6 @@ function adminBindHome() {
             list[idx].text = value;
             renderHomeBanners();
           });
-          return;
-        }
-        if (action === 'move-up' || action === 'move-down') {
-          if (moveItemById(list, itemId, action === 'move-up' ? 'up' : 'down')) {
-            renderHomeBanners();
-          }
           return;
         }
         if (action === 'delete') {
@@ -1059,8 +1153,6 @@ function adminBindHome() {
       adminOpenActionSheet('Статья', [
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
-        { id: 'move-up', label: 'Сдвинуть вверх' },
-        { id: 'move-down', label: 'Сдвинуть вниз' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
@@ -1081,12 +1173,6 @@ function adminBindHome() {
             list[idx].text = value;
             renderHomeArticles();
           });
-          return;
-        }
-        if (action === 'move-up' || action === 'move-down') {
-          if (moveItemById(list, itemId, action === 'move-up' ? 'up' : 'down')) {
-            renderHomeArticles();
-          }
           return;
         }
         if (action === 'delete') {
@@ -1154,6 +1240,24 @@ function adminBindHome() {
       adminSaveDraft(true);
     });
   });
+
+  adminBindDragSort(ui.homeBannerTrack, '[data-banner-id]', {
+    axis: 'x',
+    onReorder: (orderedIds) => {
+      state.config.homeBanners = adminReorderByVisibleIds(state.config.homeBanners || [], orderedIds);
+      adminSaveDraft(true);
+      renderHomeBanners();
+    },
+  });
+
+  adminBindDragSort(ui.homeArticleTrack, '[data-article-id]', {
+    axis: 'x',
+    onReorder: (orderedIds) => {
+      state.config.homeArticles = adminReorderByVisibleIds(state.config.homeArticles || [], orderedIds);
+      adminSaveDraft(true);
+      renderHomeArticles();
+    },
+  });
 }
 
 function adminBindCategories() {
@@ -1166,8 +1270,6 @@ function adminBindCategories() {
       adminOpenActionSheet(`Категория: ${category.title}`, [
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
-        { id: 'move-up', label: 'Сдвинуть вверх' },
-        { id: 'move-down', label: 'Сдвинуть вниз' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
@@ -1187,12 +1289,6 @@ function adminBindCategories() {
           });
           return;
         }
-        if (action === 'move-up' || action === 'move-down') {
-          if (moveItemById(state.categories, category.id, action === 'move-up' ? 'up' : 'down')) {
-            renderCategories();
-          }
-          return;
-        }
         if (action === 'delete') {
           state.categories = state.categories.filter((c) => c.id !== category.id);
           state.products = state.products.filter((p) => p.categoryId !== category.id);
@@ -1200,6 +1296,14 @@ function adminBindCategories() {
         }
       });
     });
+  });
+
+  adminBindDragSort(ui.categoriesGrid, '[data-category]', {
+    onReorder: (orderedIds) => {
+      state.categories = adminReorderByVisibleIds(state.categories || [], orderedIds);
+      adminSaveDraft(true);
+      renderCategories();
+    },
   });
 }
 
@@ -1215,8 +1319,6 @@ function adminBindProducts() {
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-description', label: 'Редактировать описание' },
         { id: 'edit-price', label: 'Изменить цену' },
-        { id: 'move-up', label: 'Сдвинуть вверх' },
-        { id: 'move-down', label: 'Сдвинуть вниз' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
@@ -1253,18 +1355,20 @@ function adminBindProducts() {
           });
           return;
         }
-        if (action === 'move-up' || action === 'move-down') {
-          if (moveItemById(state.products, p.id, action === 'move-up' ? 'up' : 'down')) {
-            renderProducts();
-          }
-          return;
-        }
         if (action === 'delete') {
           state.products = state.products.filter((x) => x.id !== p.id);
           renderProducts();
         }
       });
     });
+  });
+
+  adminBindDragSort(ui.productsList, '[data-open]', {
+    onReorder: (orderedIds) => {
+      state.products = adminReorderByVisibleIds(state.products || [], orderedIds);
+      adminSaveDraft(true);
+      renderProducts();
+    },
   });
 }
 
@@ -1946,8 +2050,6 @@ function renderStores() {
         adminOpenActionSheet(`Адрес: ${store.city}`, [
           { id: 'edit-city', label: 'Изменить город' },
           { id: 'edit-address', label: 'Изменить полный адрес' },
-          { id: 'move-up', label: 'Сдвинуть вверх' },
-          { id: 'move-down', label: 'Сдвинуть вниз' },
           { id: 'delete', label: 'Удалить адрес', danger: true },
         ]).then((action) => {
           if (!action) return;
@@ -1972,14 +2074,6 @@ function renderStores() {
             });
             return;
           }
-          if (action === 'move-up' || action === 'move-down') {
-            if (moveItemById(state.stores, store.id, action === 'move-up' ? 'up' : 'down')) {
-              state.config.storeLocations = state.stores;
-              adminSaveDraft(true);
-              renderStores();
-            }
-            return;
-          }
           if (action === 'delete') {
             state.stores = state.stores.filter((item) => item.id !== store.id);
             if (!state.stores.length) state.stores = getFallbackStores();
@@ -1991,6 +2085,15 @@ function renderStores() {
           }
         });
       });
+    });
+    adminBindDragSort(ui.storesList, '[data-store-id]', {
+      onReorder: (orderedIds) => {
+        state.stores = adminReorderByVisibleIds(state.stores || [], orderedIds);
+        state.config.storeLocations = state.stores;
+        adminSaveDraft(true);
+        renderStores();
+        renderHeaderStore();
+      },
     });
   }
 }

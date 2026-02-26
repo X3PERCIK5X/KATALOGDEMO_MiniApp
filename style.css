@@ -1542,6 +1542,12 @@ img { max-width: 100%; display: block; }
   box-shadow: 0 0 0 2px rgba(255, 122, 69, 0.82) inset !important;
 }
 
+.admin-dragging {
+  opacity: 0.72;
+  transform: scale(0.985);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26);
+}
+
 .admin-edit-modal {
   position: fixed;
   inset: 0;
