@@ -731,12 +731,44 @@ async function fileToDataUrl(file) {
   });
 }
 
+async function fileToOptimizedDataUrl(file) {
+  const blobUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('img load failed'));
+      img.src = blobUrl;
+    });
+    const maxSide = 1280;
+    const width = Number(image.width || 0);
+    const height = Number(image.height || 0);
+    if (!width || !height) return fileToDataUrl(file);
+    const ratio = Math.min(1, maxSide / Math.max(width, height));
+    const targetW = Math.max(1, Math.round(width * ratio));
+    const targetH = Math.max(1, Math.round(height * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return fileToDataUrl(file);
+    ctx.drawImage(image, 0, 0, targetW, targetH);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    if (!dataUrl || !String(dataUrl).startsWith('data:image/')) return fileToDataUrl(file);
+    return dataUrl;
+  } catch {
+    return fileToDataUrl(file);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
+
 async function adminUploadImageFile(file) {
   if (!file) return null;
   const endpoint = getImageUploadEndpoint();
   if (!endpoint) {
     try {
-      const asDataUrl = await fileToDataUrl(file);
+      const asDataUrl = await fileToOptimizedDataUrl(file);
       if (!asDataUrl) {
         reportStatus('Не удалось прочитать фото');
         return null;
@@ -773,7 +805,7 @@ async function adminUploadImageFile(file) {
   } catch {
     // Авто-fallback: если сервер недоступен, вставляем локально, чтобы админка не блокировалась.
     try {
-      const asDataUrl = await fileToDataUrl(file);
+      const asDataUrl = await fileToOptimizedDataUrl(file);
       if (!asDataUrl) {
         reportStatus('Ошибка загрузки фото');
         return null;
@@ -1147,16 +1179,24 @@ function adminAddStoreTemplate() {
 
 function adminSaveDraft(silent = false) {
   const payload = adminBuildPayload();
-  localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
-  if (!silent) reportStatus('Черновик админки сохранен');
+  try {
+    localStorage.setItem(state.admin.draftKey, JSON.stringify(payload));
+    if (!silent) reportStatus('Черновик админки сохранен');
+  } catch {
+    reportStatus('Черновик не сохранен: переполнена память браузера');
+  }
 }
 
 function adminPublishToCatalog() {
   adminSaveDraft(true);
   const payload = adminBuildPayload();
-  localStorage.setItem(PUBLISHED_STATE_KEY, JSON.stringify(payload));
-  localStorage.setItem(PUBLISHED_STATE_TS_KEY, String(Date.now()));
-  reportStatus('Изменения выгружены в каталог');
+  try {
+    localStorage.setItem(PUBLISHED_STATE_KEY, JSON.stringify(payload));
+    localStorage.setItem(PUBLISHED_STATE_TS_KEY, String(Date.now()));
+    reportStatus('Изменения выгружены в каталог');
+  } catch {
+    reportStatus('Выгрузка не выполнена: переполнена память браузера');
+  }
 }
 
 function adminRestoreDraft() {
@@ -1717,21 +1757,25 @@ function loadStorage() {
 }
 
 function saveStorage() {
-  localStorage.setItem('demo_catalog_favorites', JSON.stringify(Array.from(state.favorites)));
-  localStorage.setItem('demo_catalog_cart', JSON.stringify(state.cart));
-  localStorage.setItem('demo_catalog_cart_selected', JSON.stringify(Array.from(state.selectedCart)));
-  localStorage.setItem('demo_catalog_fav_selected', JSON.stringify(Array.from(state.selectedFavorites)));
-  localStorage.setItem('demo_catalog_profile', JSON.stringify(state.profile));
-  localStorage.setItem('demo_catalog_orders', JSON.stringify(state.orders));
-  localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
-  localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
-  localStorage.setItem('demo_catalog_promo_kind', state.promoKind || '');
-  localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
-  localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
-  localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
-  localStorage.setItem('demo_catalog_promo_usage', JSON.stringify(state.promoUsage || {}));
-  localStorage.setItem('demo_catalog_product_stats', JSON.stringify(state.productStats || {}));
-  localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
+  try {
+    localStorage.setItem('demo_catalog_favorites', JSON.stringify(Array.from(state.favorites)));
+    localStorage.setItem('demo_catalog_cart', JSON.stringify(state.cart));
+    localStorage.setItem('demo_catalog_cart_selected', JSON.stringify(Array.from(state.selectedCart)));
+    localStorage.setItem('demo_catalog_fav_selected', JSON.stringify(Array.from(state.selectedFavorites)));
+    localStorage.setItem('demo_catalog_profile', JSON.stringify(state.profile));
+    localStorage.setItem('demo_catalog_orders', JSON.stringify(state.orders));
+    localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
+    localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
+    localStorage.setItem('demo_catalog_promo_kind', state.promoKind || '');
+    localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
+    localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
+    localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
+    localStorage.setItem('demo_catalog_promo_usage', JSON.stringify(state.promoUsage || {}));
+    localStorage.setItem('demo_catalog_product_stats', JSON.stringify(state.productStats || {}));
+    localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
+  } catch {
+    // Игнорируем, чтобы UI не падал при переполнении хранилища.
+  }
 }
 
 function applyTheme(theme) {
