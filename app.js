@@ -37,8 +37,11 @@ const state = {
   phoneAutofillSucceeded: false,
   admin: {
     enabled: false,
-    holdMs: 450,
+    holdMs: 4000,
     draftKey: 'demo_catalog_admin_draft_v1',
+    selectionMode: false,
+    selectedType: '',
+    selectedId: '',
     ui: {},
   },
 };
@@ -162,6 +165,11 @@ const ui = {
   headerStoreCity: document.getElementById('headerStoreCity'),
   headerSearchButton: document.getElementById('headerSearchButton'),
   adminHeaderActions: document.getElementById('adminHeaderActions'),
+  adminSelectToggleButton: document.getElementById('adminSelectToggleButton'),
+  adminMoveUpButton: document.getElementById('adminMoveUpButton'),
+  adminMoveDownButton: document.getElementById('adminMoveDownButton'),
+  adminMoveLeftButton: document.getElementById('adminMoveLeftButton'),
+  adminMoveRightButton: document.getElementById('adminMoveRightButton'),
   adminSaveDraftButton: document.getElementById('adminSaveDraftButton'),
   adminPublishButton: document.getElementById('adminPublishButton'),
   storeAddButton: document.getElementById('storeAddButton'),
@@ -937,14 +945,18 @@ function adminAddArticleTemplate() {
 }
 
 function adminAddCategoryTemplate() {
-  state.categories.unshift({
+  if (!state.currentGroup) state.currentGroup = 'apparel';
+  const newCategory = {
     id: `catalog-${Date.now()}`,
     groupId: state.currentGroup || 'apparel',
     title: 'Новая категория',
     image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=70',
-  });
+  };
+  state.categories.unshift(newCategory);
+  state.currentCategory = newCategory.id;
   adminSaveDraft(true);
   renderCategories();
+  reportStatus('Новая категория добавлена');
 }
 
 function adminAddProductTemplate() {
@@ -1481,6 +1493,15 @@ function adminBuildPanel() {
 function applyAdminModeUi() {
   document.body.classList.toggle('admin-mode', state.admin.enabled);
   if (ui.adminHeaderActions) ui.adminHeaderActions.classList.toggle('hidden', !state.admin.enabled);
+  if (ui.adminSelectToggleButton) {
+    ui.adminSelectToggleButton.classList.toggle('active', state.admin.enabled && state.admin.selectionMode);
+    ui.adminSelectToggleButton.textContent = state.admin.selectionMode ? 'Выделение: вкл' : 'Выделить';
+  }
+  const canMove = state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId;
+  [ui.adminMoveUpButton, ui.adminMoveDownButton, ui.adminMoveLeftButton, ui.adminMoveRightButton].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = !canMove;
+  });
   if (!state.admin.enabled) return;
   if (ui.cartButton) ui.cartButton.classList.add('admin-hidden-nav');
   if (ui.favoritesButton) ui.favoritesButton.classList.add('admin-hidden-nav');
@@ -1719,10 +1740,96 @@ function updateBadges() {
   ui.favoritesCount.textContent = state.favorites.size;
 }
 
-function renderCategories() {
+function getVisibleCategories() {
+  if (state.admin.enabled) {
+    if (state.currentGroup) return state.categories.filter((c) => c.groupId === state.currentGroup);
+    return state.categories.slice();
+  }
   const available = new Set(state.products.map((p) => p.categoryId));
   const filtered = state.categories.filter((c) => c.groupId === state.currentGroup && (available.size === 0 || available.has(c.id)));
-  const list = filtered.length ? filtered : state.categories.filter((c) => available.has(c.id));
+  return filtered.length ? filtered : state.categories.filter((c) => available.has(c.id));
+}
+
+function getVisibleProducts() {
+  const base = state.currentCategoryIds
+    ? state.products.filter((p) => state.currentCategoryIds.includes(p.categoryId))
+    : state.products.filter((p) => p.categoryId === state.currentCategory);
+  return applyFilters(base, state.filters.products);
+}
+
+function adminClearSelection() {
+  state.admin.selectedType = '';
+  state.admin.selectedId = '';
+}
+
+function adminToggleSelectionMode() {
+  state.admin.selectionMode = !state.admin.selectionMode;
+  if (!state.admin.selectionMode) adminClearSelection();
+  applyAdminModeUi();
+  if (state.currentScreen === 'categories') renderCategories();
+  if (state.currentScreen === 'products') renderProducts();
+  reportStatus(state.admin.selectionMode ? 'Режим выделения включен' : 'Режим выделения выключен');
+}
+
+function adminSelectItem(type, id) {
+  if (!state.admin.selectionMode) return;
+  state.admin.selectedType = type;
+  state.admin.selectedId = id;
+  applyAdminModeUi();
+  if (type === 'category') renderCategories();
+  if (type === 'product') renderProducts();
+}
+
+function adminMoveSelected(direction) {
+  if (!state.admin.selectionMode || !state.admin.selectedType || !state.admin.selectedId) {
+    reportStatus('Сначала включите "Выделить" и выберите элемент');
+    return;
+  }
+
+  if (state.admin.selectedType === 'category') {
+    const visible = getVisibleCategories();
+    const ids = visible.map((item) => item.id);
+    const fromIdx = ids.indexOf(state.admin.selectedId);
+    if (fromIdx < 0) return;
+    const step = direction === 'up' ? -2 : direction === 'down' ? 2 : direction === 'left' ? -1 : 1;
+    const toIdx = Math.max(0, Math.min(ids.length - 1, fromIdx + step));
+    if (toIdx === fromIdx) return;
+    const toId = ids[toIdx];
+    const absFrom = state.categories.findIndex((item) => item.id === state.admin.selectedId);
+    const absTo = state.categories.findIndex((item) => item.id === toId);
+    if (absFrom < 0 || absTo < 0) return;
+    const tmp = state.categories[absFrom];
+    state.categories[absFrom] = state.categories[absTo];
+    state.categories[absTo] = tmp;
+    adminSaveDraft(true);
+    renderCategories();
+    reportStatus('Порядок категорий обновлен');
+    return;
+  }
+
+  if (state.admin.selectedType === 'product') {
+    const visible = getVisibleProducts();
+    const ids = visible.map((item) => item.id);
+    const fromIdx = ids.indexOf(state.admin.selectedId);
+    if (fromIdx < 0) return;
+    const step = (direction === 'up' || direction === 'left') ? -1 : 1;
+    const toIdx = Math.max(0, Math.min(ids.length - 1, fromIdx + step));
+    if (toIdx === fromIdx) return;
+    const toId = ids[toIdx];
+    const absFrom = state.products.findIndex((item) => item.id === state.admin.selectedId);
+    const absTo = state.products.findIndex((item) => item.id === toId);
+    if (absFrom < 0 || absTo < 0) return;
+    const tmp = state.products[absFrom];
+    state.products[absFrom] = state.products[absTo];
+    state.products[absTo] = tmp;
+    adminSaveDraft(true);
+    renderProducts();
+    reportStatus('Порядок товаров обновлен');
+  }
+}
+
+function renderCategories() {
+  const list = getVisibleCategories();
   if (!list.length) {
     ui.categoriesGrid.innerHTML = `
       <div class="empty-state">
@@ -1735,8 +1842,11 @@ function renderCategories() {
   const categoryCards = list.map((c) => {
     const firstProduct = state.products.find((p) => p.categoryId === c.id);
     const image = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : c.image;
+    const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && state.admin.selectedId === c.id
+      ? ' admin-selected-target'
+      : '';
     return `
-    <button class="category-card" data-category="${c.id}">
+    <button class="category-card${selectedClass}" data-category="${c.id}">
       <img src="${safeSrc(image)}" alt="${c.title}" loading="lazy" decoding="async" />
       <span>${c.title}</span>
     </button>
@@ -1762,7 +1872,7 @@ function buildProductCards(list, options = {}) {
     const promoNew = promoMode ? discountedPrice(p, 10) : null;
     const showPromo = promoMode && hasValidPrice;
     return `
-    <article class="product-card" data-open="${p.id}">
+    <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && state.admin.selectedId === p.id ? ' admin-selected-target' : ''}" data-open="${p.id}">
       ${showPromo ? `<div class="promo-badge promo-badge-inline">-10%</div>` : ''}
       <button class="card-icon favorite ${state.favorites.has(p.id) ? 'active' : ''}" data-favorite="${p.id}" aria-label="В избранное">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1820,10 +1930,7 @@ function applyFilters(list, filter) {
 }
 
 function renderProducts() {
-  const base = state.currentCategoryIds
-    ? state.products.filter((p) => state.currentCategoryIds.includes(p.categoryId))
-    : state.products.filter((p) => p.categoryId === state.currentCategory);
-  const list = applyFilters(base, state.filters.products);
+  const list = getVisibleProducts();
   if (!list.length) {
     ui.productsList.innerHTML = `
       <div class="empty-state">
@@ -2571,6 +2678,26 @@ function bindEvents() {
     if (!state.admin.enabled) return;
     adminSaveDraft();
   });
+  on(ui.adminSelectToggleButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminToggleSelectionMode();
+  });
+  on(ui.adminMoveUpButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminMoveSelected('up');
+  });
+  on(ui.adminMoveDownButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminMoveSelected('down');
+  });
+  on(ui.adminMoveLeftButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminMoveSelected('left');
+  });
+  on(ui.adminMoveRightButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminMoveSelected('right');
+  });
   on(ui.adminPublishButton, 'click', () => {
     if (!state.admin.enabled) return;
     adminPublishToCatalog();
@@ -2779,6 +2906,15 @@ function bindEvents() {
   }
 
   on(ui.categoriesGrid, 'click', (e) => {
+    if (state.admin.enabled && state.admin.selectionMode) {
+      const btn = e.target.closest('[data-category]');
+      if (btn) {
+        adminSelectItem('category', btn.dataset.category || '');
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (state.admin.enabled) return;
     const screenBtn = e.target.closest('[data-open-screen]');
     if (screenBtn) {
@@ -2803,6 +2939,15 @@ function bindEvents() {
   });
 
   on(ui.productsList, 'click', (e) => {
+    if (state.admin.enabled && state.admin.selectionMode) {
+      const card = e.target.closest('[data-open]');
+      if (card) {
+        adminSelectItem('product', card.dataset.open || '');
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (state.admin.enabled) return;
     const btn = e.target.closest('button');
     if (btn && btn.dataset.favorite) {

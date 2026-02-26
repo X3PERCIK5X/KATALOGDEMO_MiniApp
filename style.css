@@ -1637,6 +1637,7 @@ img { max-width: 100%; display: block; }
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .admin-header-button {
@@ -1657,15 +1658,30 @@ img { max-width: 100%; display: block; }
   color: #fff;
 }
 
+.admin-header-button.active {
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+  border-color: #f08f52;
+  color: #fff;
+}
+
+.admin-header-arrow {
+  min-width: 36px;
+  padding: 6px 8px;
+}
+
+.admin-header-arrow:disabled {
+  opacity: 0.45;
+}
+
 .admin-actions-modal {
   position: fixed;
   inset: 0;
   z-index: 130;
   background: rgba(5, 8, 16, 0.76);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: calc(env(safe-area-inset-top) + 14px) 12px calc(env(safe-area-inset-bottom) + 18px);
 }
 
 .admin-actions-card {
@@ -1674,6 +1690,12 @@ img { max-width: 100%; display: block; }
   border-radius: 16px;
   background: #121a2b;
   padding: 10px;
+  max-height: min(78dvh, 720px);
+  overflow: auto;
+}
+
+.admin-selected-target {
+  box-shadow: 0 0 0 3px rgba(228, 106, 44, 0.95), 0 12px 26px rgba(0, 0, 0, 0.3) !important;
 }
 
 .admin-actions-title {
