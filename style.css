@@ -242,7 +242,9 @@ img { max-width: 100%; display: block; }
   margin-top: 8px;
 }
 .promo-row-home .promo-track {
-  gap: 8px;
+  --home-cards-per-row: 4;
+  --home-cards-gap: 10px;
+  gap: var(--home-cards-gap);
 }
 .promo-track {
   display: flex;
@@ -265,7 +267,9 @@ img { max-width: 100%; display: block; }
   flex-direction: column;
 }
 .promo-row-home .promo-card {
-  flex: 0 0 calc((100% - 24px) / 4);
+  flex: 0 0 calc((100% - (var(--home-cards-per-row) - 1) * var(--home-cards-gap)) / var(--home-cards-per-row));
+  max-width: calc((100% - (var(--home-cards-per-row) - 1) * var(--home-cards-gap)) / var(--home-cards-per-row));
+  min-width: calc((100% - (var(--home-cards-per-row) - 1) * var(--home-cards-gap)) / var(--home-cards-per-row));
   border-radius: 12px;
 }
 .promo-row-home .promo-card img {
@@ -298,6 +302,13 @@ img { max-width: 100%; display: block; }
   font-size: 10px;
   top: 6px;
   right: 6px;
+}
+
+@media (max-width: 430px) {
+  .promo-row-home .promo-track {
+    --home-cards-per-row: 3;
+    --home-cards-gap: 8px;
+  }
 }
 .promo-badge {
   position: absolute;
