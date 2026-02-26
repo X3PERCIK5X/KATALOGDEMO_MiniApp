@@ -3999,6 +3999,37 @@ body.admin-mode .admin-inline-plus {
   z-index: 3;
 }
 
+.admin-catalog-controls {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+body.admin-mode .admin-catalog-controls {
+  display: inline-flex;
+}
+
+.admin-catalog-select {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f6f8ff;
+  border-radius: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-catalog-select.active {
+  color: #ffffff;
+  border-color: #f08f52;
+  background: linear-gradient(135deg, #e46a2c, #f08f52);
+}
+
 .section-title-admin {
   display: flex;
   align-items: center;
@@ -4090,6 +4121,12 @@ html[data-theme="light"] .admin-inline-plus {
   color: #ffffff;
   border-color: #e46a2c;
   background: linear-gradient(135deg, #e46a2c, #f08f52);
+}
+
+html[data-theme="light"] .admin-catalog-select {
+  color: #162033;
+  border-color: rgba(18, 42, 62, 0.22);
+  background: #ffffff;
 }
 
 html[data-theme="light"] .admin-inline-move {

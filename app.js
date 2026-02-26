@@ -1617,14 +1617,17 @@ function adminBuildPanel() {
 function applyAdminModeUi() {
   document.body.classList.toggle('admin-mode', state.admin.enabled);
   if (ui.adminHeaderActions) ui.adminHeaderActions.classList.toggle('hidden', !state.admin.enabled);
-  if (ui.adminSelectToggleButton) {
-    ui.adminSelectToggleButton.classList.toggle('active', state.admin.enabled && state.admin.selectionMode);
-    ui.adminSelectToggleButton.textContent = state.admin.selectionMode ? 'Выделение: вкл' : 'Выделить';
-  }
-  const canMove = state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId;
-  [ui.adminMoveUpButton, ui.adminMoveDownButton, ui.adminMoveLeftButton, ui.adminMoveRightButton].forEach((btn) => {
-    if (!btn) return;
-    btn.disabled = !canMove;
+  const selectButtons = Array.from(document.querySelectorAll('[data-admin-select-toggle]'));
+  selectButtons.forEach((btn) => {
+    const scope = String(btn.dataset.adminSelectToggle || '');
+    const active = state.admin.enabled && state.admin.selectionMode && scope === state.admin.selectedType;
+    btn.classList.toggle('active', active);
+    btn.textContent = active ? 'Выделение: вкл' : 'Выделить';
+  });
+  const moveButtons = Array.from(document.querySelectorAll('[data-admin-move]'));
+  moveButtons.forEach((btn) => {
+    const scope = String(btn.dataset.adminMoveScope || '');
+    btn.disabled = !(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType);
   });
   if (!state.admin.enabled) return;
   if (ui.cartButton) ui.cartButton.classList.add('admin-hidden-nav');
@@ -1886,9 +1889,13 @@ function adminClearSelection() {
   state.admin.selectedId = '';
 }
 
-function adminToggleSelectionMode() {
+function adminToggleSelectionMode(scope = '') {
   state.admin.selectionMode = !state.admin.selectionMode;
   if (!state.admin.selectionMode) adminClearSelection();
+  if (state.admin.selectionMode && scope) {
+    state.admin.selectedType = scope;
+    state.admin.selectedId = '';
+  }
   applyAdminModeUi();
   if (state.currentScreen === 'categories') renderCategories();
   if (state.currentScreen === 'products') renderProducts();
@@ -2931,6 +2938,44 @@ function bindEvents() {
     e.preventDefault();
     e.stopPropagation();
     handleAdminInlineAdd(addBtn.dataset.adminAdd || '');
+  });
+
+  on(document, 'click', (e) => {
+    const selectBtn = e.target.closest('[data-admin-select-toggle]');
+    if (!selectBtn || !state.admin.enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const scope = String(selectBtn.dataset.adminSelectToggle || '');
+    if (!scope) return;
+    const shouldDisable = state.admin.selectionMode && state.admin.selectedType === scope;
+    if (shouldDisable) {
+      state.admin.selectionMode = false;
+      adminClearSelection();
+      applyAdminModeUi();
+      if (state.currentScreen === 'categories') renderCategories();
+      if (state.currentScreen === 'products') renderProducts();
+      reportStatus('Режим выделения выключен');
+      return;
+    }
+    if (!state.admin.selectionMode) adminToggleSelectionMode(scope);
+    else {
+      state.admin.selectedType = scope;
+      state.admin.selectedId = '';
+      applyAdminModeUi();
+      if (state.currentScreen === 'categories') renderCategories();
+      if (state.currentScreen === 'products') renderProducts();
+      reportStatus('Выберите элемент для перемещения');
+    }
+  });
+
+  on(document, 'click', (e) => {
+    const moveBtn = e.target.closest('[data-admin-move]');
+    if (!moveBtn || !state.admin.enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const direction = String(moveBtn.dataset.adminMove || '');
+    if (!direction) return;
+    adminMoveSelected(direction);
   });
 
   on(document, 'click', (e) => {

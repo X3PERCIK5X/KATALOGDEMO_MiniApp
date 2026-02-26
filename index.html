@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260226-21" />
+    <link rel="stylesheet" href="style.css?v=20260226-22" />
   </head>
   <body>
     <header class="header">
@@ -16,11 +16,6 @@
         <div class="brand-logo-line" aria-hidden="true"></div>
       </div>
       <div id="adminHeaderActions" class="admin-header-actions hidden">
-        <button id="adminSelectToggleButton" class="admin-header-button" type="button">Выделить</button>
-        <button id="adminMoveUpButton" class="admin-header-button admin-header-arrow" type="button" aria-label="Вверх">↑</button>
-        <button id="adminMoveDownButton" class="admin-header-button admin-header-arrow" type="button" aria-label="Вниз">↓</button>
-        <button id="adminMoveLeftButton" class="admin-header-button admin-header-arrow" type="button" aria-label="Влево">←</button>
-        <button id="adminMoveRightButton" class="admin-header-button admin-header-arrow" type="button" aria-label="Вправо">→</button>
         <button id="adminSaveDraftButton" class="admin-header-button" type="button">Сохранить</button>
         <button id="adminPublishButton" class="admin-header-button admin-header-button-primary" type="button">Выгрузить в каталог</button>
       </div>
@@ -117,7 +112,14 @@
       <section id="screen-categories" class="screen">
         <div class="screen-head">
           <h2 id="categoriesTitle">Каталог</h2>
-          <button class="admin-inline-plus" data-admin-add="category" type="button" aria-label="Добавить категорию">+</button>
+          <div class="admin-catalog-controls" data-admin-controls="category">
+            <button class="admin-catalog-select" data-admin-select-toggle="category" type="button">Выделить</button>
+            <button class="admin-inline-move" data-admin-move="up" data-admin-move-scope="category" type="button" aria-label="Вверх">↑</button>
+            <button class="admin-inline-move" data-admin-move="down" data-admin-move-scope="category" type="button" aria-label="Вниз">↓</button>
+            <button class="admin-inline-move" data-admin-move="left" data-admin-move-scope="category" type="button" aria-label="Влево">←</button>
+            <button class="admin-inline-move" data-admin-move="right" data-admin-move-scope="category" type="button" aria-label="Вправо">→</button>
+            <button class="admin-inline-plus" data-admin-add="category" type="button" aria-label="Добавить категорию">+</button>
+          </div>
         </div>
         <div id="categoriesGrid" class="category-grid"></div>
       </section>
@@ -151,7 +153,14 @@
         <div class="screen-head">
           <button class="back-button icon-only" data-back="categories" aria-label="Назад">←</button>
           <h2 id="productsTitle">Категория</h2>
-          <button class="admin-inline-plus" data-admin-add="product" type="button" aria-label="Добавить товар">+</button>
+          <div class="admin-catalog-controls" data-admin-controls="product">
+            <button class="admin-catalog-select" data-admin-select-toggle="product" type="button">Выделить</button>
+            <button class="admin-inline-move" data-admin-move="up" data-admin-move-scope="product" type="button" aria-label="Вверх">↑</button>
+            <button class="admin-inline-move" data-admin-move="down" data-admin-move-scope="product" type="button" aria-label="Вниз">↓</button>
+            <button class="admin-inline-move" data-admin-move="left" data-admin-move-scope="product" type="button" aria-label="Влево">←</button>
+            <button class="admin-inline-move" data-admin-move="right" data-admin-move-scope="product" type="button" aria-label="Вправо">→</button>
+            <button class="admin-inline-plus" data-admin-add="product" type="button" aria-label="Добавить товар">+</button>
+          </div>
         </div>
         <div class="filter-bar filter-bar-sticky">
           <input id="productsSearch" class="filter-input" type="search" placeholder="Поиск по названию" />
@@ -491,6 +500,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260226-21"></script>
+    <script src="app.js?v=20260226-22"></script>
   </body>
 </html>
