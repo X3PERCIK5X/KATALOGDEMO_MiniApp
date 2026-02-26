@@ -679,6 +679,10 @@ function getImageUploadEndpoint() {
     || state.config?.uploadEndpoint
     || ''
   ).trim();
+  if (!endpoint) return '';
+  const lower = endpoint.toLowerCase();
+  // Игнорируем явные заглушки, чтобы не ломать загрузку фото в админке.
+  if (lower.includes('example.com') || lower.includes('your-domain')) return '';
   return endpoint;
 }
 
@@ -718,17 +722,21 @@ function extractUploadedImageUrl(payload) {
   return '';
 }
 
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function adminUploadImageFile(file) {
   if (!file) return null;
   const endpoint = getImageUploadEndpoint();
   if (!endpoint) {
     try {
-      const asDataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('read failed'));
-        reader.readAsDataURL(file);
-      });
+      const asDataUrl = await fileToDataUrl(file);
       if (!asDataUrl) {
         reportStatus('Не удалось прочитать фото');
         return null;
@@ -748,10 +756,7 @@ async function adminUploadImageFile(file) {
       method: 'POST',
       body: form,
     });
-    if (!response.ok) {
-      reportStatus(`Ошибка загрузки фото: HTTP ${response.status}`);
-      return null;
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const contentType = String(response.headers.get('content-type') || '').toLowerCase();
     let payload = null;
     if (contentType.includes('application/json')) {
@@ -761,14 +766,24 @@ async function adminUploadImageFile(file) {
     }
     const imageUrl = extractUploadedImageUrl(payload);
     if (!imageUrl) {
-      reportStatus('Сервер не вернул ссылку на фото');
-      return null;
+      throw new Error('empty upload url');
     }
     reportStatus('Фото загружено');
     return imageUrl;
-  } catch (error) {
-    reportStatus('Ошибка загрузки фото. Проверьте endpoint');
-    return null;
+  } catch {
+    // Авто-fallback: если сервер недоступен, вставляем локально, чтобы админка не блокировалась.
+    try {
+      const asDataUrl = await fileToDataUrl(file);
+      if (!asDataUrl) {
+        reportStatus('Ошибка загрузки фото');
+        return null;
+      }
+      reportStatus('Сервер недоступен, фото добавлено локально');
+      return asDataUrl;
+    } catch {
+      reportStatus('Ошибка загрузки фото');
+      return null;
+    }
   }
 }
 
