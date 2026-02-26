@@ -2046,7 +2046,8 @@ function renderCategories() {
   }
   const categoryCards = list.map((c) => {
     const firstProduct = state.products.find((p) => p.categoryId === c.id);
-    const image = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : c.image;
+    const fallbackProductImage = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : '';
+    const image = String(c.image || '').trim() || fallbackProductImage;
     const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && state.admin.selectedId === c.id
       ? ' admin-selected-target'
       : '';
