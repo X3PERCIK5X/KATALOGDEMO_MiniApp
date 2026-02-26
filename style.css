@@ -1935,7 +1935,7 @@ html {
 }
 
 .home-banner-slider {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .home-banner-track {
@@ -1949,23 +1949,29 @@ html {
 }
 
 .home-banner-dots {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  position: relative;
+  z-index: 6;
+  padding-bottom: 4px;
 }
 
 .home-banner-dots .dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 1px solid var(--stroke);
-  background: rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.34);
+  cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease, background-color 0.18s ease;
 }
 
 .home-banner-dots .dot.active {
   background: #f78fd5;
   border-color: #f78fd5;
+  transform: scale(1.08);
 }
 
 .featured-promo {
