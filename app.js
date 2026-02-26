@@ -1968,6 +1968,7 @@ function startHomeBannerAutoplay() {
     window.clearInterval(state.homeBannerTimer);
     state.homeBannerTimer = null;
   }
+  if (state.admin.enabled) return;
   if (!ui.homeBannerTrack) return;
   const slidesCount = ui.homeBannerTrack.children.length || 1;
   if (slidesCount <= 1) return;
