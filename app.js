@@ -958,10 +958,17 @@ function adminBindHold(el, handler) {
   if (!state.admin.enabled || !el || el.dataset.adminEditBound === '1') return;
   el.dataset.adminEditBound = '1';
   let lastTouchTs = 0;
+  const flashTarget = () => {
+    el.classList.remove('admin-doubletap-flash');
+    void el.offsetWidth;
+    el.classList.add('admin-doubletap-flash');
+    window.setTimeout(() => el.classList.remove('admin-doubletap-flash'), 520);
+  };
 
   el.addEventListener('dblclick', (event) => {
     event.preventDefault();
     event.stopPropagation();
+    flashTarget();
     handler();
   });
 
@@ -971,6 +978,7 @@ function adminBindHold(el, handler) {
       event.preventDefault();
       event.stopPropagation();
       lastTouchTs = 0;
+      flashTarget();
       handler();
       return;
     }
@@ -1381,6 +1389,15 @@ function adminBindCategories() {
         }
       });
     });
+    const title = card.querySelector('span');
+    adminBindHold(title, () => {
+      adminEditValue(`Название категории ${category.title}`, category.title || '').then((value) => {
+        if (value == null || value.__delete) return;
+        category.title = value;
+        renderCategories();
+        adminSaveDraft(true);
+      });
+    });
   });
 
 }
@@ -1445,6 +1462,15 @@ function adminBindProducts() {
           state.products = state.products.filter((x) => x.id !== p.id);
           renderProducts();
         }
+      });
+    });
+    const title = card.querySelector('.product-title');
+    adminBindHold(title, () => {
+      adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
+        if (value == null || value.__delete) return;
+        p.title = value;
+        renderProducts();
+        adminSaveDraft(true);
       });
     });
   });
