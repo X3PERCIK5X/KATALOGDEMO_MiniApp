@@ -2541,6 +2541,7 @@ function bindEvents() {
     adminPublishToCatalog();
   });
   on(ui.headerStoreButton, 'click', () => {
+    if (state.admin.enabled) return;
     renderStores();
     setScreen('stores');
   });
@@ -2660,6 +2661,7 @@ function bindEvents() {
   on(document, 'click', (e) => {
     const btn = e.target.closest('[data-screen]');
     if (!btn) return;
+    if (state.admin.enabled) return;
     const target = btn.dataset.screen;
     if (!target) return;
     setScreen(target);
@@ -2683,6 +2685,7 @@ function bindEvents() {
 
   if (ui.menuCatalogList) {
     ui.menuCatalogList.addEventListener('click', (e) => {
+      if (state.admin.enabled) return;
       const subItem = e.target.closest('[data-menu-subitem]');
       if (subItem) {
         let id = subItem.dataset.category;
@@ -2741,6 +2744,7 @@ function bindEvents() {
   }
 
   on(ui.categoriesGrid, 'click', (e) => {
+    if (state.admin.enabled) return;
     const screenBtn = e.target.closest('[data-open-screen]');
     if (screenBtn) {
       const target = screenBtn.dataset.openScreen;
@@ -2753,6 +2757,7 @@ function bindEvents() {
   });
 
   on(ui.storesList, 'click', (e) => {
+    if (state.admin.enabled) return;
     const btn = e.target.closest('[data-store-id]');
     if (!btn) return;
     state.selectedStoreId = btn.dataset.storeId;
@@ -2763,6 +2768,7 @@ function bindEvents() {
   });
 
   on(ui.productsList, 'click', (e) => {
+    if (state.admin.enabled) return;
     const btn = e.target.closest('button');
     if (btn && btn.dataset.favorite) {
       toggleFavorite(btn.dataset.favorite);
@@ -2834,6 +2840,7 @@ function bindEvents() {
   });
 
   on(ui.promoList, 'click', (e) => {
+    if (state.admin.enabled) return;
     const btn = e.target.closest('button');
     if (btn && btn.dataset.favorite) {
       toggleFavorite(btn.dataset.favorite);
@@ -2876,6 +2883,7 @@ function bindEvents() {
   });
 
   on(ui.promoTrack, 'click', (e) => {
+    if (state.admin.enabled) return;
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
@@ -2885,6 +2893,7 @@ function bindEvents() {
   });
 
   on(ui.homePopularTrack, 'click', (e) => {
+    if (state.admin.enabled) return;
     const card = e.target.closest('[data-open]');
     if (!card) return;
     state.currentProduct = card.dataset.open;
@@ -2900,10 +2909,12 @@ function bindEvents() {
 
 
   on(ui.homeProductionButton, 'click', () => {
+    if (state.admin.enabled) return;
     setScreen('production');
   });
 
   on(ui.productView, 'click', (e) => {
+    if (state.admin.enabled) return;
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {
@@ -2998,6 +3009,7 @@ function bindEvents() {
   });
 
   on(ui.cartList, 'click', (e) => {
+    if (state.admin.enabled) return;
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {

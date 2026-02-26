@@ -3929,7 +3929,7 @@ html[data-theme="light"] .admin-edit-actions {
 }
 
 body.admin-mode .admin-inline-plus {
-  display: inline-flex;
+  display: inline-flex !important;
 }
 
 .home-feature-wrap {
@@ -3987,7 +3987,20 @@ body:not(.admin-mode) .admin-add-row {
 }
 
 body.admin-mode .admin-inline-move {
-  display: inline-flex;
+  display: inline-flex !important;
+}
+
+body.admin-mode .admin-add-row {
+  display: flex !important;
+  position: relative;
+  z-index: 6;
+}
+
+body.admin-mode .admin-inline-plus,
+body.admin-mode .admin-inline-move {
+  opacity: 1;
+  visibility: visible;
+  border-width: 2px;
 }
 
 html[data-theme="light"] .admin-inline-plus {
