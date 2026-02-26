@@ -740,10 +740,8 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
       saveBtn.removeEventListener('click', onSave);
       deleteBtn.removeEventListener('click', onDelete);
       hideKbBtn.removeEventListener('click', onHideKeyboard);
-      [hideKbBtn, cancelBtn, deleteBtn, saveBtn].forEach((btn) => {
-        btn.removeEventListener('touchstart', onHideKeyboard);
-        btn.removeEventListener('mousedown', onHideKeyboard);
-      });
+      hideKbBtn.removeEventListener('touchstart', onHideKeyboard);
+      hideKbBtn.removeEventListener('mousedown', onHideKeyboard);
       modal.removeEventListener('click', onOverlay);
       resolve(value);
     };
@@ -775,10 +773,8 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
     saveBtn.addEventListener('click', onSave);
     deleteBtn.addEventListener('click', onDelete);
     hideKbBtn.addEventListener('click', onHideKeyboard);
-    [hideKbBtn, cancelBtn, deleteBtn, saveBtn].forEach((btn) => {
-      btn.addEventListener('touchstart', onHideKeyboard, { passive: true });
-      btn.addEventListener('mousedown', onHideKeyboard);
-    });
+    hideKbBtn.addEventListener('touchstart', onHideKeyboard, { passive: true });
+    hideKbBtn.addEventListener('mousedown', onHideKeyboard);
     modal.addEventListener('click', onOverlay);
   });
 }
