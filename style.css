@@ -3672,6 +3672,26 @@ body.admin-mode .bottom-nav {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+/* В админке запрещаем выделение текста в интерфейсе,
+   чтобы long-press не вызывал системное выделение поверх меню. */
+body.admin-mode,
+body.admin-mode *:not(input):not(textarea):not([contenteditable="true"]) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Ввод нового текста оставляем редактируемым и выделяемым. */
+body.admin-mode input,
+body.admin-mode textarea,
+body.admin-mode [contenteditable="true"],
+.admin-edit-input,
+.admin-edit-textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .admin-analytics-card,
 .admin-month-card,
 .admin-order-card {
