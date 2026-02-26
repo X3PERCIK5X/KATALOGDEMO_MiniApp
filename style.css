@@ -3955,6 +3955,12 @@ body.admin-mode .admin-inline-plus {
   margin: 8px 0 12px;
   display: flex;
   justify-content: center;
+  gap: 8px;
+}
+
+.home-blocks {
+  display: grid;
+  gap: 2px;
 }
 
 body:not(.admin-mode) .admin-add-row {
@@ -3966,7 +3972,31 @@ body:not(.admin-mode) .admin-add-row {
   height: 34px;
 }
 
+.admin-inline-move {
+  display: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+body.admin-mode .admin-inline-move {
+  display: inline-flex;
+}
+
 html[data-theme="light"] .admin-inline-plus {
+  color: #1c2735;
+  border-color: rgba(18, 42, 62, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+html[data-theme="light"] .admin-inline-move {
   color: #1c2735;
   border-color: rgba(18, 42, 62, 0.2);
   background: rgba(255, 255, 255, 0.9);

@@ -39,9 +39,6 @@ const state = {
     enabled: false,
     holdMs: 450,
     draftKey: 'demo_catalog_admin_draft_v1',
-    tapKey: '',
-    tapCount: 0,
-    tapTs: 0,
     ui: {},
   },
 };
@@ -149,6 +146,7 @@ const ui = {
   contactsCard: document.getElementById('contactsCard'),
   productionText: document.getElementById('productionText'),
   productionTrack: document.getElementById('productionTrack'),
+  homeBlocks: document.getElementById('homeBlocks'),
   homeBannerTrack: document.getElementById('homeBannerTrack'),
   homeBannerDots: document.getElementById('homeBannerDots'),
   promoTrack: document.getElementById('promoTrack'),
@@ -224,6 +222,7 @@ const FIRST_ORDER_PROMO = {
 const ADMIN_MARGIN_RATE = 0.3;
 const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
 const PUBLISHED_STATE_TS_KEY = 'demo_catalog_published_state_ts_v1';
+const HOME_BLOCK_DEFAULT_ORDER = ['banners', 'articles', 'promo', 'popular'];
 
 function getTelegramUser() {
   return window.HORECA_TG?.initDataUnsafe?.user || {};
@@ -558,6 +557,41 @@ function normalizeHomeArticles(list) {
     .filter((item) => item.title && item.text && item.screen);
 }
 
+function normalizeHomeBlockOrder(list) {
+  const source = Array.isArray(list) ? list.map((item) => String(item || '')) : [];
+  const unique = [];
+  source.forEach((item) => {
+    if (HOME_BLOCK_DEFAULT_ORDER.includes(item) && !unique.includes(item)) unique.push(item);
+  });
+  HOME_BLOCK_DEFAULT_ORDER.forEach((item) => {
+    if (!unique.includes(item)) unique.push(item);
+  });
+  return unique;
+}
+
+function applyHomeBlockOrder() {
+  if (!ui.homeBlocks) return;
+  const order = normalizeHomeBlockOrder(state.config.homeBlockOrder);
+  state.config.homeBlockOrder = order;
+  order.forEach((blockId) => {
+    const block = ui.homeBlocks.querySelector(`[data-home-block="${blockId}"]`);
+    if (block) ui.homeBlocks.appendChild(block);
+  });
+}
+
+function adminMoveHomeBlock(blockId, direction) {
+  const order = normalizeHomeBlockOrder(state.config.homeBlockOrder);
+  const from = order.indexOf(blockId);
+  if (from < 0) return;
+  const to = direction === 'up' ? from - 1 : from + 1;
+  if (to < 0 || to >= order.length) return;
+  const [item] = order.splice(from, 1);
+  order.splice(to, 0, item);
+  state.config.homeBlockOrder = order;
+  applyHomeBlockOrder();
+  adminSaveDraft(true);
+}
+
 // Рендерим главный слайдер полностью из config.json.
 function renderHomeBanners() {
   if (!ui.homeBannerTrack || !ui.homeBannerDots) return;
@@ -589,6 +623,7 @@ function renderHomeArticles() {
       <span>${escapeHtml(article.text)}</span>
     </button>
   `).join('');
+  applyHomeBlockOrder();
   if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
@@ -806,160 +841,35 @@ function adminBindHold(el, handler) {
   }, { passive: false });
 }
 
-function adminCanOpenByTap(key) {
-  if (!state.admin.enabled) return true;
-  const now = Date.now();
-  const normalizedKey = String(key || '');
-  if (state.admin.tapKey !== normalizedKey || now - state.admin.tapTs > 420) {
-    state.admin.tapKey = normalizedKey;
-    state.admin.tapCount = 1;
-    state.admin.tapTs = now;
-    return false;
-  }
-  state.admin.tapCount += 1;
-  state.admin.tapTs = now;
-  if (state.admin.tapCount >= 3) {
-    state.admin.tapKey = '';
-    state.admin.tapCount = 0;
-    state.admin.tapTs = 0;
-    return true;
-  }
-  return false;
-}
+function adminBindLongPress(el, handler) {
+  if (!state.admin.enabled || !el || el.dataset.adminLongBound === '1') return;
+  el.dataset.adminLongBound = '1';
+  let timer = null;
 
-function adminReorderByVisibleIds(list, orderedIds = []) {
-  if (!Array.isArray(list) || !Array.isArray(orderedIds) || !orderedIds.length) return list;
-  const indexMap = new Map();
-  orderedIds.forEach((id, index) => indexMap.set(String(id), index));
-  const slots = [];
-  list.forEach((item, index) => {
-    const id = String(item?.id || '');
-    if (indexMap.has(id)) slots.push(index);
-  });
-  if (!slots.length) return list;
-  const orderedItems = orderedIds
-    .map((id) => list.find((item) => String(item?.id || '') === String(id)))
-    .filter(Boolean);
-  if (!orderedItems.length) return list;
-  const next = [...list];
-  slots.forEach((slotIndex, i) => {
-    if (orderedItems[i]) next[slotIndex] = orderedItems[i];
-  });
-  return next;
-}
+  const clear = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = null;
+    el.classList.remove('admin-hold-pending');
+  };
 
-function adminBindDragSort(container, itemSelector, { axis = 'y', onReorder } = {}) {
-  if (!state.admin.enabled || !container) return;
-  const items = Array.from(container.querySelectorAll(itemSelector));
-  items.forEach((item) => {
-    if (!item || item.dataset.adminDragBound === '1') return;
-    item.dataset.adminDragBound = '1';
-    let timer = null;
-    let dragging = false;
-    let moved = false;
-    let pressPoint = { x: 0, y: 0 };
-    let startOrder = [];
-    let activeMove = null;
-    let activeEnd = null;
+  const start = (event) => {
+    if (event.type === 'mousedown' && event.button !== 0) return;
+    if (event.target && event.target.closest) {
+      const interactive = event.target.closest('input, textarea, select, a, [data-admin-add], .qty-btn, .icon-btn');
+      if (interactive && interactive !== el && el.contains(interactive)) return;
+    }
+    clear();
+    el.classList.add('admin-hold-pending');
+    timer = window.setTimeout(() => {
+      clear();
+      handler();
+    }, state.admin.holdMs);
+  };
 
-    const clearTimer = () => {
-      if (timer) window.clearTimeout(timer);
-      timer = null;
-      item.classList.remove('admin-hold-pending');
-    };
-
-    const getPoint = (event) => {
-      if (event.touches?.[0]) return { x: event.touches[0].clientX, y: event.touches[0].clientY };
-      if (event.changedTouches?.[0]) return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
-      return { x: event.clientX, y: event.clientY };
-    };
-
-    const currentOrder = () => Array.from(container.querySelectorAll(itemSelector))
-      .map((el) => String(el.dataset.bannerId || el.dataset.articleId || el.dataset.category || el.dataset.open || el.dataset.storeId || ''))
-      .filter(Boolean);
-
-    const start = (event) => {
-      if (event.type === 'mousedown' && event.button !== 0) return;
-      if (event.target && event.target.closest) {
-        const interactive = event.target.closest('input, textarea, select, a, [data-admin-add], .qty-btn, .icon-btn');
-        if (interactive && interactive !== item && item.contains(interactive)) return;
-        const innerButton = event.target.closest('button');
-        if (innerButton && innerButton !== item && item.contains(innerButton)) return;
-      }
-      pressPoint = getPoint(event);
-      moved = false;
-      clearTimer();
-      item.classList.add('admin-hold-pending');
-      timer = window.setTimeout(() => {
-        dragging = true;
-        startOrder = currentOrder();
-        item.classList.remove('admin-hold-pending');
-        item.classList.add('admin-dragging');
-        item.style.pointerEvents = 'none';
-        activeMove = move;
-        activeEnd = end;
-        document.addEventListener('mousemove', activeMove, { passive: false });
-        document.addEventListener('touchmove', activeMove, { passive: false });
-        document.addEventListener('mouseup', activeEnd);
-        document.addEventListener('touchend', activeEnd, { passive: true });
-        document.addEventListener('touchcancel', activeEnd, { passive: true });
-      }, state.admin.holdMs);
-    };
-
-    const move = (event) => {
-      if (!dragging) return;
-      const p = getPoint(event);
-      moved = true;
-      if (event.cancelable) event.preventDefault();
-      const over = document.elementFromPoint(p.x, p.y);
-      const target = over && over.closest ? over.closest(itemSelector) : null;
-      if (!target || target === item || target.parentElement !== container) return;
-      const rect = target.getBoundingClientRect();
-      let placeBefore = true;
-      if (axis === 'x') {
-        placeBefore = p.x < rect.left + rect.width / 2;
-      } else if (axis === 'y') {
-        placeBefore = p.y < rect.top + rect.height / 2;
-      } else {
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const dx = Math.abs(p.x - centerX);
-        const dy = Math.abs(p.y - centerY);
-        placeBefore = dx > dy ? p.x < centerX : p.y < centerY;
-      }
-      container.insertBefore(item, placeBefore ? target : target.nextElementSibling);
-    };
-
-    const end = () => {
-      clearTimer();
-      if (activeMove) {
-        document.removeEventListener('mousemove', activeMove);
-        document.removeEventListener('touchmove', activeMove);
-        activeMove = null;
-      }
-      if (activeEnd) {
-        document.removeEventListener('mouseup', activeEnd);
-        document.removeEventListener('touchend', activeEnd);
-        document.removeEventListener('touchcancel', activeEnd);
-        activeEnd = null;
-      }
-      if (!dragging) return;
-      dragging = false;
-      item.classList.remove('admin-dragging');
-      item.style.pointerEvents = '';
-      const newOrder = currentOrder();
-      if (moved && startOrder.join('|') !== newOrder.join('|') && typeof onReorder === 'function') {
-        onReorder(newOrder);
-      }
-    };
-
-    item.addEventListener('mousedown', start);
-    item.addEventListener('touchstart', start, { passive: true });
-    item.addEventListener('mouseup', end);
-    item.addEventListener('mouseleave', end);
-    item.addEventListener('touchend', end, { passive: true });
-    item.addEventListener('touchcancel', end, { passive: true });
-    item.addEventListener('contextmenu', (event) => event.preventDefault());
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, { passive: true });
+  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((eventName) => {
+    el.addEventListener(eventName, clear, { passive: true });
   });
 }
 
@@ -1103,14 +1013,19 @@ function adminBindHome() {
     const text = card.querySelector('.featured-text');
     const kicker = card.querySelector('.featured-chip');
     const cta = card.querySelector('.featured-cta');
-    adminBindHold(card, () => {
+    adminBindLongPress(card, () => {
       adminOpenActionSheet('Баннер', [
+        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
+        if (action === 'open') {
+          setScreen('home');
+          return;
+        }
         const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
         const idx = list.findIndex((x, i) => (x?.id || `banner-${i}`) === itemId);
         if (idx < 0) return;
@@ -1183,13 +1098,18 @@ function adminBindHome() {
     const title = card.querySelector('strong');
     const text = card.querySelector('span:last-child');
     const kicker = card.querySelector('.home-article-kicker');
-    adminBindHold(card, () => {
+    adminBindLongPress(card, () => {
       adminOpenActionSheet('Статья', [
+        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
+        if (action === 'open') {
+          setScreen(item.screen || 'about');
+          return;
+        }
         const list = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
         const idx = list.findIndex((x, i) => (x?.id || `article-${i}`) === itemId);
         if (idx < 0) return;
@@ -1275,23 +1195,6 @@ function adminBindHome() {
     });
   });
 
-  adminBindDragSort(ui.homeBannerTrack, '[data-banner-id]', {
-    axis: 'x',
-    onReorder: (orderedIds) => {
-      state.config.homeBanners = adminReorderByVisibleIds(state.config.homeBanners || [], orderedIds);
-      adminSaveDraft(true);
-      renderHomeBanners();
-    },
-  });
-
-  adminBindDragSort(ui.homeArticleTrack, '[data-article-id]', {
-    axis: 'x',
-    onReorder: (orderedIds) => {
-      state.config.homeArticles = adminReorderByVisibleIds(state.config.homeArticles || [], orderedIds);
-      adminSaveDraft(true);
-      renderHomeArticles();
-    },
-  });
 }
 
 function adminBindCategories() {
@@ -1300,13 +1203,18 @@ function adminBindCategories() {
     const categoryId = card.dataset.category;
     const category = state.categories.find((c) => c.id === categoryId);
     if (!category) return;
-    adminBindHold(card, () => {
+    adminBindLongPress(card, () => {
       adminOpenActionSheet(`Категория: ${category.title}`, [
+        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
+        if (action === 'open') {
+          openCategoryById(category.id);
+          return;
+        }
         if (action === 'edit-title') {
           adminEditValue(`Название категории ${category.title}`, category.title || '').then((value) => {
             if (value == null || value.__delete) return;
@@ -1332,14 +1240,6 @@ function adminBindCategories() {
     });
   });
 
-  adminBindDragSort(ui.categoriesGrid, '[data-category]', {
-    axis: 'free',
-    onReorder: (orderedIds) => {
-      state.categories = adminReorderByVisibleIds(state.categories || [], orderedIds);
-      adminSaveDraft(true);
-      renderCategories();
-    },
-  });
 }
 
 function adminBindProducts() {
@@ -1348,8 +1248,9 @@ function adminBindProducts() {
     const productId = card.dataset.open;
     const p = getProduct(productId);
     if (!p) return;
-    adminBindHold(card, () => {
+    adminBindLongPress(card, () => {
       adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
+        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-description', label: 'Редактировать описание' },
@@ -1357,6 +1258,12 @@ function adminBindProducts() {
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
+        if (action === 'open') {
+          state.currentProduct = p.id;
+          renderProductView();
+          setScreen('product');
+          return;
+        }
         if (action === 'edit-title') {
           adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
             if (value == null || value.__delete) return;
@@ -1398,14 +1305,6 @@ function adminBindProducts() {
     });
   });
 
-  adminBindDragSort(ui.productsList, '[data-open]', {
-    axis: 'free',
-    onReorder: (orderedIds) => {
-      state.products = adminReorderByVisibleIds(state.products || [], orderedIds);
-      adminSaveDraft(true);
-      renderProducts();
-    },
-  });
 }
 
 function adminBindProductView() {
@@ -2083,13 +1982,22 @@ function renderStores() {
       const storeId = btn.dataset.storeId;
       const store = state.stores.find((item) => item.id === storeId);
       if (!store) return;
-      adminBindHold(btn, () => {
+      adminBindLongPress(btn, () => {
         adminOpenActionSheet(`Адрес: ${store.city}`, [
+          { id: 'open', label: 'Открыть страницу' },
           { id: 'edit-city', label: 'Изменить город' },
           { id: 'edit-address', label: 'Изменить полный адрес' },
           { id: 'delete', label: 'Удалить адрес', danger: true },
         ]).then((action) => {
           if (!action) return;
+          if (action === 'open') {
+            state.selectedStoreId = store.id;
+            saveStorage();
+            renderHeaderStore();
+            renderStores();
+            setScreen('home');
+            return;
+          }
           if (action === 'edit-city') {
             adminEditValue('Город', store.city || '').then((value) => {
               if (value == null || value.__delete) return;
@@ -2122,15 +2030,6 @@ function renderStores() {
           }
         });
       });
-    });
-    adminBindDragSort(ui.storesList, '[data-store-id]', {
-      onReorder: (orderedIds) => {
-        state.stores = adminReorderByVisibleIds(state.stores || [], orderedIds);
-        state.config.storeLocations = state.stores;
-        adminSaveDraft(true);
-        renderStores();
-        renderHeaderStore();
-      },
     });
   }
 }
@@ -2642,19 +2541,24 @@ function bindEvents() {
     adminPublishToCatalog();
   });
   on(ui.headerStoreButton, 'click', () => {
-    if (!adminCanOpenByTap('screen:stores')) return;
     renderStores();
     setScreen('stores');
   });
   if (state.admin.enabled && ui.headerStoreButton) {
-    adminBindHold(ui.headerStoreButton, () => {
+    adminBindLongPress(ui.headerStoreButton, () => {
       const selected = getSelectedStore();
       if (!selected) return;
       adminOpenActionSheet(`Текущий адрес: ${selected.city}`, [
+        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-city', label: 'Изменить город' },
         { id: 'edit-address', label: 'Изменить полный адрес' },
       ]).then((action) => {
         if (!action) return;
+        if (action === 'open') {
+          renderStores();
+          setScreen('stores');
+          return;
+        }
         if (action === 'edit-city') {
           adminEditValue('Город', selected.city || '').then((value) => {
             if (value == null || value.__delete) return;
@@ -2743,11 +2647,21 @@ function bindEvents() {
   });
 
   on(document, 'click', (e) => {
+    const moveBtn = e.target.closest('[data-home-move]');
+    if (!moveBtn || !state.admin.enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const blockId = moveBtn.dataset.homeBlockId || '';
+    const direction = moveBtn.dataset.homeMove || '';
+    if (!blockId || !direction) return;
+    adminMoveHomeBlock(blockId, direction);
+  });
+
+  on(document, 'click', (e) => {
     const btn = e.target.closest('[data-screen]');
     if (!btn) return;
     const target = btn.dataset.screen;
     if (!target) return;
-    if (!adminCanOpenByTap(`screen:${target}`)) return;
     setScreen(target);
     if (target === 'orders') renderOrders();
     if (target === 'profile') {
@@ -2784,7 +2698,6 @@ function bindEvents() {
           const label = subItem.textContent.trim();
           id = menuCatalogFallback.get(label);
         }
-        if (!adminCanOpenByTap(`menu-category:${id || ''}`)) return;
         openCategoryById(id);
         return;
       }
@@ -2800,7 +2713,6 @@ function bindEvents() {
         }
         return;
       }
-      if (!adminCanOpenByTap(`menu-category:${row.dataset.category || ''}`)) return;
       openCategoryById(row.dataset.category);
     });
   }
@@ -2832,12 +2744,11 @@ function bindEvents() {
     const screenBtn = e.target.closest('[data-open-screen]');
     if (screenBtn) {
       const target = screenBtn.dataset.openScreen;
-      if (target && adminCanOpenByTap(`open-screen:${target}`)) setScreen(target);
+      if (target) setScreen(target);
       return;
     }
     const btn = e.target.closest('[data-category]');
     if (!btn) return;
-    if (!adminCanOpenByTap(`category:${btn.dataset.category || ''}`)) return;
     openCategoryById(btn.dataset.category);
   });
 
@@ -2890,7 +2801,6 @@ function bindEvents() {
     }
     const card = e.target.closest('[data-open]');
     if (!card) return;
-    if (!adminCanOpenByTap(`product:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2954,7 +2864,6 @@ function bindEvents() {
     }
     const card = e.target.closest('[data-open]');
     if (!card) return;
-    if (!adminCanOpenByTap(`promo:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2969,7 +2878,6 @@ function bindEvents() {
   on(ui.promoTrack, 'click', (e) => {
     const card = e.target.closest('[data-open]');
     if (!card) return;
-    if (!adminCanOpenByTap(`promo-track:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2979,7 +2887,6 @@ function bindEvents() {
   on(ui.homePopularTrack, 'click', (e) => {
     const card = e.target.closest('[data-open]');
     if (!card) return;
-    if (!adminCanOpenByTap(`popular:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2993,7 +2900,6 @@ function bindEvents() {
 
 
   on(ui.homeProductionButton, 'click', () => {
-    if (!adminCanOpenByTap('screen:production')) return;
     setScreen('production');
   });
 
@@ -3001,7 +2907,6 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {
-      if (!adminCanOpenByTap(`product-view:${btn.dataset.open || ''}`)) return;
       state.currentProduct = btn.dataset.open;
       touchRecentlyViewed(state.currentProduct);
       renderProductView();
@@ -3096,7 +3001,6 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {
-      if (!adminCanOpenByTap(`cart-open:${btn.dataset.open || ''}`)) return;
       state.currentProduct = btn.dataset.open;
       touchRecentlyViewed(state.currentProduct);
       renderProductView();

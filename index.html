@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260226-11" />
+    <link rel="stylesheet" href="style.css?v=20260226-12" />
   </head>
   <body>
     <header class="header">
@@ -49,36 +49,55 @@
       <div id="dataStatus" class="data-status hidden"></div>
 
       <section id="screen-home" class="screen active">
-        <section class="home-feature-wrap">
-          <div class="home-banner-slider">
-            <div id="homeBannerTrack" class="home-banner-track"></div>
-            <div id="homeBannerDots" class="home-banner-dots"></div>
-          </div>
-        </section>
+        <div id="homeBlocks" class="home-blocks">
+          <section class="home-admin-block" data-home-block="banners">
+            <section class="home-feature-wrap">
+              <div class="home-banner-slider">
+                <div id="homeBannerTrack" class="home-banner-track"></div>
+                <div id="homeBannerDots" class="home-banner-dots"></div>
+              </div>
+            </section>
+            <div class="admin-add-row">
+              <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
+              <button class="admin-inline-move" data-home-move="up" data-home-block-id="banners" type="button" aria-label="Поднять блок">↑</button>
+              <button class="admin-inline-move" data-home-move="down" data-home-block-id="banners" type="button" aria-label="Опустить блок">↓</button>
+            </div>
+          </section>
 
-        <div class="admin-add-row">
-          <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
+          <section class="home-admin-block" data-home-block="articles">
+            <div class="home-section-title"><span>Статьи и разделы</span></div>
+            <section class="home-article-slider">
+              <div id="homeArticleTrack" class="home-article-track"></div>
+            </section>
+            <div class="admin-add-row">
+              <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
+              <button class="admin-inline-move" data-home-move="up" data-home-block-id="articles" type="button" aria-label="Поднять блок">↑</button>
+              <button class="admin-inline-move" data-home-move="down" data-home-block-id="articles" type="button" aria-label="Опустить блок">↓</button>
+            </div>
+          </section>
+
+          <section class="home-admin-block" data-home-block="promo">
+            <div class="home-section-title">Акции</div>
+            <section class="promo-row promo-row-home">
+              <div id="promoTrack" class="promo-track"></div>
+            </section>
+            <div class="admin-add-row">
+              <button class="admin-inline-move" data-home-move="up" data-home-block-id="promo" type="button" aria-label="Поднять блок">↑</button>
+              <button class="admin-inline-move" data-home-move="down" data-home-block-id="promo" type="button" aria-label="Опустить блок">↓</button>
+            </div>
+          </section>
+
+          <section class="home-admin-block" data-home-block="popular">
+            <div class="home-section-title">Популярные товары</div>
+            <section class="promo-row promo-row-home">
+              <div id="homePopularTrack" class="promo-track"></div>
+            </section>
+            <div class="admin-add-row">
+              <button class="admin-inline-move" data-home-move="up" data-home-block-id="popular" type="button" aria-label="Поднять блок">↑</button>
+              <button class="admin-inline-move" data-home-move="down" data-home-block-id="popular" type="button" aria-label="Опустить блок">↓</button>
+            </div>
+          </section>
         </div>
-
-        <div class="home-section-title"><span>Статьи и разделы</span></div>
-        <section class="home-article-slider">
-          <div id="homeArticleTrack" class="home-article-track"></div>
-        </section>
-
-        <div class="admin-add-row">
-          <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
-        </div>
-
-        <div class="home-section-title">Акции</div>
-        <section class="promo-row promo-row-home">
-          <div id="promoTrack" class="promo-track"></div>
-        </section>
-
-        <div class="home-section-title">Популярные товары</div>
-        <section class="promo-row promo-row-home">
-          <div id="homePopularTrack" class="promo-track"></div>
-        </section>
-
       </section>
 
       <section id="screen-stores" class="screen">
@@ -467,6 +486,6 @@
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260226-15"></script>
+    <script src="app.js?v=20260226-16"></script>
   </body>
 </html>
