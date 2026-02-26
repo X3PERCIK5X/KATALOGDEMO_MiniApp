@@ -1539,13 +1539,16 @@ img { max-width: 100%; display: block; }
 }
 
 .admin-hold-pending {
-  box-shadow: 0 0 0 2px rgba(255, 122, 69, 0.82) inset !important;
+  box-shadow: 0 0 0 3px rgba(255, 138, 76, 0.96), 0 8px 20px rgba(255, 138, 76, 0.22) !important;
+  transform: scale(0.994);
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .admin-dragging {
-  opacity: 0.72;
-  transform: scale(0.985);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26);
+  opacity: 0.86;
+  transform: scale(0.99);
+  box-shadow: 0 0 0 3px rgba(255, 138, 76, 0.96), 0 12px 28px rgba(0, 0, 0, 0.34);
+  z-index: 6;
 }
 
 .admin-edit-modal {

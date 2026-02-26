@@ -880,7 +880,12 @@ function adminBindDragSort(container, itemSelector, { axis = 'y', onReorder } = 
 
     const start = (event) => {
       if (event.type === 'mousedown' && event.button !== 0) return;
-      if (event.target && event.target.closest && event.target.closest('input, textarea, button, select, a')) return;
+      if (event.target && event.target.closest) {
+        const interactive = event.target.closest('input, textarea, select, a, [data-admin-add], .qty-btn, .icon-btn');
+        if (interactive && interactive !== item && item.contains(interactive)) return;
+        const innerButton = event.target.closest('button');
+        if (innerButton && innerButton !== item && item.contains(innerButton)) return;
+      }
       pressPoint = getPoint(event);
       moved = false;
       clearTimer();
@@ -910,9 +915,18 @@ function adminBindDragSort(container, itemSelector, { axis = 'y', onReorder } = 
       const target = over && over.closest ? over.closest(itemSelector) : null;
       if (!target || target === item || target.parentElement !== container) return;
       const rect = target.getBoundingClientRect();
-      const placeBefore = axis === 'x'
-        ? p.x < rect.left + rect.width / 2
-        : p.y < rect.top + rect.height / 2;
+      let placeBefore = true;
+      if (axis === 'x') {
+        placeBefore = p.x < rect.left + rect.width / 2;
+      } else if (axis === 'y') {
+        placeBefore = p.y < rect.top + rect.height / 2;
+      } else {
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dx = Math.abs(p.x - centerX);
+        const dy = Math.abs(p.y - centerY);
+        placeBefore = dx > dy ? p.x < centerX : p.y < centerY;
+      }
       container.insertBefore(item, placeBefore ? target : target.nextElementSibling);
     };
 
@@ -1319,6 +1333,7 @@ function adminBindCategories() {
   });
 
   adminBindDragSort(ui.categoriesGrid, '[data-category]', {
+    axis: 'free',
     onReorder: (orderedIds) => {
       state.categories = adminReorderByVisibleIds(state.categories || [], orderedIds);
       adminSaveDraft(true);
@@ -1384,6 +1399,7 @@ function adminBindProducts() {
   });
 
   adminBindDragSort(ui.productsList, '[data-open]', {
+    axis: 'free',
     onReorder: (orderedIds) => {
       state.products = adminReorderByVisibleIds(state.products || [], orderedIds);
       adminSaveDraft(true);
