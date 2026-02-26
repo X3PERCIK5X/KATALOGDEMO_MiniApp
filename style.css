@@ -440,6 +440,9 @@ img { max-width: 100%; display: block; }
   font-size: 13px;
   color: #173246;
 }
+.data-status:empty {
+  display: none !important;
+}
 .data-status.hidden { display: none; }
 .category-card { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: #fff; box-shadow: var(--shadow-soft); }
 .promo-category-card {
@@ -3955,10 +3958,12 @@ body.admin-mode .admin-inline-plus {
   margin: 10px 0 14px;
   display: inline-flex;
   justify-content: center;
+  justify-self: end;
+  align-self: center;
   gap: 8px;
   padding: 6px 8px;
-  max-width: calc(100% - 16px);
-  width: fit-content;
+  max-width: calc(100vw - 32px);
+  width: auto;
   margin-left: auto;
   margin-right: 8px;
   flex-wrap: wrap;
