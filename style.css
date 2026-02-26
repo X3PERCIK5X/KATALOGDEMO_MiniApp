@@ -1559,7 +1559,7 @@ img { max-width: 100%; display: block; }
   border-radius: 14px;
   background: #121a2b;
   padding: 12px;
-  max-height: min(86vh, 760px);
+  max-height: min(86dvh, 760px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1586,16 +1586,17 @@ img { max-width: 100%; display: block; }
 }
 
 .admin-edit-actions {
-  margin-top: 10px;
+  margin-bottom: 10px;
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
   position: sticky;
-  bottom: 0;
+  top: 0;
   background: #121a2b;
-  padding-top: 8px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  padding-top: 4px;
+  padding-bottom: 6px;
+  z-index: 2;
 }
 
 .admin-edit-actions button.primary {

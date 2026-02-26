@@ -642,14 +642,14 @@ function adminEnsureModal() {
   modal.innerHTML = `
     <div class="admin-edit-card">
       <div class="admin-edit-title"></div>
-      <input class="admin-edit-input hidden" type="text" />
-      <textarea class="admin-edit-textarea hidden" rows="8"></textarea>
       <div class="admin-edit-actions">
         <button type="button" data-admin-modal="hide-kb">Скрыть клавиатуру</button>
         <button type="button" data-admin-modal="cancel">Отмена</button>
         <button type="button" data-admin-modal="delete" class="danger hidden">Удалить</button>
         <button type="button" data-admin-modal="save" class="primary">Сохранить</button>
       </div>
+      <input class="admin-edit-input hidden" type="text" />
+      <textarea class="admin-edit-textarea hidden" rows="8"></textarea>
     </div>
   `;
   document.body.appendChild(modal);
@@ -736,15 +736,15 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
       el.focus();
     }
   };
-  if (multiline) {
-    textarea.value = current;
-    focusEditor(textarea);
-  } else {
-    input.value = current;
-    focusEditor(input);
-  }
+  if (multiline) textarea.value = current;
+  else input.value = current;
 
   modal.classList.remove('hidden');
+  const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (!isTouch) {
+    if (multiline) focusEditor(textarea);
+    else focusEditor(input);
+  }
 
   return new Promise((resolve) => {
     let settled = false;
@@ -756,6 +756,10 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
       saveBtn.removeEventListener('click', onSave);
       deleteBtn.removeEventListener('click', onDelete);
       hideKbBtn.removeEventListener('click', onHideKeyboard);
+      [hideKbBtn, cancelBtn, deleteBtn, saveBtn].forEach((btn) => {
+        btn.removeEventListener('touchstart', onHideKeyboard);
+        btn.removeEventListener('mousedown', onHideKeyboard);
+      });
       modal.removeEventListener('click', onOverlay);
       resolve(value);
     };
@@ -787,6 +791,10 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
     saveBtn.addEventListener('click', onSave);
     deleteBtn.addEventListener('click', onDelete);
     hideKbBtn.addEventListener('click', onHideKeyboard);
+    [hideKbBtn, cancelBtn, deleteBtn, saveBtn].forEach((btn) => {
+      btn.addEventListener('touchstart', onHideKeyboard, { passive: true });
+      btn.addEventListener('mousedown', onHideKeyboard);
+    });
     modal.addEventListener('click', onOverlay);
   });
 }
