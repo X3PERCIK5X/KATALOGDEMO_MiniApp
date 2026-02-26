@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="style.css?v=20260226-09" />
+    <link rel="stylesheet" href="style.css?v=20260226-10" />
   </head>
   <body>
     <header class="header">
@@ -50,20 +50,24 @@
 
       <section id="screen-home" class="screen active">
         <section class="home-feature-wrap">
-          <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
           <div class="home-banner-slider">
             <div id="homeBannerTrack" class="home-banner-track"></div>
             <div id="homeBannerDots" class="home-banner-dots"></div>
           </div>
         </section>
 
-        <div class="home-section-title home-section-title-admin">
-          <span>Статьи и разделы</span>
-          <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
+        <div class="admin-add-row">
+          <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
         </div>
+
+        <div class="home-section-title"><span>Статьи и разделы</span></div>
         <section class="home-article-slider">
           <div id="homeArticleTrack" class="home-article-track"></div>
         </section>
+
+        <div class="admin-add-row">
+          <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
+        </div>
 
         <div class="home-section-title">Акции</div>
         <section class="promo-row promo-row-home">

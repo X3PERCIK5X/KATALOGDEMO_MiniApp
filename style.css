@@ -3933,28 +3933,34 @@ body.admin-mode .admin-inline-plus {
   position: relative;
 }
 
-.home-feature-wrap > .admin-inline-plus {
+.admin-inline-plus-hero {
   position: absolute;
-  top: 8px;
   right: 8px;
+  top: 8px;
   z-index: 3;
-}
-
-.home-section-title-admin {
-  justify-content: space-between;
 }
 
 .section-title-admin {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
-.admin-inline-plus-hero {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  z-index: 3;
+.admin-add-row {
+  min-height: 0;
+  margin: 8px 0 12px;
+  display: flex;
+  justify-content: center;
+}
+
+body:not(.admin-mode) .admin-add-row {
+  display: none;
+}
+
+#screen-home .admin-add-row .admin-inline-plus {
+  width: 34px;
+  height: 34px;
 }
 
 html[data-theme="light"] .admin-inline-plus {
