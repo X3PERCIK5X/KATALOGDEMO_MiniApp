@@ -9,6 +9,7 @@
     { "id": "store-3", "city": "Казань", "address": "Казань, ул. Баумана 9" }
   ],
   "privacyPolicyUrl": "https://demokatalog.app/privacy",
+  "imageUploadEndpoint": "https://example.com/api/upload-image",
   "orderEndpoint": "https://example.com/api/order",
   "homeBanners": [
     {

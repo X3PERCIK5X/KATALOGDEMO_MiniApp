@@ -673,6 +673,100 @@ function adminDownloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
+function getImageUploadEndpoint() {
+  const endpoint = String(
+    state.config?.imageUploadEndpoint
+    || state.config?.uploadEndpoint
+    || ''
+  ).trim();
+  return endpoint;
+}
+
+function adminPickImageFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    input.style.top = '-9999px';
+    document.body.appendChild(input);
+    const clear = () => {
+      input.removeEventListener('change', onChange);
+      if (input.parentNode) input.parentNode.removeChild(input);
+    };
+    const onChange = () => {
+      const file = input.files && input.files[0] ? input.files[0] : null;
+      clear();
+      resolve(file);
+    };
+    input.addEventListener('change', onChange, { once: true });
+    input.click();
+  });
+}
+
+function extractUploadedImageUrl(payload) {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload.trim();
+  if (typeof payload !== 'object') return '';
+  const direct = payload.url || payload.imageUrl || payload.fileUrl || payload.link;
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+  if (payload.data && typeof payload.data === 'object') {
+    const nested = payload.data.url || payload.data.imageUrl || payload.data.fileUrl || payload.data.link;
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+  }
+  return '';
+}
+
+async function adminUploadImageFile(file) {
+  if (!file) return null;
+  const endpoint = getImageUploadEndpoint();
+  if (!endpoint) {
+    reportStatus('Не задан imageUploadEndpoint в config.json');
+    return null;
+  }
+  try {
+    reportStatus('Загрузка фото...');
+    const form = new FormData();
+    form.append('file', file, file.name || `image-${Date.now()}.jpg`);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      reportStatus(`Ошибка загрузки фото: HTTP ${response.status}`);
+      return null;
+    }
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    let payload = null;
+    if (contentType.includes('application/json')) {
+      payload = await response.json();
+    } else {
+      payload = await response.text();
+    }
+    const imageUrl = extractUploadedImageUrl(payload);
+    if (!imageUrl) {
+      reportStatus('Сервер не вернул ссылку на фото');
+      return null;
+    }
+    reportStatus('Фото загружено');
+    return imageUrl;
+  } catch (error) {
+    reportStatus('Ошибка загрузки фото. Проверьте endpoint');
+    return null;
+  }
+}
+
+async function adminPickAndUploadImage() {
+  const file = await adminPickImageFile();
+  if (!file) return null;
+  if (!String(file.type || '').startsWith('image/')) {
+    reportStatus('Выбранный файл не является изображением');
+    return null;
+  }
+  return adminUploadImageFile(file);
+}
+
 function adminBuildPayload() {
   return {
     config: state.config,
@@ -1077,10 +1171,11 @@ function adminBindHome() {
         const idx = list.findIndex((x, i) => (x?.id || `banner-${i}`) === itemId);
         if (idx < 0) return;
         if (action === 'edit-image') {
-          adminEditValue('URL фонового изображения баннера', list[idx].image || '').then((value) => {
-            if (value == null || value.__delete) return;
-            list[idx].image = value;
+          adminPickAndUploadImage().then((imageUrl) => {
+            if (!imageUrl) return;
+            list[idx].image = imageUrl;
             renderHomeBanners();
+            adminSaveDraft(true);
           });
           return;
         }
@@ -1271,10 +1366,11 @@ function adminBindCategories() {
           return;
         }
         if (action === 'edit-image') {
-          adminEditValue(`Фото категории ${category.title}`, category.image || '').then((value) => {
-            if (value == null || value.__delete) return;
-            category.image = value;
+          adminPickAndUploadImage().then((imageUrl) => {
+            if (!imageUrl) return;
+            category.image = imageUrl;
             renderCategories();
+            adminSaveDraft(true);
           });
           return;
         }
@@ -1320,11 +1416,12 @@ function adminBindProducts() {
           return;
         }
         if (action === 'edit-image') {
-          adminEditValue(`Фото товара ${p.title}`, p.images?.[0] || '').then((value) => {
-            if (value == null || value.__delete) return;
+          adminPickAndUploadImage().then((imageUrl) => {
+            if (!imageUrl) return;
             if (!Array.isArray(p.images)) p.images = [];
-            p.images[0] = value;
+            p.images[0] = imageUrl;
             renderProducts();
+            adminSaveDraft(true);
           });
           return;
         }
@@ -1400,10 +1497,11 @@ function adminBindProductView() {
         if (!action) return;
         if (!Array.isArray(p.images)) p.images = [];
         if (action === 'edit') {
-          adminEditValue(`Фото #${index + 1} товара ${p.id}`, p.images?.[index] || '').then((value) => {
-            if (value == null || value.__delete) return;
-            p.images[index] = value;
+          adminPickAndUploadImage().then((imageUrl) => {
+            if (!imageUrl) return;
+            p.images[index] = imageUrl;
             renderProductView();
+            adminSaveDraft(true);
           });
           return;
         }
