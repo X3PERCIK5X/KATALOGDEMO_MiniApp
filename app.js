@@ -39,6 +39,9 @@ const state = {
     enabled: false,
     holdMs: 450,
     draftKey: 'demo_catalog_admin_draft_v1',
+    tapKey: '',
+    tapCount: 0,
+    tapTs: 0,
     ui: {},
   },
 };
@@ -801,6 +804,27 @@ function adminBindHold(el, handler) {
     }
     lastTouchTs = now;
   }, { passive: false });
+}
+
+function adminCanOpenByTap(key) {
+  if (!state.admin.enabled) return true;
+  const now = Date.now();
+  const normalizedKey = String(key || '');
+  if (state.admin.tapKey !== normalizedKey || now - state.admin.tapTs > 420) {
+    state.admin.tapKey = normalizedKey;
+    state.admin.tapCount = 1;
+    state.admin.tapTs = now;
+    return false;
+  }
+  state.admin.tapCount += 1;
+  state.admin.tapTs = now;
+  if (state.admin.tapCount >= 3) {
+    state.admin.tapKey = '';
+    state.admin.tapCount = 0;
+    state.admin.tapTs = 0;
+    return true;
+  }
+  return false;
 }
 
 function adminReorderByVisibleIds(list, orderedIds = []) {
@@ -2741,6 +2765,7 @@ function bindEvents() {
           const label = subItem.textContent.trim();
           id = menuCatalogFallback.get(label);
         }
+        if (!adminCanOpenByTap(`menu-category:${id || ''}`)) return;
         openCategoryById(id);
         return;
       }
@@ -2756,6 +2781,7 @@ function bindEvents() {
         }
         return;
       }
+      if (!adminCanOpenByTap(`menu-category:${row.dataset.category || ''}`)) return;
       openCategoryById(row.dataset.category);
     });
   }
@@ -2792,6 +2818,7 @@ function bindEvents() {
     }
     const btn = e.target.closest('[data-category]');
     if (!btn) return;
+    if (!adminCanOpenByTap(`category:${btn.dataset.category || ''}`)) return;
     openCategoryById(btn.dataset.category);
   });
 
@@ -2844,6 +2871,7 @@ function bindEvents() {
     }
     const card = e.target.closest('[data-open]');
     if (!card) return;
+    if (!adminCanOpenByTap(`product:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2907,6 +2935,7 @@ function bindEvents() {
     }
     const card = e.target.closest('[data-open]');
     if (!card) return;
+    if (!adminCanOpenByTap(`promo:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2921,6 +2950,7 @@ function bindEvents() {
   on(ui.promoTrack, 'click', (e) => {
     const card = e.target.closest('[data-open]');
     if (!card) return;
+    if (!adminCanOpenByTap(`promo-track:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2930,6 +2960,7 @@ function bindEvents() {
   on(ui.homePopularTrack, 'click', (e) => {
     const card = e.target.closest('[data-open]');
     if (!card) return;
+    if (!adminCanOpenByTap(`popular:${card.dataset.open || ''}`)) return;
     state.currentProduct = card.dataset.open;
     touchRecentlyViewed(state.currentProduct);
     renderProductView();
@@ -2950,6 +2981,7 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {
+      if (!adminCanOpenByTap(`product-view:${btn.dataset.open || ''}`)) return;
       state.currentProduct = btn.dataset.open;
       touchRecentlyViewed(state.currentProduct);
       renderProductView();
@@ -3044,6 +3076,7 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.open) {
+      if (!adminCanOpenByTap(`cart-open:${btn.dataset.open || ''}`)) return;
       state.currentProduct = btn.dataset.open;
       touchRecentlyViewed(state.currentProduct);
       renderProductView();
