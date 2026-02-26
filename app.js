@@ -722,8 +722,23 @@ async function adminUploadImageFile(file) {
   if (!file) return null;
   const endpoint = getImageUploadEndpoint();
   if (!endpoint) {
-    reportStatus('Не задан imageUploadEndpoint в config.json');
-    return null;
+    try {
+      const asDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      if (!asDataUrl) {
+        reportStatus('Не удалось прочитать фото');
+        return null;
+      }
+      reportStatus('Фото добавлено (локально)');
+      return asDataUrl;
+    } catch {
+      reportStatus('Не удалось прочитать фото');
+      return null;
+    }
   }
   try {
     reportStatus('Загрузка фото...');
