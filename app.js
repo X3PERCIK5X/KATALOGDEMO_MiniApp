@@ -690,6 +690,13 @@ function adminEnsureModal() {
       <textarea class="admin-edit-textarea hidden" rows="8"></textarea>
     </div>
   `;
+  const card = modal.querySelector('.admin-edit-card');
+  if (card) {
+    const stop = (event) => event.stopPropagation();
+    ['click', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'pointerdown', 'pointerup'].forEach((eventName) => {
+      card.addEventListener(eventName, stop, { passive: false });
+    });
+  }
   document.body.appendChild(modal);
   state.admin.ui.modal = modal;
   return modal;
@@ -786,14 +793,26 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
 
   return new Promise((resolve) => {
     let settled = false;
+    const touchHandlers = [];
+    const addTapHandler = (el, handler) => {
+      if (!el) return;
+      el.addEventListener('click', handler);
+      const onTouchEnd = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handler(event);
+      };
+      el.addEventListener('touchend', onTouchEnd, { passive: false });
+      touchHandlers.push(() => {
+        el.removeEventListener('click', handler);
+        el.removeEventListener('touchend', onTouchEnd);
+      });
+    };
     const settle = (value) => {
       if (settled) return;
       settled = true;
       modal.classList.add('hidden');
-      cancelBtn.removeEventListener('click', onCancel);
-      saveBtn.removeEventListener('click', onSave);
-      deleteBtn.removeEventListener('click', onDelete);
-      hideKbBtn.removeEventListener('click', onHideKeyboard);
+      touchHandlers.forEach((unbind) => unbind());
       hideKbBtn.removeEventListener('touchstart', onHideKeyboard);
       hideKbBtn.removeEventListener('mousedown', onHideKeyboard);
       modal.removeEventListener('click', onOverlay);
@@ -823,10 +842,10 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
       settle(multiline ? String(raw) : String(raw).trim());
     };
 
-    cancelBtn.addEventListener('click', onCancel);
-    saveBtn.addEventListener('click', onSave);
-    deleteBtn.addEventListener('click', onDelete);
-    hideKbBtn.addEventListener('click', onHideKeyboard);
+    addTapHandler(cancelBtn, onCancel);
+    addTapHandler(saveBtn, onSave);
+    addTapHandler(deleteBtn, onDelete);
+    addTapHandler(hideKbBtn, onHideKeyboard);
     hideKbBtn.addEventListener('touchstart', onHideKeyboard, { passive: true });
     hideKbBtn.addEventListener('mousedown', onHideKeyboard);
     modal.addEventListener('click', onOverlay);
