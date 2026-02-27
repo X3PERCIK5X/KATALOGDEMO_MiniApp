@@ -32,6 +32,7 @@
 
 Дополнительно:
 - `OWNER_API_KEY` — секрет владельца SaaS для создания клиентских магазинов через `POST /api/owner/stores`.
+- `SAAS_API_BASE` — базовый URL SaaS API для CLI-утилиты создания магазинов.
 
 ## Как открыть
 - Админка: открыть mini app в admin-режиме (`?admin=1` или `start_param` с `admin`), затем пройти вход.
@@ -52,6 +53,14 @@ curl -X POST "https://your-domain/api/owner/stores" \
   -H "x-owner-key: change_me_owner_key" \
   -d '{"storeName":"Store Client 1"}'
 ```
+
+CLI-вариант (удобно для работы через Codex):
+```bash
+npm run create:store -- "Магазин клиента"
+```
+Скрипт выведет:
+- `storeId`
+- `inviteCode`
 
 ## Важно
 - Для работы нужен Node.js 18+.
