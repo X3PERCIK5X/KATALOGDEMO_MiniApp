@@ -1812,6 +1812,9 @@ function ensureSaasAuthModal() {
         <button type="button" class="saas-auth-tab" data-auth-tab="register">Регистрация</button>
       </div>
       <form class="saas-auth-form" autocomplete="on">
+        <label class="saas-auth-label">API URL
+          <input class="admin-modal-input" name="apiBase" placeholder="https://your-domain/api" />
+        </label>
         <label class="saas-auth-label">Store ID
           <input class="admin-modal-input" name="storeId" placeholder="например: 111111" required maxlength="6" />
         </label>
@@ -1837,6 +1840,7 @@ function ensureSaasAuthModal() {
 function openSaasAuthModal() {
   const modal = ensureSaasAuthModal();
   const form = modal.querySelector('.saas-auth-form');
+  const apiInput = modal.querySelector('input[name="apiBase"]');
   const storeInput = modal.querySelector('input[name="storeId"]');
   const passwordInput = modal.querySelector('input[name="password"]');
   const repeatWrap = modal.querySelector('.saas-auth-repeat');
@@ -1859,6 +1863,9 @@ function openSaasAuthModal() {
   };
 
   setMode('login');
+  if (apiInput) {
+    apiInput.value = getSaasApiBase();
+  }
   modal.classList.remove('hidden');
   setTimeout(() => storeInput?.focus(), 20);
 
@@ -1889,8 +1896,20 @@ function openSaasAuthModal() {
     const onSubmit = async (event) => {
       event.preventDefault();
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
+      const apiBaseRaw = String(apiInput?.value || '').trim();
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
+      if (!apiBaseRaw) return showError('Укажите API URL.');
+      try {
+        const normalizedApi = apiBaseRaw.replace(/\/$/, '');
+        // Простейшая валидация URL до отправки запроса
+        // eslint-disable-next-line no-new
+        new URL(normalizedApi);
+        localStorage.setItem(SAAS_API_BASE_KEY, normalizedApi);
+        state.saas.apiBase = normalizedApi;
+      } catch {
+        return showError('Неверный API URL.');
+      }
       if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
       if (password.length < 6) return showError('Пароль должен быть не короче 6 символов.');
       if (mode === 'register' && password !== passwordRepeat) return showError('Пароли не совпадают.');
@@ -2003,6 +2022,8 @@ async function saasEnsureAdminSession() {
         WRONG_PASSWORD: 'Неверный пароль.',
         STORE_ALREADY_ACTIVE: 'Этот Store ID уже активирован. Используйте вкладку "Вход".',
         STORE_NOT_ACTIVATED: 'Store ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
+        'HTTP 405': 'API сервер не подключен или указан неверный URL (Method Not Allowed). Проверь API URL.',
+        'HTTP 404': 'API сервер не найден по указанному URL. Проверь API URL.',
       };
       window.alert(messageMap[code] || `Ошибка авторизации: ${code || 'unknown'}`);
     }
