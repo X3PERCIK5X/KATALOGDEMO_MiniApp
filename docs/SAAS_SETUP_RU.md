@@ -21,7 +21,7 @@
 
 ## Store ID для текущего каталога
 Сервер при первом запуске создает магазин из локальных файлов (`config.json`, `data/categories.json`, `data/products.json`) с параметрами:
-- `DEFAULT_STORE_ID=DEMO01`
+- `DEFAULT_STORE_ID=111111`
 - `DEFAULT_ADMIN_EMAIL=admin@demokatalog.app`
 - `DEFAULT_ADMIN_PASSWORD=Admin12345`
 
@@ -29,7 +29,7 @@
 
 ## Как открыть
 - Админка: открыть mini app в admin-режиме (`?admin=1` или `start_param` с `admin`), затем пройти вход.
-- Каталог клиента: открыть mini app с `?store=DEMO01` (или другим storeId).
+- Каталог клиента: открыть mini app с `?store=111111` (или другим storeId).
 
 ## Важно
 - Для работы нужен Node.js 18+.

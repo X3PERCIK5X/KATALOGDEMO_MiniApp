@@ -17,7 +17,7 @@ const ROOT = process.cwd();
 const STORAGE_DIR = path.join(ROOT, 'storage');
 const UPLOADS_DIR = path.join(ROOT, 'uploads');
 const DB_PATH = path.join(STORAGE_DIR, 'saas.sqlite3');
-const DEFAULT_STORE_ID = String(process.env.DEFAULT_STORE_ID || 'DEMO01').trim().toUpperCase();
+const DEFAULT_STORE_ID = String(process.env.DEFAULT_STORE_ID || '111111').trim().toUpperCase();
 const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@demokatalog.app').trim();
 const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin12345').trim();
 
