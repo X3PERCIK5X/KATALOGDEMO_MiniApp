@@ -20,6 +20,7 @@ const DB_PATH = path.join(STORAGE_DIR, 'saas.sqlite3');
 const DEFAULT_STORE_ID = String(process.env.DEFAULT_STORE_ID || '111111').trim().toUpperCase();
 const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@demokatalog.app').trim();
 const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin12345').trim();
+const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 
 fs.mkdirSync(STORAGE_DIR, { recursive: true });
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS stores (
   store_name TEXT NOT NULL,
   owner_email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
+  invite_code TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1,
   config_json TEXT NOT NULL,
   categories_json TEXT NOT NULL,
   products_json TEXT NOT NULL,
@@ -48,6 +51,15 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
 );
 `);
+
+function ensureStoresColumn(columnName, ddl) {
+  const rows = db.prepare('PRAGMA table_info(stores)').all();
+  const exists = rows.some((r) => String(r.name) === columnName);
+  if (!exists) db.exec(`ALTER TABLE stores ADD COLUMN ${ddl}`);
+}
+
+ensureStoresColumn('invite_code', "invite_code TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('is_active', 'is_active INTEGER NOT NULL DEFAULT 1');
 
 function readJsonFallback(filePath, fallback) {
   try {
@@ -78,6 +90,13 @@ function uniqueStoreId() {
   throw new Error('STORE_ID_GENERATION_FAILED');
 }
 
+function randomInviteCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 8; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+}
+
 function createSession(storeId) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = new Date();
@@ -91,7 +110,7 @@ function createSession(storeId) {
 
 function getStoreDatasetRow(storeId) {
   return db.prepare(`
-    SELECT store_id, store_name, config_json, categories_json, products_json
+    SELECT store_id, store_name, is_active, config_json, categories_json, products_json
     FROM stores
     WHERE store_id = ?
   `).get(storeId);
@@ -101,6 +120,7 @@ function rowToDataset(row) {
   return {
     storeId: row.store_id,
     storeName: row.store_name,
+    isActive: Number(row.is_active || 0) === 1,
     config: JSON.parse(row.config_json),
     categories: JSON.parse(row.categories_json),
     products: JSON.parse(row.products_json),
@@ -117,13 +137,14 @@ function seedDefaultStore() {
   const now = new Date().toISOString();
   const hash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 10);
   db.prepare(`
-    INSERT INTO stores (store_id, store_name, owner_email, password_hash, config_json, categories_json, products_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO stores (store_id, store_name, owner_email, password_hash, invite_code, is_active, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
   `).run(
     DEFAULT_STORE_ID,
     'Demo Store',
     DEFAULT_ADMIN_EMAIL,
     hash,
+    '',
     JSON.stringify(config),
     JSON.stringify(categories),
     JSON.stringify(products),
@@ -158,6 +179,73 @@ function authMiddleware(req, res, next) {
   return next();
 }
 
+function ownerMiddleware(req, res, next) {
+  const key = String(req.headers['x-owner-key'] || '').trim();
+  if (!OWNER_API_KEY) return res.status(500).json({ error: 'OWNER_KEY_NOT_CONFIGURED' });
+  if (!key || key !== OWNER_API_KEY) return res.status(401).json({ error: 'OWNER_AUTH_REQUIRED' });
+  return next();
+}
+
+function buildDefaultDataset() {
+  return {
+    config: readJsonFallback(path.join(ROOT, 'config.json'), {}),
+    categories: readJsonFallback(path.join(ROOT, 'data', 'categories.json'), []),
+    products: readJsonFallback(path.join(ROOT, 'data', 'products.json'), []),
+  };
+}
+
+app.post('/api/owner/stores', ownerMiddleware, (req, res) => {
+  const requestedStoreId = String(req.body?.storeId || '').trim().toUpperCase();
+  const storeId = requestedStoreId ? requestedStoreId : uniqueStoreId();
+  const storeName = String(req.body?.storeName || 'New Store').trim();
+  if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  const exists = db.prepare('SELECT store_id FROM stores WHERE store_id = ?').get(storeId);
+  if (exists) return res.status(409).json({ error: 'STORE_ALREADY_EXISTS' });
+  const inviteCode = randomInviteCode();
+  const now = new Date().toISOString();
+  const dataset = buildDefaultDataset();
+  const placeholderHash = bcrypt.hashSync(crypto.randomBytes(18).toString('hex'), 10);
+  db.prepare(`
+    INSERT INTO stores (store_id, store_name, owner_email, password_hash, invite_code, is_active, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+  `).run(
+    storeId,
+    storeName || 'New Store',
+    '',
+    placeholderHash,
+    inviteCode,
+    JSON.stringify(dataset.config),
+    JSON.stringify(dataset.categories),
+    JSON.stringify(dataset.products),
+    now,
+    now,
+  );
+  return res.json({ ok: true, storeId, inviteCode, active: false });
+});
+
+app.post('/api/auth/activate', (req, res) => {
+  const storeId = String(req.body?.storeId || '').trim().toUpperCase();
+  const inviteCode = String(req.body?.inviteCode || '').trim().toUpperCase();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '').trim();
+  const storeName = String(req.body?.storeName || '').trim();
+  if (!isValidStoreId(storeId) || !inviteCode || !password || password.length < 6 || !email) {
+    return res.status(400).json({ error: 'INVALID_ACTIVATE_PAYLOAD' });
+  }
+  const row = db.prepare('SELECT store_id, is_active, invite_code FROM stores WHERE store_id = ?').get(storeId);
+  if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  if (Number(row.is_active || 0) === 1) return res.status(409).json({ error: 'STORE_ALREADY_ACTIVE' });
+  if (String(row.invite_code || '').toUpperCase() !== inviteCode) return res.status(401).json({ error: 'WRONG_INVITE_CODE' });
+  const now = new Date().toISOString();
+  const hash = bcrypt.hashSync(password, 10);
+  db.prepare(`
+    UPDATE stores
+    SET owner_email = ?, password_hash = ?, invite_code = '', is_active = 1, store_name = COALESCE(NULLIF(?, ''), store_name), updated_at = ?
+    WHERE store_id = ?
+  `).run(email, hash, storeName, now, storeId);
+  return res.json({ ok: true, storeId, active: true });
+});
+
 app.post('/api/auth/register', (req, res) => {
   const storeName = String(req.body?.storeName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -167,21 +255,19 @@ app.post('/api/auth/register', (req, res) => {
   }
   const storeId = uniqueStoreId();
   const now = new Date().toISOString();
-  const config = readJsonFallback(path.join(ROOT, 'config.json'), {});
-  const categories = readJsonFallback(path.join(ROOT, 'data', 'categories.json'), []);
-  const products = readJsonFallback(path.join(ROOT, 'data', 'products.json'), []);
+  const dataset = buildDefaultDataset();
   const hash = bcrypt.hashSync(password, 10);
   db.prepare(`
-    INSERT INTO stores (store_id, store_name, owner_email, password_hash, config_json, categories_json, products_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO stores (store_id, store_name, owner_email, password_hash, invite_code, is_active, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, '', 1, ?, ?, ?, ?, ?)
   `).run(
     storeId,
     storeName,
     email,
     hash,
-    JSON.stringify(config),
-    JSON.stringify(categories),
-    JSON.stringify(products),
+    JSON.stringify(dataset.config),
+    JSON.stringify(dataset.categories),
+    JSON.stringify(dataset.products),
     now,
     now,
   );
@@ -192,8 +278,9 @@ app.post('/api/auth/login', (req, res) => {
   const storeId = String(req.body?.storeId || '').trim().toUpperCase();
   const password = String(req.body?.password || '').trim();
   if (!isValidStoreId(storeId) || !password) return res.status(400).json({ error: 'INVALID_LOGIN_PAYLOAD' });
-  const row = db.prepare('SELECT store_id, password_hash FROM stores WHERE store_id = ?').get(storeId);
+  const row = db.prepare('SELECT store_id, password_hash, is_active FROM stores WHERE store_id = ?').get(storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  if (Number(row.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'WRONG_PASSWORD' });
   const token = createSession(storeId);
@@ -201,13 +288,14 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {
-  const row = db.prepare('SELECT store_id, store_name, owner_email FROM stores WHERE store_id = ?').get(req.auth.storeId);
+  const row = db.prepare('SELECT store_id, store_name, owner_email, is_active FROM stores WHERE store_id = ?').get(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
   return res.json({
     ok: true,
     storeId: row.store_id,
     storeName: row.store_name,
     email: row.owner_email,
+    isActive: Number(row.is_active || 0) === 1,
   });
 });
 
@@ -262,6 +350,7 @@ app.get('/api/store/:storeId/public', (req, res) => {
   if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
   const row = getStoreDatasetRow(storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  if (Number(row.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
   return res.json(rowToDataset(row));
 });
 

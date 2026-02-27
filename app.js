@@ -1866,7 +1866,7 @@ async function saasEnsureAdminSession() {
     }
   }
 
-  const mode = window.prompt('SaaS админка: 1 - вход, 2 - регистрация', '1');
+  const mode = window.prompt('SaaS админка: 1 - вход, 2 - регистрация нового магазина, 3 - активация по Store ID', '1');
   if (mode == null) return false;
   if (String(mode).trim() === '2') {
     const storeName = window.prompt('Название магазина', 'Demo Store');
@@ -1878,6 +1878,27 @@ async function saasEnsureAdminSession() {
       body: { storeName, email, password },
     });
     window.alert(`Магазин создан. Store ID: ${reg.storeId}`);
+  }
+  if (String(mode).trim() === '3') {
+    const storeId = String(window.prompt('Введите Store ID (6 символов)') || '').trim().toUpperCase();
+    const inviteCode = String(window.prompt('Введите код активации') || '').trim().toUpperCase();
+    const storeName = window.prompt('Название магазина (опционально)', '') || '';
+    const email = window.prompt('Ваш Email', '');
+    const password = window.prompt('Новый пароль (мин. 6 символов)');
+    if (!storeId || !inviteCode || !email || !password) return false;
+    if (!/^[A-Z0-9]{6}$/.test(storeId)) {
+      window.alert('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
+      return false;
+    }
+    if (String(password).trim().length < 6) {
+      window.alert('Пароль должен быть не короче 6 символов.');
+      return false;
+    }
+    await saasRequest('/auth/activate', {
+      method: 'POST',
+      body: { storeId, inviteCode, email, password, storeName },
+    });
+    window.alert('Магазин активирован. Теперь выполните вход.');
   }
 
   const storeId = String(window.prompt('Введите Store ID (6 символов)') || '').trim().toUpperCase();
