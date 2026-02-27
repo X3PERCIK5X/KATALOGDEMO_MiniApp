@@ -1798,6 +1798,113 @@ function clearSaasAuth() {
   localStorage.removeItem(SAAS_STORE_KEY);
 }
 
+function ensureSaasAuthModal() {
+  if (state.admin.ui.saasAuthModal) return state.admin.ui.saasAuthModal;
+  const modal = document.createElement('div');
+  modal.className = 'admin-modal saas-auth-modal hidden';
+  modal.innerHTML = `
+    <div class="admin-modal-card saas-auth-card">
+      <div class="admin-modal-head">
+        <h3 class="admin-modal-title">Авторизация админки</h3>
+      </div>
+      <div class="saas-auth-tabs">
+        <button type="button" class="saas-auth-tab active" data-auth-tab="login">Вход</button>
+        <button type="button" class="saas-auth-tab" data-auth-tab="register">Регистрация</button>
+      </div>
+      <form class="saas-auth-form" autocomplete="on">
+        <label class="saas-auth-label">Store ID
+          <input class="admin-modal-input" name="storeId" placeholder="например: 111111" required maxlength="6" />
+        </label>
+        <label class="saas-auth-label">Пароль
+          <input class="admin-modal-input" name="password" type="password" placeholder="минимум 6 символов" required />
+        </label>
+        <label class="saas-auth-label saas-auth-repeat hidden">Повторите пароль
+          <input class="admin-modal-input" name="passwordRepeat" type="password" placeholder="повторите пароль" />
+        </label>
+        <div class="saas-auth-error hidden"></div>
+        <div class="admin-modal-actions">
+          <button type="button" class="secondary-button" data-auth-cancel>Отмена</button>
+          <button type="submit" class="primary-button" data-auth-submit>Войти</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  state.admin.ui.saasAuthModal = modal;
+  return modal;
+}
+
+function openSaasAuthModal() {
+  const modal = ensureSaasAuthModal();
+  const form = modal.querySelector('.saas-auth-form');
+  const storeInput = modal.querySelector('input[name="storeId"]');
+  const passwordInput = modal.querySelector('input[name="password"]');
+  const repeatWrap = modal.querySelector('.saas-auth-repeat');
+  const repeatInput = modal.querySelector('input[name="passwordRepeat"]');
+  const errorBox = modal.querySelector('.saas-auth-error');
+  const submitBtn = modal.querySelector('[data-auth-submit]');
+  const tabs = Array.from(modal.querySelectorAll('[data-auth-tab]'));
+  let mode = 'login';
+
+  const setMode = (nextMode) => {
+    mode = nextMode === 'register' ? 'register' : 'login';
+    tabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.authTab === mode));
+    repeatWrap.classList.toggle('hidden', mode !== 'register');
+    submitBtn.textContent = mode === 'register' ? 'Сохранить пароль' : 'Войти';
+    if (errorBox) {
+      errorBox.classList.add('hidden');
+      errorBox.textContent = '';
+    }
+    if (mode !== 'register') repeatInput.value = '';
+  };
+
+  setMode('login');
+  modal.classList.remove('hidden');
+  setTimeout(() => storeInput?.focus(), 20);
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      tabs.forEach((btn) => btn.removeEventListener('click', onTabClick));
+      cancelBtn.removeEventListener('click', onCancel);
+      form.removeEventListener('submit', onSubmit);
+    };
+
+    const showError = (message) => {
+      if (!errorBox) return;
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+    };
+
+    const onTabClick = (event) => {
+      const btn = event.currentTarget;
+      setMode(btn.dataset.authTab || 'login');
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onSubmit = async (event) => {
+      event.preventDefault();
+      const storeId = String(storeInput?.value || '').trim().toUpperCase();
+      const password = String(passwordInput?.value || '').trim();
+      const passwordRepeat = String(repeatInput?.value || '').trim();
+      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
+      if (password.length < 6) return showError('Пароль должен быть не короче 6 символов.');
+      if (mode === 'register' && password !== passwordRepeat) return showError('Пароли не совпадают.');
+      cleanup();
+      resolve({ mode, storeId, password });
+    };
+
+    tabs.forEach((btn) => btn.addEventListener('click', onTabClick));
+    const cancelBtn = modal.querySelector('[data-auth-cancel]');
+    cancelBtn.addEventListener('click', onCancel);
+    form.addEventListener('submit', onSubmit);
+  });
+}
+
 function buildSaasUrl(path) {
   const base = state.saas.apiBase || getSaasApiBase();
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
@@ -1868,58 +1975,38 @@ async function saasEnsureAdminSession() {
     return true;
   }
 
-  const mode = window.prompt('SaaS админка: 1 - вход, 2 - регистрация нового магазина, 3 - активация по Store ID', '1');
-  if (mode == null) return false;
-  if (String(mode).trim() === '2') {
-    const storeName = window.prompt('Название магазина', 'Demo Store');
-    const email = window.prompt('Email администратора', 'admin@example.com');
-    const password = window.prompt('Пароль');
-    if (!storeName || !email || !password) return false;
-    const reg = await saasRequest('/auth/register', {
-      method: 'POST',
-      body: { storeName, email, password },
-    });
-    window.alert(`Магазин создан. Store ID: ${reg.storeId}`);
-  }
-  if (String(mode).trim() === '3') {
-    const storeId = String(window.prompt('Введите Store ID (6 символов)') || '').trim().toUpperCase();
-    const inviteCode = String(window.prompt('Введите код активации') || '').trim().toUpperCase();
-    const storeName = window.prompt('Название магазина (опционально)', '') || '';
-    const email = window.prompt('Ваш Email', '');
-    const password = window.prompt('Новый пароль (мин. 6 символов)');
-    if (!storeId || !inviteCode || !email || !password) return false;
-    if (!/^[A-Z0-9]{6}$/.test(storeId)) {
-      window.alert('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
-      return false;
+  while (true) {
+    const authData = await openSaasAuthModal();
+    if (!authData) return false;
+    const { mode, storeId, password } = authData;
+    try {
+      if (mode === 'register') {
+        await saasRequest('/auth/register-by-store', {
+          method: 'POST',
+          body: { storeId, password },
+        });
+      }
+      const login = await saasRequest('/auth/login', {
+        method: 'POST',
+        body: { storeId, password },
+      });
+      state.saas.enabled = true;
+      state.saas.storeId = storeId;
+      state.saas.token = String(login.token || '');
+      localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+      localStorage.setItem(SAAS_TOKEN_KEY, state.saas.token);
+      return true;
+    } catch (error) {
+      const code = String(error?.message || '');
+      const messageMap = {
+        STORE_NOT_FOUND: 'Store ID не найден.',
+        WRONG_PASSWORD: 'Неверный пароль.',
+        STORE_ALREADY_ACTIVE: 'Этот Store ID уже активирован. Используйте вкладку "Вход".',
+        STORE_NOT_ACTIVATED: 'Store ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
+      };
+      window.alert(messageMap[code] || `Ошибка авторизации: ${code || 'unknown'}`);
     }
-    if (String(password).trim().length < 6) {
-      window.alert('Пароль должен быть не короче 6 символов.');
-      return false;
-    }
-    await saasRequest('/auth/activate', {
-      method: 'POST',
-      body: { storeId, inviteCode, email, password, storeName },
-    });
-    window.alert('Магазин активирован. Теперь выполните вход.');
   }
-
-  const storeId = String(window.prompt('Введите Store ID (6 символов)') || '').trim().toUpperCase();
-  const password = window.prompt('Введите пароль');
-  if (!storeId || !password) return false;
-  if (!/^[A-Z0-9]{6}$/.test(storeId)) {
-    window.alert('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
-    return false;
-  }
-  const login = await saasRequest('/auth/login', {
-    method: 'POST',
-    body: { storeId, password },
-  });
-  state.saas.enabled = true;
-  state.saas.storeId = storeId;
-  state.saas.token = String(login.token || '');
-  localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
-  localStorage.setItem(SAAS_TOKEN_KEY, state.saas.token);
-  return true;
 }
 
 async function saasLoadDatasetForCurrentContext() {

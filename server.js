@@ -246,6 +246,25 @@ app.post('/api/auth/activate', (req, res) => {
   return res.json({ ok: true, storeId, active: true });
 });
 
+app.post('/api/auth/register-by-store', (req, res) => {
+  const storeId = String(req.body?.storeId || '').trim().toUpperCase();
+  const password = String(req.body?.password || '').trim();
+  if (!isValidStoreId(storeId) || !password || password.length < 6) {
+    return res.status(400).json({ error: 'INVALID_REGISTER_BY_STORE_PAYLOAD' });
+  }
+  const row = db.prepare('SELECT store_id, is_active FROM stores WHERE store_id = ?').get(storeId);
+  if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  if (Number(row.is_active || 0) === 1) return res.status(409).json({ error: 'STORE_ALREADY_ACTIVE' });
+  const now = new Date().toISOString();
+  const hash = bcrypt.hashSync(password, 10);
+  db.prepare(`
+    UPDATE stores
+    SET password_hash = ?, invite_code = '', is_active = 1, updated_at = ?
+    WHERE store_id = ?
+  `).run(hash, now, storeId);
+  return res.json({ ok: true, storeId, active: true });
+});
+
 app.post('/api/auth/register', (req, res) => {
   const storeName = String(req.body?.storeName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
