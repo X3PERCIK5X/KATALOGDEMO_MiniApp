@@ -242,7 +242,7 @@ img { max-width: 100%; display: block; }
   margin-top: 8px;
 }
 .promo-row-home .promo-track {
-  --home-cards-per-row: 4;
+  --home-cards-per-row: 5;
   --home-cards-gap: 10px;
   gap: var(--home-cards-gap);
 }
@@ -306,7 +306,7 @@ img { max-width: 100%; display: block; }
 
 @media (max-width: 430px) {
   .promo-row-home .promo-track {
-    --home-cards-per-row: 3;
+    --home-cards-per-row: 4;
     --home-cards-gap: 8px;
   }
 }
@@ -2253,6 +2253,31 @@ button:disabled {
 
 .profile-manager-button small { color: var(--muted); }
 
+.profile-admin-panel {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-admin-store {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.profile-admin-store strong {
+  letter-spacing: 0.04em;
+}
+
+.profile-admin-logout {
+  width: 100%;
+}
+
 .bottom-nav {
   position: fixed;
   left: 12px;
@@ -4148,7 +4173,7 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
 
 /* 2026-02-27: hard lock for home promo/popular card scale */
 #screen-home .promo-row-home .promo-track {
-  --home-cards-per-row: 4;
+  --home-cards-per-row: 5;
   --home-cards-gap: 10px;
   display: grid !important;
   grid-auto-flow: column;
@@ -4166,7 +4191,7 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
 
 @media (max-width: 430px) {
   #screen-home .promo-row-home .promo-track {
-    --home-cards-per-row: 3;
+    --home-cards-per-row: 4;
     --home-cards-gap: 8px;
   }
 }

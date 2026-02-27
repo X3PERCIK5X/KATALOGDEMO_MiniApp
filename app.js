@@ -198,6 +198,9 @@ const ui = {
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
   profileManagerButton: document.getElementById('profileManagerButton'),
+  adminProfilePanel: document.getElementById('adminProfilePanel'),
+  adminStoreIdValue: document.getElementById('adminStoreIdValue'),
+  adminLogoutButton: document.getElementById('adminLogoutButton'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   homeArticleTrack: document.getElementById('homeArticleTrack'),
   themeLabel: document.getElementById('themeLabel'),
@@ -1787,6 +1790,14 @@ function getSaasApiBase() {
   return fallback.replace(/\/$/, '');
 }
 
+function clearSaasAuth() {
+  state.saas.enabled = false;
+  state.saas.token = '';
+  state.saas.storeId = '';
+  localStorage.removeItem(SAAS_TOKEN_KEY);
+  localStorage.removeItem(SAAS_STORE_KEY);
+}
+
 function buildSaasUrl(path) {
   const base = state.saas.apiBase || getSaasApiBase();
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
@@ -1854,16 +1865,7 @@ async function saasEnsureAdminSession() {
     state.saas.token = storedToken;
     state.saas.storeId = storedStoreId;
     state.saas.enabled = true;
-    try {
-      await saasRequest('/auth/me', { auth: true });
-      return true;
-    } catch {
-      state.saas.enabled = false;
-      state.saas.token = '';
-      state.saas.storeId = '';
-      localStorage.removeItem(SAAS_TOKEN_KEY);
-      localStorage.removeItem(SAAS_STORE_KEY);
-    }
+    return true;
   }
 
   const mode = window.prompt('SaaS админка: 1 - вход, 2 - регистрация нового магазина, 3 - активация по Store ID', '1');
@@ -1923,10 +1925,23 @@ async function saasEnsureAdminSession() {
 async function saasLoadDatasetForCurrentContext() {
   state.saas.apiBase = getSaasApiBase();
   if (state.admin.enabled && state.saas.enabled && state.saas.storeId) {
-    const payload = await saasRequest('/admin/data', { auth: true });
-    applyStoreDataset(payload);
-    state.saas.datasetLoaded = true;
-    return true;
+    try {
+      const payload = await saasRequest('/admin/data', { auth: true });
+      applyStoreDataset(payload);
+      state.saas.datasetLoaded = true;
+      return true;
+    } catch (error) {
+      const msg = String(error?.message || '');
+      const needReauth = ['AUTH_REQUIRED', 'INVALID_TOKEN', 'SESSION_EXPIRED'].includes(msg);
+      if (!needReauth) throw error;
+      clearSaasAuth();
+      const reloginOk = await saasEnsureAdminSession();
+      if (!reloginOk) return false;
+      const payload = await saasRequest('/admin/data', { auth: true });
+      applyStoreDataset(payload);
+      state.saas.datasetLoaded = true;
+      return true;
+    }
   }
   const publicStoreId = getRequestedStoreId();
   if (!state.admin.enabled && publicStoreId) {
@@ -2988,6 +3003,13 @@ function renderProfile() {
       ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
     }
   }
+  if (ui.adminProfilePanel) {
+    const showAdminPanel = Boolean(state.admin.enabled && state.saas.storeId);
+    ui.adminProfilePanel.classList.toggle('hidden', !showAdminPanel);
+    if (showAdminPanel && ui.adminStoreIdValue) {
+      ui.adminStoreIdValue.textContent = state.saas.storeId;
+    }
+  }
 }
 
 function validatePhone(value) {
@@ -3211,6 +3233,11 @@ function bindEvents() {
     startHomeBannerAutoplay();
   });
   on(ui.profileManagerButton, 'click', openManagerChat);
+  on(ui.adminLogoutButton, 'click', () => {
+    clearSaasAuth();
+    reportStatus('Сессия админки завершена');
+    window.location.reload();
+  });
   on(document, 'click', (e) => {
     const addBtn = e.target.closest('[data-admin-add]');
     if (!addBtn) return;
