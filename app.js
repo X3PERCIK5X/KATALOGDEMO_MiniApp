@@ -792,7 +792,11 @@ async function fileToOptimizedDataUrl(file) {
 
 async function adminUploadImageFile(file) {
   if (!file) return null;
-  const endpoint = getImageUploadEndpoint();
+  let endpoint = getImageUploadEndpoint();
+  if (state.saas.enabled && endpoint === '/upload-image') {
+    const sid = String(state.saas.storeId || '').trim().toUpperCase();
+    if (sid) endpoint = `${endpoint}?storeId=${encodeURIComponent(sid)}`;
+  }
   if (!endpoint) {
     try {
       const asDataUrl = await fileToOptimizedDataUrl(file);

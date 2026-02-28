@@ -983,6 +983,16 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
 
 app.post('/api/upload-image', authMiddleware, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'FILE_REQUIRED' });
+  const requestedStoreId = String(req.query?.storeId || req.auth.storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(requestedStoreId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  const targetStore = getStoreRow(requestedStoreId);
+  if (!targetStore) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  const authUserId = String(req.auth?.userId || '').trim();
+  if (authUserId) {
+    if (!hasStoreAccess(authUserId, requestedStoreId)) return res.status(403).json({ error: 'FORBIDDEN' });
+  } else if (String(req.auth?.storeId || '').trim().toUpperCase() !== requestedStoreId) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
   const extByMime = {
     'image/jpeg': '.jpg',
     'image/png': '.png',
@@ -990,12 +1000,12 @@ app.post('/api/upload-image', authMiddleware, upload.single('file'), (req, res) 
     'image/gif': '.gif',
   };
   const ext = extByMime[req.file.mimetype] || path.extname(req.file.originalname || '') || '.jpg';
-  const storeUploadsDir = path.join(UPLOADS_DIR, req.auth.storeId);
+  const storeUploadsDir = path.join(UPLOADS_DIR, requestedStoreId);
   fs.mkdirSync(storeUploadsDir, { recursive: true });
   const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
   const finalPath = path.join(storeUploadsDir, finalName);
   fs.renameSync(req.file.path, finalPath);
-  const url = `${req.protocol}://${req.get('host')}/uploads/${req.auth.storeId}/${finalName}`;
+  const url = `${req.protocol}://${req.get('host')}/uploads/${requestedStoreId}/${finalName}`;
   return res.json({ ok: true, url });
 });
 
