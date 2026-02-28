@@ -21,6 +21,10 @@ const DEFAULT_STORE_ID = String(process.env.DEFAULT_STORE_ID || '111111').trim()
 const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@demokatalog.app').trim();
 const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin12345').trim();
 const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
 
 fs.mkdirSync(STORAGE_DIR, { recursive: true });
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -156,7 +160,16 @@ function seedDefaultStore() {
 
 seedDefaultStore();
 
-app.use(cors());
+app.set('trust proxy', 1);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (!ALLOWED_ORIGINS.length) return callback(null, true);
+    const ok = ALLOWED_ORIGINS.includes(origin);
+    return callback(ok ? null : new Error('CORS_NOT_ALLOWED'), ok);
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '5mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
 
@@ -373,8 +386,34 @@ app.get('/api/store/:storeId/public', (req, res) => {
   return res.json(rowToDataset(row));
 });
 
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'demo-katalog-lite-saas', ts: new Date().toISOString() });
+});
+
 app.use(express.static(ROOT));
 
-app.listen(PORT, () => {
+app.use((err, _req, res, _next) => {
+  if (String(err?.message || '') === 'CORS_NOT_ALLOWED') {
+    return res.status(403).json({ error: 'CORS_NOT_ALLOWED' });
+  }
+  console.error('Unhandled API error:', err);
+  return res.status(500).json({ error: 'INTERNAL_ERROR' });
+});
+
+const server = app.listen(PORT, () => {
   console.log(`SaaS server started on http://0.0.0.0:${PORT}`);
 });
+
+function gracefulShutdown(signal) {
+  console.log(`Received ${signal}, shutting down...`);
+  server.close(() => {
+    try {
+      db.close();
+    } catch {}
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
