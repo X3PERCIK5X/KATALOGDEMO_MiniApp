@@ -2112,6 +2112,21 @@ function scopedStorageKey(baseKey) {
   return `${baseKey}_${getStorageScopeStoreId()}`;
 }
 
+function canUseLegacyStorageFallback() {
+  const scope = getStorageScopeStoreId();
+  return scope === 'GLOBAL' || scope === '111111';
+}
+
+function readScopedStorage(baseKey, defaultRaw) {
+  const scoped = localStorage.getItem(scopedStorageKey(baseKey));
+  if (scoped != null) return scoped;
+  if (canUseLegacyStorageFallback()) {
+    const legacy = localStorage.getItem(baseKey);
+    if (legacy != null) return legacy;
+  }
+  return defaultRaw;
+}
+
 async function saasEnsureAdminSession() {
   if (!state.admin.enabled) return false;
   state.saas.apiBase = getSaasApiBase();
@@ -2212,22 +2227,22 @@ async function saasLoadDatasetForCurrentContext() {
 }
 
 function loadStorage() {
-  state.favorites = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_favorites')) || localStorage.getItem('demo_catalog_favorites') || '[]', []));
-  state.cart = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_cart')) || localStorage.getItem('demo_catalog_cart') || '{}', {});
-  state.selectedCart = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_cart_selected')) || localStorage.getItem('demo_catalog_cart_selected') || '[]', []));
-  state.selectedFavorites = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_fav_selected')) || localStorage.getItem('demo_catalog_fav_selected') || '[]', []));
-  state.profile = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_profile')) || localStorage.getItem('demo_catalog_profile') || '{}', {});
-  state.orders = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_orders')) || localStorage.getItem('demo_catalog_orders') || '[]', []);
-  state.promoCode = String(localStorage.getItem(scopedStorageKey('demo_catalog_promo_code')) || localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
-  state.promoPercent = Number(localStorage.getItem(scopedStorageKey('demo_catalog_promo_percent')) || localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
-  state.promoKind = String(localStorage.getItem(scopedStorageKey('demo_catalog_promo_kind')) || localStorage.getItem('demo_catalog_promo_kind') || '').trim();
-  state.recentlyViewed = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_recent')) || localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
-  state.theme = localStorage.getItem(scopedStorageKey('demo_catalog_theme')) === 'light' || localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
-  state.selectedStoreId = localStorage.getItem(scopedStorageKey('demo_catalog_selected_store')) || localStorage.getItem('demo_catalog_selected_store') || null;
-  state.promoUsage = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_promo_usage')) || localStorage.getItem('demo_catalog_promo_usage') || '{}', {});
-  const productStats = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_product_stats')) || localStorage.getItem('demo_catalog_product_stats') || '{}', {});
+  state.favorites = new Set(safeParse(readScopedStorage('demo_catalog_favorites', '[]'), []));
+  state.cart = safeParse(readScopedStorage('demo_catalog_cart', '{}'), {});
+  state.selectedCart = new Set(safeParse(readScopedStorage('demo_catalog_cart_selected', '[]'), []));
+  state.selectedFavorites = new Set(safeParse(readScopedStorage('demo_catalog_fav_selected', '[]'), []));
+  state.profile = safeParse(readScopedStorage('demo_catalog_profile', '{}'), {});
+  state.orders = safeParse(readScopedStorage('demo_catalog_orders', '[]'), []);
+  state.promoCode = String(readScopedStorage('demo_catalog_promo_code', '') || '').trim().toUpperCase();
+  state.promoPercent = Number(readScopedStorage('demo_catalog_promo_percent', '0') || 0) || 0;
+  state.promoKind = String(readScopedStorage('demo_catalog_promo_kind', '') || '').trim();
+  state.recentlyViewed = safeParse(readScopedStorage('demo_catalog_recent', '[]'), []).filter(Boolean).slice(0, 12);
+  state.theme = String(readScopedStorage('demo_catalog_theme', 'dark')) === 'light' ? 'light' : 'dark';
+  state.selectedStoreId = readScopedStorage('demo_catalog_selected_store', '') || null;
+  state.promoUsage = safeParse(readScopedStorage('demo_catalog_promo_usage', '{}'), {});
+  const productStats = safeParse(readScopedStorage('demo_catalog_product_stats', '{}'), {});
   state.productStats = productStats && typeof productStats === 'object' ? productStats : {};
-  state.searchHistory = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_search_history')) || localStorage.getItem('demo_catalog_search_history') || '[]', [])
+  state.searchHistory = safeParse(readScopedStorage('demo_catalog_search_history', '[]'), [])
     .filter((item) => typeof item === 'string' && item.trim())
     .slice(0, 8);
 }
