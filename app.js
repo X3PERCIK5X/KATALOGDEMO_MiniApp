@@ -49,6 +49,8 @@ const state = {
     apiBase: '',
     storeId: '',
     token: '',
+    userId: '',
+    stores: [],
     datasetLoaded: false,
   },
 };
@@ -201,6 +203,9 @@ const ui = {
   profileManagerButton: document.getElementById('profileManagerButton'),
   adminProfilePanel: document.getElementById('adminProfilePanel'),
   adminStoreIdValue: document.getElementById('adminStoreIdValue'),
+  adminReloadStoresButton: document.getElementById('adminReloadStoresButton'),
+  adminCreateStoreButton: document.getElementById('adminCreateStoreButton'),
+  adminConnectBotButton: document.getElementById('adminConnectBotButton'),
   adminLogoutButton: document.getElementById('adminLogoutButton'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   homeArticleTrack: document.getElementById('homeArticleTrack'),
@@ -483,6 +488,7 @@ function setScreen(name) {
   scrollToTop();
   adminRefreshBindings();
   if (name === 'checkout' && !state.phoneAutofillSucceeded) {
+    saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
     window.setTimeout(() => {
       tryAutofillPhoneFromTelegram().catch((error) => console.error('Phone autofill failed', error));
     }, 60);
@@ -1217,7 +1223,7 @@ async function adminPublishToCatalog() {
   const payload = adminBuildPayload();
   if (state.saas.enabled && state.admin.enabled && state.saas.storeId) {
     try {
-      await saasRequest('/admin/data', {
+      await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/data`, {
         method: 'PUT',
         auth: true,
         body: payload,
@@ -1797,8 +1803,114 @@ function clearSaasAuth() {
   state.saas.enabled = false;
   state.saas.token = '';
   state.saas.storeId = '';
+  state.saas.userId = '';
+  state.saas.stores = [];
   localStorage.removeItem(SAAS_TOKEN_KEY);
   localStorage.removeItem(SAAS_STORE_KEY);
+}
+
+async function saasLoadStoresList() {
+  if (!state.saas.token) return [];
+  try {
+    const payload = await saasRequest('/admin/stores', { auth: true });
+    const stores = Array.isArray(payload?.stores) ? payload.stores : [];
+    state.saas.stores = stores;
+    return stores;
+  } catch {
+    return [];
+  }
+}
+
+async function saasSwitchStore(nextStoreId) {
+  const normalized = String(nextStoreId || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(normalized)) return false;
+  state.saas.storeId = normalized;
+  localStorage.setItem(SAAS_STORE_KEY, normalized);
+  const payload = await saasRequest(`/stores/${encodeURIComponent(normalized)}/admin/data`, { auth: true });
+  applyStoreDataset(payload);
+  state.saas.datasetLoaded = true;
+  saveStorage();
+  renderHeaderStore();
+  renderStores();
+  renderHomeBanners();
+  renderHomeArticles();
+  renderHomePopular();
+  renderPromos();
+  renderCategories();
+  renderProducts();
+  renderProductView();
+  renderCart();
+  renderFavorites();
+  renderProfile();
+  renderOrders();
+  reportStatus(`Переключено на магазин ${normalized}`);
+  return true;
+}
+
+async function saasPromptSelectStore() {
+  const stores = await saasLoadStoresList();
+  if (!stores.length) {
+    window.alert('Магазины не найдены для текущего аккаунта.');
+    return;
+  }
+  const options = stores.map((s, i) => `${i + 1}. ${s.storeId} — ${s.storeName || ''}`).join('\n');
+  const answer = window.prompt(`Выберите магазин:\n${options}\n\nВведите номер или Store ID:`, String(state.saas.storeId || ''));
+  if (!answer) return;
+  const trimmed = String(answer).trim().toUpperCase();
+  const byIndex = Number(trimmed);
+  const picked = Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= stores.length
+    ? stores[byIndex - 1]
+    : stores.find((s) => String(s.storeId || '').toUpperCase() === trimmed);
+  if (!picked?.storeId) {
+    window.alert('Магазин не найден.');
+    return;
+  }
+  await saasSwitchStore(picked.storeId);
+}
+
+async function saasCreateStoreFlow() {
+  const storeName = String(window.prompt('Название нового магазина:', 'Новый магазин') || '').trim();
+  if (!storeName) return;
+  const requested = String(window.prompt('Store ID (6 символов A-Z/0-9, можно оставить пустым):', '') || '').trim().toUpperCase();
+  const body = { storeName };
+  if (requested) body.storeId = requested;
+  try {
+    const payload = await saasRequest('/admin/stores', {
+      method: 'POST',
+      auth: true,
+      body,
+    });
+    const createdStoreId = String(payload?.storeId || '').trim().toUpperCase();
+    if (!createdStoreId) throw new Error('INVALID_STORE_RESPONSE');
+    window.alert(`Магазин создан: ${createdStoreId}`);
+    await saasLoadStoresList();
+    await saasSwitchStore(createdStoreId);
+  } catch (error) {
+    window.alert(`Ошибка создания магазина: ${String(error?.message || 'unknown')}`);
+  }
+}
+
+async function saasConnectBotFlow() {
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!storeId) {
+    window.alert('Сначала выберите Store ID.');
+    return;
+  }
+  const botToken = String(window.prompt('Bot token (формат 123456:ABC...):', '') || '').trim();
+  if (!botToken) return;
+  const orderChatId = String(window.prompt('Chat ID для заказов (например: -1001234567890):', '') || '').trim();
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { botToken, orderChatId },
+    });
+    const username = String(payload?.botUsername || '').trim();
+    window.alert(`Бот подключен${username ? `: ${username}` : ''}`);
+    await saasLoadStoresList();
+  } catch (error) {
+    window.alert(`Ошибка подключения бота: ${String(error?.message || 'unknown')}`);
+  }
 }
 
 function ensureSaasAuthModal() {
@@ -1980,9 +2092,24 @@ function getRequestedStoreId() {
   const params = new URLSearchParams(window.location.search || '');
   const storeParam = String(params.get('store') || '').trim();
   if (storeParam) return storeParam;
+  const path = String(window.location.pathname || '');
+  const match = path.match(/\/store\/([A-Za-z0-9]{6})/);
+  if (match && match[1]) return String(match[1]).trim();
   const tgStore = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').trim();
   if (tgStore && !tgStore.toLowerCase().includes('admin')) return tgStore;
   return '';
+}
+
+function getStorageScopeStoreId() {
+  const fromState = String(state.saas.storeId || '').trim().toUpperCase();
+  if (fromState) return fromState;
+  const fromQuery = String(getRequestedStoreId() || '').trim().toUpperCase();
+  if (fromQuery) return fromQuery;
+  return 'GLOBAL';
+}
+
+function scopedStorageKey(baseKey) {
+  return `${baseKey}_${getStorageScopeStoreId()}`;
 }
 
 async function saasEnsureAdminSession() {
@@ -1994,6 +2121,13 @@ async function saasEnsureAdminSession() {
     state.saas.token = storedToken;
     state.saas.storeId = storedStoreId;
     state.saas.enabled = true;
+    try {
+      const me = await saasRequest('/auth/me', { auth: true });
+      state.saas.userId = String(me?.userId || '');
+      state.saas.stores = Array.isArray(me?.stores) ? me.stores : [];
+    } catch {
+      // токен проверим позже на загрузке датасета
+    }
     return true;
   }
 
@@ -2001,22 +2135,30 @@ async function saasEnsureAdminSession() {
     const authData = await openSaasAuthModal();
     if (!authData) return false;
     const { mode, storeId, password } = authData;
+    const telegramUserId = getTelegramId();
+    const email = String(state.profile?.email || '').trim().toLowerCase();
     try {
       if (mode === 'register') {
         await saasRequest('/auth/register-by-store', {
           method: 'POST',
-          body: { storeId, password },
+          body: { storeId, password, telegramUserId, email },
         });
       }
       const login = await saasRequest('/auth/login', {
         method: 'POST',
-        body: { storeId, password },
+        body: { storeId, password, telegramUserId, email },
       });
       state.saas.enabled = true;
       state.saas.storeId = storeId;
       state.saas.token = String(login.token || '');
+      state.saas.stores = Array.isArray(login.stores) ? login.stores : [];
       localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
       localStorage.setItem(SAAS_TOKEN_KEY, state.saas.token);
+      try {
+        const me = await saasRequest('/auth/me', { auth: true });
+        state.saas.userId = String(me?.userId || '');
+        if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
+      } catch {}
       return true;
     } catch (error) {
       const code = String(error?.message || '');
@@ -2041,7 +2183,7 @@ async function saasLoadDatasetForCurrentContext() {
   state.saas.apiBase = getSaasApiBase();
   if (state.admin.enabled && state.saas.enabled && state.saas.storeId) {
     try {
-      const payload = await saasRequest('/admin/data', { auth: true });
+      const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/data`, { auth: true });
       applyStoreDataset(payload);
       state.saas.datasetLoaded = true;
       return true;
@@ -2052,7 +2194,7 @@ async function saasLoadDatasetForCurrentContext() {
       clearSaasAuth();
       const reloginOk = await saasEnsureAdminSession();
       if (!reloginOk) return false;
-      const payload = await saasRequest('/admin/data', { auth: true });
+      const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/data`, { auth: true });
       applyStoreDataset(payload);
       state.saas.datasetLoaded = true;
       return true;
@@ -2070,45 +2212,63 @@ async function saasLoadDatasetForCurrentContext() {
 }
 
 function loadStorage() {
-  state.favorites = new Set(safeParse(localStorage.getItem('demo_catalog_favorites') || '[]', []));
-  state.cart = safeParse(localStorage.getItem('demo_catalog_cart') || '{}', {});
-  state.selectedCart = new Set(safeParse(localStorage.getItem('demo_catalog_cart_selected') || '[]', []));
-  state.selectedFavorites = new Set(safeParse(localStorage.getItem('demo_catalog_fav_selected') || '[]', []));
-  state.profile = safeParse(localStorage.getItem('demo_catalog_profile') || '{}', {});
-  state.orders = safeParse(localStorage.getItem('demo_catalog_orders') || '[]', []);
-  state.promoCode = String(localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
-  state.promoPercent = Number(localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
-  state.promoKind = String(localStorage.getItem('demo_catalog_promo_kind') || '').trim();
-  state.recentlyViewed = safeParse(localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
-  state.theme = localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
-  state.selectedStoreId = localStorage.getItem('demo_catalog_selected_store') || null;
-  state.promoUsage = safeParse(localStorage.getItem('demo_catalog_promo_usage') || '{}', {});
-  const productStats = safeParse(localStorage.getItem('demo_catalog_product_stats') || '{}', {});
+  state.favorites = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_favorites')) || localStorage.getItem('demo_catalog_favorites') || '[]', []));
+  state.cart = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_cart')) || localStorage.getItem('demo_catalog_cart') || '{}', {});
+  state.selectedCart = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_cart_selected')) || localStorage.getItem('demo_catalog_cart_selected') || '[]', []));
+  state.selectedFavorites = new Set(safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_fav_selected')) || localStorage.getItem('demo_catalog_fav_selected') || '[]', []));
+  state.profile = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_profile')) || localStorage.getItem('demo_catalog_profile') || '{}', {});
+  state.orders = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_orders')) || localStorage.getItem('demo_catalog_orders') || '[]', []);
+  state.promoCode = String(localStorage.getItem(scopedStorageKey('demo_catalog_promo_code')) || localStorage.getItem('demo_catalog_promo_code') || '').trim().toUpperCase();
+  state.promoPercent = Number(localStorage.getItem(scopedStorageKey('demo_catalog_promo_percent')) || localStorage.getItem('demo_catalog_promo_percent') || 0) || 0;
+  state.promoKind = String(localStorage.getItem(scopedStorageKey('demo_catalog_promo_kind')) || localStorage.getItem('demo_catalog_promo_kind') || '').trim();
+  state.recentlyViewed = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_recent')) || localStorage.getItem('demo_catalog_recent') || '[]', []).filter(Boolean).slice(0, 12);
+  state.theme = localStorage.getItem(scopedStorageKey('demo_catalog_theme')) === 'light' || localStorage.getItem('demo_catalog_theme') === 'light' ? 'light' : 'dark';
+  state.selectedStoreId = localStorage.getItem(scopedStorageKey('demo_catalog_selected_store')) || localStorage.getItem('demo_catalog_selected_store') || null;
+  state.promoUsage = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_promo_usage')) || localStorage.getItem('demo_catalog_promo_usage') || '{}', {});
+  const productStats = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_product_stats')) || localStorage.getItem('demo_catalog_product_stats') || '{}', {});
   state.productStats = productStats && typeof productStats === 'object' ? productStats : {};
-  state.searchHistory = safeParse(localStorage.getItem('demo_catalog_search_history') || '[]', [])
+  state.searchHistory = safeParse(localStorage.getItem(scopedStorageKey('demo_catalog_search_history')) || localStorage.getItem('demo_catalog_search_history') || '[]', [])
     .filter((item) => typeof item === 'string' && item.trim())
     .slice(0, 8);
 }
 
 function saveStorage() {
   try {
-    localStorage.setItem('demo_catalog_favorites', JSON.stringify(Array.from(state.favorites)));
-    localStorage.setItem('demo_catalog_cart', JSON.stringify(state.cart));
-    localStorage.setItem('demo_catalog_cart_selected', JSON.stringify(Array.from(state.selectedCart)));
-    localStorage.setItem('demo_catalog_fav_selected', JSON.stringify(Array.from(state.selectedFavorites)));
-    localStorage.setItem('demo_catalog_profile', JSON.stringify(state.profile));
-    localStorage.setItem('demo_catalog_orders', JSON.stringify(state.orders));
-    localStorage.setItem('demo_catalog_promo_code', state.promoCode || '');
-    localStorage.setItem('demo_catalog_promo_percent', String(state.promoPercent || 0));
-    localStorage.setItem('demo_catalog_promo_kind', state.promoKind || '');
-    localStorage.setItem('demo_catalog_recent', JSON.stringify(state.recentlyViewed || []));
-    localStorage.setItem('demo_catalog_theme', state.theme || 'dark');
-    localStorage.setItem('demo_catalog_selected_store', state.selectedStoreId || '');
-    localStorage.setItem('demo_catalog_promo_usage', JSON.stringify(state.promoUsage || {}));
-    localStorage.setItem('demo_catalog_product_stats', JSON.stringify(state.productStats || {}));
-    localStorage.setItem('demo_catalog_search_history', JSON.stringify(state.searchHistory || []));
+    localStorage.setItem(scopedStorageKey('demo_catalog_favorites'), JSON.stringify(Array.from(state.favorites)));
+    localStorage.setItem(scopedStorageKey('demo_catalog_cart'), JSON.stringify(state.cart));
+    localStorage.setItem(scopedStorageKey('demo_catalog_cart_selected'), JSON.stringify(Array.from(state.selectedCart)));
+    localStorage.setItem(scopedStorageKey('demo_catalog_fav_selected'), JSON.stringify(Array.from(state.selectedFavorites)));
+    localStorage.setItem(scopedStorageKey('demo_catalog_profile'), JSON.stringify(state.profile));
+    localStorage.setItem(scopedStorageKey('demo_catalog_orders'), JSON.stringify(state.orders));
+    localStorage.setItem(scopedStorageKey('demo_catalog_promo_code'), state.promoCode || '');
+    localStorage.setItem(scopedStorageKey('demo_catalog_promo_percent'), String(state.promoPercent || 0));
+    localStorage.setItem(scopedStorageKey('demo_catalog_promo_kind'), state.promoKind || '');
+    localStorage.setItem(scopedStorageKey('demo_catalog_recent'), JSON.stringify(state.recentlyViewed || []));
+    localStorage.setItem(scopedStorageKey('demo_catalog_theme'), state.theme || 'dark');
+    localStorage.setItem(scopedStorageKey('demo_catalog_selected_store'), state.selectedStoreId || '');
+    localStorage.setItem(scopedStorageKey('demo_catalog_promo_usage'), JSON.stringify(state.promoUsage || {}));
+    localStorage.setItem(scopedStorageKey('demo_catalog_product_stats'), JSON.stringify(state.productStats || {}));
+    localStorage.setItem(scopedStorageKey('demo_catalog_search_history'), JSON.stringify(state.searchHistory || []));
   } catch {
     // Игнорируем, чтобы UI не падал при переполнении хранилища.
+  }
+}
+
+async function saasTrackEvent(eventType, { productId = '', payload = {} } = {}) {
+  if (!state.saas.apiBase || !state.saas.storeId) return;
+  try {
+    const telegramUserId = getTelegramId();
+    await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/events`, {
+      method: 'POST',
+      body: {
+        eventType,
+        productId: String(productId || ''),
+        telegramUserId,
+        payload: payload && typeof payload === 'object' ? payload : {},
+      },
+    });
+  } catch {
+    // метрики не должны ломать UX
   }
 }
 
@@ -2569,6 +2729,7 @@ function touchRecentlyViewed(productId) {
   stats.views = Number(stats.views || 0) + 1;
   stats.updatedAt = new Date().toISOString();
   saveStorage();
+  saasTrackEvent('view_product', { productId, payload: { screen: state.currentScreen } });
 }
 
 function getPopularityStats(productId) {
@@ -2907,7 +3068,7 @@ function renderCart() {
 
 function renderOrders() {
   if (state.admin.enabled) {
-    renderAdminSalesAnalytics();
+    void renderAdminSalesAnalytics();
     return;
   }
   if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История заказов';
@@ -2997,8 +3158,24 @@ function adminOpenReportModal(title, html) {
   modal.classList.remove('hidden');
 }
 
-function renderAdminSalesAnalytics() {
-  const orders = state.orders.slice().sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+async function renderAdminSalesAnalytics() {
+  let orders = state.orders.slice();
+  let remoteMetrics = null;
+  if (state.saas.storeId && state.saas.token) {
+    try {
+      const storeId = encodeURIComponent(state.saas.storeId);
+      const [ordersRes, metricsRes] = await Promise.all([
+        saasRequest(`/stores/${storeId}/admin/orders`, { auth: true }),
+        saasRequest(`/stores/${storeId}/admin/metrics`, { auth: true }),
+      ]);
+      if (Array.isArray(ordersRes?.orders)) orders = ordersRes.orders;
+      if (metricsRes?.metrics && typeof metricsRes.metrics === 'object') remoteMetrics = metricsRes.metrics;
+    } catch {
+      // fallback to local analytics
+    }
+  }
+
+  orders = orders.slice().sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
   if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История покупок клиентов';
   if (!orders.length) {
     ui.ordersList.innerHTML = '<div class="text-card">Покупок пока нет.</div>';
@@ -3022,12 +3199,36 @@ function renderAdminSalesAnalytics() {
   const thisMonth = monthMap.get(thisMonthKey) || { total: 0, margin: 0, count: 0, orders: [] };
   const monthEntries = Array.from(monthMap.entries()).sort((a, b) => String(b[0]).localeCompare(String(a[0])));
 
+  const topProductsHtml = Array.isArray(remoteMetrics?.topProducts) && remoteMetrics.topProducts.length
+    ? `
+      <div class="admin-analytics-months">
+        ${remoteMetrics.topProducts.slice(0, 5).map((item) => `
+          <div class="admin-month-card">
+            <div class="admin-month-title">${escapeHtml(item.title || 'Товар')}</div>
+            <div class="admin-month-meta">Шт: ${formatPrice(Number(item.qty || 0))}</div>
+            <div class="admin-month-meta">Выручка: ${formatPrice(Number(item.revenue || 0))} ₽</div>
+          </div>
+        `).join('')}
+      </div>
+    `
+    : '';
+
   ui.ordersList.innerHTML = `
     <button class="admin-analytics-card" data-admin-report="month-current" type="button">
       <div class="admin-analytics-label">Маржа за текущий месяц</div>
       <div class="admin-analytics-value">${formatPrice(thisMonth.margin)} ₽</div>
       <div class="admin-analytics-meta">${adminMonthLabel(thisMonthKey)} • заказов: ${thisMonth.count}</div>
     </button>
+    ${remoteMetrics
+      ? `
+        <div class="admin-analytics-card">
+          <div class="admin-analytics-label">Конверсия</div>
+          <div class="admin-analytics-value">${Number(remoteMetrics.conversion || 0).toLocaleString('ru-RU')}%</div>
+          <div class="admin-analytics-meta">Checkout: ${formatPrice(Number(remoteMetrics.beginCheckout || 0))} • Заказы: ${formatPrice(Number(remoteMetrics.ordersTotal || 0))}</div>
+        </div>
+      `
+      : ''}
+    ${topProductsHtml}
 
     <div class="admin-analytics-months">
       ${monthEntries.map(([key, stat]) => `
@@ -3208,6 +3409,7 @@ function addToCart(id) {
   state.cart[id] = (state.cart[id] || 0) + 1;
   saveStorage();
   updateBadges();
+  saasTrackEvent('add_to_cart', { productId: id, payload: { qty: state.cart[id] } });
 }
 
 // Центральная регистрация всех обработчиков интерфейса.
@@ -3348,6 +3550,18 @@ function bindEvents() {
     startHomeBannerAutoplay();
   });
   on(ui.profileManagerButton, 'click', openManagerChat);
+  on(ui.adminReloadStoresButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void saasPromptSelectStore();
+  });
+  on(ui.adminCreateStoreButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void saasCreateStoreFlow();
+  });
+  on(ui.adminConnectBotButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void saasConnectBotFlow();
+  });
   on(ui.adminLogoutButton, 'click', () => {
     clearSaasAuth();
     reportStatus('Сессия админки завершена');
@@ -3758,7 +3972,11 @@ function bindEvents() {
   on(ui.ordersButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
   on(ui.profileButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
   on(ui.homeButton, 'click', () => { renderHomePopular(); setScreen('home'); });
-  on(ui.checkoutButton, 'click', () => { renderCart(); setScreen('checkout'); });
+  on(ui.checkoutButton, 'click', () => {
+    saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
+    renderCart();
+    setScreen('checkout');
+  });
 
   document.querySelectorAll('.back-button').forEach((btn) => {
     btn.addEventListener('click', () => goBack());
@@ -3881,8 +4099,6 @@ function bindEvents() {
     state.profile = profile;
     saveStorage();
     ui.orderStatus.textContent = '';
-    setScreen('pay');
-    return;
 
     const summary = (() => {
       let sum = 0;
@@ -3965,13 +4181,26 @@ function bindEvents() {
       } : null,
     };
 
-    ui.orderStatus.textContent = 'Отправка данных в бот...';
+    ui.orderStatus.textContent = 'Отправка заказа...';
     if (ui.orderSubmit) ui.orderSubmit.disabled = true;
     if (ui.orderRetry) ui.orderRetry.classList.add('hidden');
 
     try {
-      const result = await window.HORECA_TG.sendCheckoutOrder(order);
-      if (!result.ok) throw new Error(result.error || 'SEND_FAILED');
+      let sendOk = false;
+      if (state.saas.storeId) {
+        const result = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/orders`, {
+          method: 'POST',
+          body: {
+            order,
+            telegramUserId: telegramId || '',
+          },
+        });
+        sendOk = Boolean(result?.ok);
+      } else {
+        const result = await window.HORECA_TG.sendCheckoutOrder(order);
+        sendOk = Boolean(result?.ok);
+      }
+      if (!sendOk) throw new Error('SEND_FAILED');
 
       state.orders.push(order);
       mappedItems.forEach((item) => {
@@ -3997,9 +4226,12 @@ function bindEvents() {
       state.promoKind = '';
       state.profile = profile;
       saveStorage();
-      ui.orderStatus.textContent = 'Счёт отправлен в чат бота.';
+      saasTrackEvent('create_order', { payload: { orderId: order.id, total: summary.sum } });
+      saasTrackEvent('payment_success', { payload: { orderId: order.id, total: summary.sum } });
+      ui.orderStatus.textContent = 'Заказ отправлен.';
       setScreen('confirmation');
     } catch (err) {
+      saasTrackEvent('payment_fail', { payload: { reason: String(err?.message || 'unknown') } });
       ui.orderStatus.textContent = 'Ошибка отправки в бот. Попробуйте ещё раз.';
       if (ui.orderRetry) ui.orderRetry.classList.remove('hidden');
     } finally {
@@ -4326,6 +4558,14 @@ async function init() {
     if (state.admin.enabled) {
       const ready = await saasEnsureAdminSession();
       if (ready) {
+        await saasLoadStoresList();
+        if (state.saas.storeId && state.saas.stores.length) {
+          const currentExists = state.saas.stores.some((s) => String(s.storeId || '').toUpperCase() === state.saas.storeId);
+          if (!currentExists && state.saas.stores[0]?.storeId) {
+            state.saas.storeId = String(state.saas.stores[0].storeId).toUpperCase();
+            localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+          }
+        }
         await saasLoadDatasetForCurrentContext();
         reportStatus(`SaaS магазин подключен: ${state.saas.storeId}`);
       }
