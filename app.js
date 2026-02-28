@@ -56,6 +56,7 @@ const state = {
 const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
 const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
 const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
+const SAAS_DEFAULT_REMOTE_API = 'https://lambrizsel.duckdns.org/api';
 
 // Базовый контент главной страницы.
 // Если в config.json нет своих значений — используем эти.
@@ -1786,6 +1787,8 @@ function getSaasApiBase() {
   } catch {}
   const fromStorage = String(localStorage.getItem(SAAS_API_BASE_KEY) || '').trim();
   if (fromStorage) return fromStorage.replace(/\/$/, '');
+  const host = String(window.location.host || '').toLowerCase();
+  if (host.includes('github.io')) return SAAS_DEFAULT_REMOTE_API.replace(/\/$/, '');
   const fallback = `${window.location.origin}/api`;
   return fallback.replace(/\/$/, '');
 }
@@ -1899,9 +1902,9 @@ function openSaasAuthModal() {
       const apiBaseRaw = String(apiInput?.value || '').trim();
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
-      if (!apiBaseRaw) return showError('Укажите API URL.');
+      const apiSource = apiBaseRaw || getSaasApiBase();
       try {
-        const normalizedApi = apiBaseRaw.replace(/\/$/, '');
+        const normalizedApi = apiSource.replace(/\/$/, '');
         // Простейшая валидация URL до отправки запроса
         // eslint-disable-next-line no-new
         new URL(normalizedApi);
@@ -2025,6 +2028,10 @@ async function saasEnsureAdminSession() {
         'HTTP 405': 'API сервер не подключен или указан неверный URL (Method Not Allowed). Проверь API URL.',
         'HTTP 404': 'API сервер не найден по указанному URL. Проверь API URL.',
       };
+      if (code === 'HTTP 404' || code === 'HTTP 405') {
+        localStorage.removeItem(SAAS_API_BASE_KEY);
+        state.saas.apiBase = getSaasApiBase();
+      }
       window.alert(messageMap[code] || `Ошибка авторизации: ${code || 'unknown'}`);
     }
   }
