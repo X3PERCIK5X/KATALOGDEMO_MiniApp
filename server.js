@@ -22,6 +22,7 @@ const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@dem
 const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin12345').trim();
 const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 const BOT_TOKEN_SECRET = String(process.env.BOT_TOKEN_SECRET || '').trim();
+const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -153,6 +154,18 @@ CREATE INDEX IF NOT EXISTS idx_products_store_sort ON products(store_id, sort_or
 CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders(store_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_events_store_type_created ON events(store_id, event_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_store_created ON password_resets(store_id, created_at DESC);
 `);
 
 function ensureStoresColumn(columnName, ddl) {
@@ -222,6 +235,21 @@ function randomInviteCode() {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function hashResetCode(storeId, code) {
+  return crypto.createHash('sha256').update(`${String(storeId || '')}:${String(code || '')}`).digest('hex');
+}
+
+function generateResetCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function telegramIdFromIdentity(identity) {
+  const raw = String(identity || '').trim();
+  if (!raw.startsWith('tg:')) return '';
+  const id = raw.slice(3).trim();
+  return /^[0-9]{5,20}$/.test(id) ? id : '';
 }
 
 function deriveBotKey() {
@@ -392,6 +420,22 @@ function hasStoreAccess(userId, storeId) {
   if (!uid) return false;
   const row = db.prepare('SELECT 1 AS ok FROM store_users WHERE store_id = ? AND user_id = ?').get(storeId, uid);
   return Boolean(row?.ok);
+}
+
+function resolveOwnerTelegramId(storeRow) {
+  const direct = telegramIdFromIdentity(storeRow?.owner_user_id || '');
+  if (direct) return direct;
+  const fromLinks = db.prepare(`
+    SELECT user_id
+    FROM store_users
+    WHERE store_id = ? AND role = 'owner'
+    ORDER BY id ASC
+  `).all(String(storeRow?.store_id || ''));
+  for (const row of fromLinks) {
+    const parsed = telegramIdFromIdentity(row?.user_id || '');
+    if (parsed) return parsed;
+  }
+  return '';
 }
 
 function rowToDataset(row) {
@@ -603,6 +647,34 @@ async function notifyOrderViaTelegram(storeRow, orderPayload) {
   }
 }
 
+async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  const chatId = String(ownerTelegramId || '').trim();
+  if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
+  const text = [
+    `Восстановление пароля магазина ${storeId}`,
+    `Код: ${code}`,
+    'Код действует 10 минут.',
+    'Если это были не вы — проигнорируйте сообщение.',
+  ].join('\n');
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'RESET_CODE_SEND_FAILED' };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'RESET_CODE_SEND_FAILED' };
+  }
+}
+
 app.post('/api/owner/stores', ownerMiddleware, (req, res) => {
   const requestedStoreId = String(req.body?.storeId || '').trim().toUpperCase();
   const storeId = requestedStoreId || uniqueStoreId();
@@ -775,6 +847,79 @@ app.post('/api/auth/login', (req, res) => {
     : [{ storeId, storeName: row.store_name }];
 
   return res.json({ ok: true, token, storeId, stores });
+});
+
+app.post('/api/auth/password-reset/request', async (req, res) => {
+  const storeId = String(req.body?.storeId || '').trim().toUpperCase();
+  const telegramUserId = String(req.body?.telegramUserId || '').trim();
+  if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  const row = getStoreRow(storeId);
+  if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  if (Number(row.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
+
+  const ownerTelegramId = resolveOwnerTelegramId(row);
+  if (!ownerTelegramId) return res.status(400).json({ error: 'OWNER_TELEGRAM_ID_NOT_FOUND' });
+  if (!telegramUserId || telegramUserId !== ownerTelegramId) return res.status(403).json({ error: 'FORBIDDEN_OWNER_MISMATCH' });
+
+  const code = generateResetCode();
+  const codeHash = hashResetCode(storeId, code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const ts = nowIso();
+
+  db.prepare('UPDATE password_resets SET used = 1 WHERE store_id = ? AND used = 0').run(storeId);
+  db.prepare(`
+    INSERT INTO password_resets (store_id, code_hash, expires_at, used, attempts, created_at)
+    VALUES (?, ?, ?, 0, 0, ?)
+  `).run(storeId, codeHash, expiresAt, ts);
+
+  const notify = await notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code);
+  if (!notify.ok) return res.status(500).json({ error: notify.error || 'RESET_CODE_SEND_FAILED' });
+  return res.json({ ok: true });
+});
+
+app.post('/api/auth/password-reset/confirm', (req, res) => {
+  const storeId = String(req.body?.storeId || '').trim().toUpperCase();
+  const code = String(req.body?.code || '').trim();
+  const newPassword = String(req.body?.newPassword || '').trim();
+  const telegramUserId = String(req.body?.telegramUserId || '').trim();
+
+  if (!isValidStoreId(storeId) || !/^[0-9]{6}$/.test(code) || newPassword.length < 6) {
+    return res.status(400).json({ error: 'INVALID_RESET_PAYLOAD' });
+  }
+  const store = getStoreRow(storeId);
+  if (!store) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+
+  const ownerTelegramId = resolveOwnerTelegramId(store);
+  if (!ownerTelegramId || !telegramUserId || telegramUserId !== ownerTelegramId) {
+    return res.status(403).json({ error: 'FORBIDDEN_OWNER_MISMATCH' });
+  }
+
+  const resetRow = db.prepare(`
+    SELECT id, code_hash, expires_at, used, attempts
+    FROM password_resets
+    WHERE store_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(storeId);
+  if (!resetRow || Number(resetRow.used || 0) === 1) return res.status(400).json({ error: 'RESET_CODE_NOT_FOUND' });
+  if (new Date(String(resetRow.expires_at || 0)).getTime() < Date.now()) {
+    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(resetRow.id);
+    return res.status(400).json({ error: 'RESET_CODE_EXPIRED' });
+  }
+
+  const expectedHash = hashResetCode(storeId, code);
+  if (expectedHash !== String(resetRow.code_hash || '')) {
+    const attempts = Number(resetRow.attempts || 0) + 1;
+    const used = attempts >= 5 ? 1 : 0;
+    db.prepare('UPDATE password_resets SET attempts = ?, used = ? WHERE id = ?').run(attempts, used, resetRow.id);
+    return res.status(401).json({ error: used ? 'RESET_CODE_BLOCKED' : 'RESET_CODE_INVALID' });
+  }
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  const ts = nowIso();
+  db.prepare('UPDATE stores SET password_hash = ?, updated_at = ? WHERE store_id = ?').run(hash, ts, storeId);
+  db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(resetRow.id);
+  return res.json({ ok: true, storeId });
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {

@@ -1945,6 +1945,9 @@ function ensureSaasAuthModal() {
         <label class="saas-auth-label">Store ID
           <input class="admin-modal-input" name="storeId" placeholder="например: 111111" required maxlength="6" />
         </label>
+        <label class="saas-auth-label saas-auth-reset-code hidden">Код из бота
+          <input class="admin-modal-input" name="resetCode" inputmode="numeric" maxlength="6" placeholder="6 цифр" />
+        </label>
         <label class="saas-auth-label">Пароль
           <input class="admin-modal-input" name="password" type="password" placeholder="минимум 6 символов" required />
         </label>
@@ -1954,6 +1957,7 @@ function ensureSaasAuthModal() {
         <div class="saas-auth-error hidden"></div>
         <div class="admin-modal-actions">
           <button type="button" class="secondary-button" data-auth-cancel>Отмена</button>
+          <button type="button" class="secondary-button" data-auth-recover>Восстановить</button>
           <button type="submit" class="primary-button" data-auth-submit>Войти</button>
         </div>
       </form>
@@ -1968,24 +1972,45 @@ function openSaasAuthModal() {
   const modal = ensureSaasAuthModal();
   const form = modal.querySelector('.saas-auth-form');
   const storeInput = modal.querySelector('input[name="storeId"]');
+  const resetCodeWrap = modal.querySelector('.saas-auth-reset-code');
+  const resetCodeInput = modal.querySelector('input[name="resetCode"]');
   const passwordInput = modal.querySelector('input[name="password"]');
   const repeatWrap = modal.querySelector('.saas-auth-repeat');
   const repeatInput = modal.querySelector('input[name="passwordRepeat"]');
   const errorBox = modal.querySelector('.saas-auth-error');
   const submitBtn = modal.querySelector('[data-auth-submit]');
+  const recoverBtn = modal.querySelector('[data-auth-recover]');
   const tabs = Array.from(modal.querySelectorAll('[data-auth-tab]'));
+  let resetCode = '';
   let mode = 'login';
 
   const setMode = (nextMode) => {
-    mode = nextMode === 'register' ? 'register' : 'login';
-    tabs.forEach((btn) => btn.classList.toggle('active', btn.dataset.authTab === mode));
-    repeatWrap.classList.toggle('hidden', mode !== 'register');
-    submitBtn.textContent = mode === 'register' ? 'Сохранить пароль' : 'Войти';
+    if (nextMode === 'register') mode = 'register';
+    else if (nextMode === 'recover_code') mode = 'recover_code';
+    else if (nextMode === 'recover_password') mode = 'recover_password';
+    else mode = 'login';
+
+    tabs.forEach((btn) => {
+      const tabMode = btn.dataset.authTab === 'register' ? 'register' : 'login';
+      btn.classList.toggle('active', tabMode === mode);
+    });
+    resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
+    repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
+    passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
+    recoverBtn.classList.toggle('hidden', mode !== 'login');
+    submitBtn.textContent = mode === 'register'
+      ? 'Сохранить пароль'
+      : mode === 'recover_code'
+        ? 'Далее'
+        : mode === 'recover_password'
+          ? 'Сменить пароль'
+          : 'Войти';
     if (errorBox) {
       errorBox.classList.add('hidden');
       errorBox.textContent = '';
     }
-    if (mode !== 'register') repeatInput.value = '';
+    if (mode !== 'register' && mode !== 'recover_password') repeatInput.value = '';
+    if (mode !== 'recover_code') resetCodeInput.value = '';
   };
 
   setMode('login');
@@ -1996,6 +2021,7 @@ function openSaasAuthModal() {
     const cleanup = () => {
       modal.classList.add('hidden');
       tabs.forEach((btn) => btn.removeEventListener('click', onTabClick));
+      recoverBtn.removeEventListener('click', onRecover);
       cancelBtn.removeEventListener('click', onCancel);
       form.removeEventListener('submit', onSubmit);
     };
@@ -2021,15 +2047,78 @@ function openSaasAuthModal() {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
+      const codeValue = String(resetCodeInput?.value || '').trim();
       if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
+      if (mode === 'recover_code') {
+        if (!/^[0-9]{6}$/.test(codeValue)) return showError('Код должен быть из 6 цифр.');
+        resetCode = codeValue;
+        passwordInput.value = '';
+        repeatInput.value = '';
+        setMode('recover_password');
+        setTimeout(() => passwordInput?.focus(), 20);
+        return;
+      }
       if (password.length < 6) return showError('Пароль должен быть не короче 6 символов.');
-      if (mode === 'register' && password !== passwordRepeat) return showError('Пароли не совпадают.');
+      if ((mode === 'register' || mode === 'recover_password') && password !== passwordRepeat) return showError('Пароли не совпадают.');
+      if (mode === 'recover_password') {
+        const telegramUserId = getTelegramId();
+        try {
+          await saasRequest('/auth/password-reset/confirm', {
+            method: 'POST',
+            body: { storeId, code: resetCode, newPassword: password, telegramUserId },
+          });
+          resetCode = '';
+          setMode('login');
+          passwordInput.value = '';
+          repeatInput.value = '';
+          showError('Пароль обновлён. Теперь войдите с новым паролем.');
+          return;
+        } catch (error) {
+          const code = String(error?.message || '');
+          const map = {
+            RESET_CODE_NOT_FOUND: 'Код не найден. Запросите новый.',
+            RESET_CODE_EXPIRED: 'Код истёк. Запросите новый.',
+            RESET_CODE_INVALID: 'Неверный код.',
+            RESET_CODE_BLOCKED: 'Код заблокирован после 5 попыток. Запросите новый.',
+            FORBIDDEN_OWNER_MISMATCH: 'Восстановление доступно только владельцу магазина.',
+          };
+          return showError(map[code] || `Ошибка восстановления: ${code || 'unknown'}`);
+        }
+      }
       cleanup();
       resolve({ mode, storeId, password });
     };
 
+    const onRecover = async () => {
+      const storeId = String(storeInput?.value || '').trim().toUpperCase();
+      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Store ID перед восстановлением.');
+      const telegramUserId = getTelegramId();
+      if (!telegramUserId) return showError('Не удалось определить Telegram ID владельца.');
+      try {
+        await saasRequest('/auth/password-reset/request', {
+          method: 'POST',
+          body: { storeId, telegramUserId },
+        });
+        resetCode = '';
+        setMode('recover_code');
+        showError('Код отправлен в Telegram бота владельца. Введите его ниже.');
+        setTimeout(() => resetCodeInput?.focus(), 20);
+      } catch (error) {
+        const code = String(error?.message || '');
+        const map = {
+          STORE_NOT_FOUND: 'Store ID не найден.',
+          OWNER_TELEGRAM_ID_NOT_FOUND: 'У магазина не найден Telegram ID владельца.',
+          FORBIDDEN_OWNER_MISMATCH: 'Восстановление доступно только владельцу этого магазина.',
+          ADMIN_BOT_NOT_CONFIGURED: 'Бот восстановления не настроен на сервере.',
+          RESET_CODE_SEND_FAILED: 'Не удалось отправить код в бота.',
+        };
+        showError(map[code] || `Ошибка восстановления: ${code || 'unknown'}`);
+      }
+    };
+
     tabs.forEach((btn) => btn.addEventListener('click', onTabClick));
     const cancelBtn = modal.querySelector('[data-auth-cancel]');
+    recoverBtn.addEventListener('click', onRecover);
     cancelBtn.addEventListener('click', onCancel);
     form.addEventListener('submit', onSubmit);
   });
