@@ -1975,6 +1975,7 @@ function openSaasAuthModal() {
   const modal = ensureSaasAuthModal();
   const form = modal.querySelector('.saas-auth-form');
   const storeInput = modal.querySelector('input[name="storeId"]');
+  const storeWrap = storeInput?.parentElement || null;
   const botTokenWrap = modal.querySelector('.saas-auth-bot-token');
   const botTokenInput = modal.querySelector('input[name="botToken"]');
   const resetCodeWrap = modal.querySelector('.saas-auth-reset-code');
@@ -1999,6 +2000,7 @@ function openSaasAuthModal() {
       const tabMode = btn.dataset.authTab === 'register' ? 'register' : 'login';
       btn.classList.toggle('active', tabMode === mode);
     });
+    if (storeWrap) storeWrap.classList.toggle('hidden', mode === 'register');
     botTokenWrap.classList.toggle('hidden', mode !== 'register');
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
@@ -2056,7 +2058,7 @@ function openSaasAuthModal() {
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
       const codeValue = String(resetCodeInput?.value || '').trim();
-      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Bot ID должен быть ровно 6 символов (A-Z, 0-9).');
+      if (mode !== 'register' && !/^[A-Z0-9]{6}$/.test(storeId)) return showError('Bot ID должен быть ровно 6 символов (A-Z, 0-9).');
       if (mode === 'recover_code') {
         if (!/^[0-9]{6}$/.test(codeValue)) return showError('Код должен быть из 6 цифр.');
         resetCode = codeValue;
@@ -2249,13 +2251,12 @@ async function saasEnsureAdminSession() {
     try {
       let loginBotId = storeId;
       if (mode === 'register') {
-        const reg = await saasRequest('/auth/register-by-bot', {
+        await saasRequest('/auth/register-by-bot', {
           method: 'POST',
           body: { botToken, password, telegramUserId, email },
         });
-        loginBotId = String(reg?.botId || reg?.storeId || '').trim().toUpperCase();
-        if (!loginBotId) throw new Error('BOT_ID_NOT_RETURNED');
-        window.alert(`Регистрация успешна. Ваш Bot ID: ${loginBotId}`);
+        window.alert('Регистрация завершена. Bot ID отправлен в admin-бот владельца. Войдите по Bot ID и паролю.');
+        continue;
       }
       const login = await saasRequest('/auth/login', {
         method: 'POST',
@@ -2282,7 +2283,9 @@ async function saasEnsureAdminSession() {
         STORE_NOT_ACTIVATED: 'Bot ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
         BOT_TOKEN_INVALID: 'Bot token неверный.',
         BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
-        BOT_ID_NOT_RETURNED: 'Ошибка: сервер не выдал Bot ID.',
+        TELEGRAM_ID_REQUIRED: 'Не удалось определить Telegram ID. Откройте mini app из Telegram.',
+        BOT_ID_SEND_FAILED: 'Не удалось отправить Bot ID в admin-бот.',
+        ADMIN_BOT_NOT_CONFIGURED: 'Admin-бот не настроен на сервере.',
         'HTTP 405': 'API сервер не подключен.',
         'HTTP 404': 'API сервер не найден.',
       };
