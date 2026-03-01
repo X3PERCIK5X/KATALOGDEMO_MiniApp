@@ -1941,7 +1941,7 @@ function ensureSaasAuthModal() {
         <button type="button" class="saas-auth-tab active" data-auth-tab="login">Вход</button>
         <button type="button" class="saas-auth-tab" data-auth-tab="register">Регистрация</button>
       </div>
-      <form class="saas-auth-form" autocomplete="on">
+      <form class="saas-auth-form" autocomplete="on" novalidate>
         <label class="saas-auth-label">Bot ID
           <input class="admin-modal-input" name="storeId" placeholder="например: A1B2C3" required maxlength="6" />
         </label>
@@ -2005,6 +2005,11 @@ function openSaasAuthModal() {
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
     passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
+    storeInput.required = mode !== 'register';
+    botTokenInput.required = mode === 'register';
+    passwordInput.required = mode !== 'recover_code';
+    resetCodeInput.required = mode === 'recover_code';
+    repeatInput.required = (mode === 'register' || mode === 'recover_password');
     recoverBtn.classList.toggle('hidden', mode !== 'login');
     submitBtn.textContent = mode === 'register'
       ? 'Сохранить пароль'
