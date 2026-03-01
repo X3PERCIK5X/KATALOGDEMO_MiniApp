@@ -1942,8 +1942,11 @@ function ensureSaasAuthModal() {
         <button type="button" class="saas-auth-tab" data-auth-tab="register">Регистрация</button>
       </div>
       <form class="saas-auth-form" autocomplete="on">
-        <label class="saas-auth-label">Store ID
-          <input class="admin-modal-input" name="storeId" placeholder="например: 111111" required maxlength="6" />
+        <label class="saas-auth-label">Bot ID
+          <input class="admin-modal-input" name="storeId" placeholder="например: A1B2C3" required maxlength="6" />
+        </label>
+        <label class="saas-auth-label saas-auth-bot-token hidden">Bot token
+          <input class="admin-modal-input" name="botToken" placeholder="123456:ABC..." />
         </label>
         <label class="saas-auth-label saas-auth-reset-code hidden">Код из бота
           <input class="admin-modal-input" name="resetCode" inputmode="numeric" maxlength="6" placeholder="6 цифр" />
@@ -1972,6 +1975,8 @@ function openSaasAuthModal() {
   const modal = ensureSaasAuthModal();
   const form = modal.querySelector('.saas-auth-form');
   const storeInput = modal.querySelector('input[name="storeId"]');
+  const botTokenWrap = modal.querySelector('.saas-auth-bot-token');
+  const botTokenInput = modal.querySelector('input[name="botToken"]');
   const resetCodeWrap = modal.querySelector('.saas-auth-reset-code');
   const resetCodeInput = modal.querySelector('input[name="resetCode"]');
   const passwordInput = modal.querySelector('input[name="password"]');
@@ -1994,6 +1999,7 @@ function openSaasAuthModal() {
       const tabMode = btn.dataset.authTab === 'register' ? 'register' : 'login';
       btn.classList.toggle('active', tabMode === mode);
     });
+    botTokenWrap.classList.toggle('hidden', mode !== 'register');
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
     passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
@@ -2010,6 +2016,7 @@ function openSaasAuthModal() {
       errorBox.textContent = '';
     }
     if (mode !== 'register' && mode !== 'recover_password') repeatInput.value = '';
+    if (mode !== 'register') botTokenInput.value = '';
     if (mode !== 'recover_code') resetCodeInput.value = '';
   };
 
@@ -2045,10 +2052,11 @@ function openSaasAuthModal() {
     const onSubmit = async (event) => {
       event.preventDefault();
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
+      const botToken = String(botTokenInput?.value || '').trim();
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
       const codeValue = String(resetCodeInput?.value || '').trim();
-      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
+      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Bot ID должен быть ровно 6 символов (A-Z, 0-9).');
       if (mode === 'recover_code') {
         if (!/^[0-9]{6}$/.test(codeValue)) return showError('Код должен быть из 6 цифр.');
         resetCode = codeValue;
@@ -2060,6 +2068,7 @@ function openSaasAuthModal() {
       }
       if (password.length < 6) return showError('Пароль должен быть не короче 6 символов.');
       if ((mode === 'register' || mode === 'recover_password') && password !== passwordRepeat) return showError('Пароли не совпадают.');
+      if (mode === 'register' && !botToken.includes(':')) return showError('Введите корректный bot token.');
       if (mode === 'recover_password') {
         const telegramUserId = getTelegramId();
         try {
@@ -2086,12 +2095,12 @@ function openSaasAuthModal() {
         }
       }
       cleanup();
-      resolve({ mode, storeId, password });
+      resolve({ mode, storeId, password, botToken });
     };
 
     const onRecover = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
-      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Store ID перед восстановлением.');
+      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Bot ID перед восстановлением.');
       const telegramUserId = getTelegramId();
       if (!telegramUserId) return showError('Не удалось определить Telegram ID владельца.');
       try {
@@ -2234,22 +2243,26 @@ async function saasEnsureAdminSession() {
   while (true) {
     const authData = await openSaasAuthModal();
     if (!authData) return false;
-    const { mode, storeId, password } = authData;
+    const { mode, storeId, password, botToken } = authData;
     const telegramUserId = getTelegramId();
     const email = String(state.profile?.email || '').trim().toLowerCase();
     try {
+      let loginBotId = storeId;
       if (mode === 'register') {
-        await saasRequest('/auth/register-by-store', {
+        const reg = await saasRequest('/auth/register-by-bot', {
           method: 'POST',
-          body: { storeId, password, telegramUserId, email },
+          body: { botToken, password, telegramUserId, email },
         });
+        loginBotId = String(reg?.botId || reg?.storeId || '').trim().toUpperCase();
+        if (!loginBotId) throw new Error('BOT_ID_NOT_RETURNED');
+        window.alert(`Регистрация успешна. Ваш Bot ID: ${loginBotId}`);
       }
       const login = await saasRequest('/auth/login', {
         method: 'POST',
-        body: { storeId, password, telegramUserId, email },
+        body: { botId: loginBotId, password, telegramUserId, email },
       });
       state.saas.enabled = true;
-      state.saas.storeId = storeId;
+      state.saas.storeId = loginBotId;
       state.saas.token = String(login.token || '');
       state.saas.stores = Array.isArray(login.stores) ? login.stores : [];
       localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
@@ -2263,12 +2276,15 @@ async function saasEnsureAdminSession() {
     } catch (error) {
       const code = String(error?.message || '');
       const messageMap = {
-        STORE_NOT_FOUND: 'Store ID не найден.',
+        STORE_NOT_FOUND: 'Bot ID не найден.',
         WRONG_PASSWORD: 'Неверный пароль.',
-        STORE_ALREADY_ACTIVE: 'Этот Store ID уже активирован. Используйте вкладку "Вход".',
-        STORE_NOT_ACTIVATED: 'Store ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
-        'HTTP 405': 'API сервер не подключен или указан неверный URL (Method Not Allowed). Проверь API URL.',
-        'HTTP 404': 'API сервер не найден по указанному URL. Проверь API URL.',
+        STORE_ALREADY_ACTIVE: 'Этот Bot ID уже активирован. Используйте вкладку "Вход".',
+        STORE_NOT_ACTIVATED: 'Bot ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
+        BOT_TOKEN_INVALID: 'Bot token неверный.',
+        BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
+        BOT_ID_NOT_RETURNED: 'Ошибка: сервер не выдал Bot ID.',
+        'HTTP 405': 'API сервер не подключен.',
+        'HTTP 404': 'API сервер не найден.',
       };
       if (code === 'HTTP 404' || code === 'HTTP 405') {
         localStorage.removeItem(SAAS_API_BASE_KEY);

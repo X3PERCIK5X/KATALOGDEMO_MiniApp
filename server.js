@@ -23,6 +23,7 @@ const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Adm
 const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 const BOT_TOKEN_SECRET = String(process.env.BOT_TOKEN_SECRET || '').trim();
 const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const WEBAPP_URL = String(process.env.WEBAPP_URL || '').trim();
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -599,6 +600,30 @@ async function validateTelegramBotToken(token) {
   }
 }
 
+async function configureTelegramBotMenu(botToken, storeId) {
+  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  if (!base) return { ok: false, skipped: true, reason: 'WEBAPP_URL_NOT_CONFIGURED' };
+  const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setChatMenuButton`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        menu_button: {
+          type: 'web_app',
+          text: 'Открыть каталог',
+          web_app: { url: webAppUrl },
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SET_MENU_BUTTON_FAILED' };
+    return { ok: true, webAppUrl };
+  } catch {
+    return { ok: false, error: 'SET_MENU_BUTTON_FAILED' };
+  }
+}
+
 async function notifyOrderViaTelegram(storeRow, orderPayload) {
   const token = decryptBotToken(storeRow.bot_token_enc);
   if (!token) return { ok: false, skipped: true, reason: 'BOT_NOT_CONNECTED' };
@@ -780,6 +805,55 @@ app.post('/api/auth/register-by-store', (req, res) => {
   return res.json({ ok: true, storeId, active: true });
 });
 
+app.post('/api/auth/register-by-bot', async (req, res) => {
+  const botToken = String(req.body?.botToken || '').trim();
+  const password = String(req.body?.password || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const identity = userIdentityFromRequest(req.body);
+  const storeNameRaw = String(req.body?.storeName || '').trim();
+
+  if (!botToken || !password || password.length < 6) {
+    return res.status(400).json({ error: 'INVALID_REGISTER_BY_BOT_PAYLOAD' });
+  }
+
+  const validation = await validateTelegramBotToken(botToken);
+  if (!validation.ok) return res.status(400).json({ error: validation.error || 'BOT_TOKEN_INVALID' });
+  const botUsername = String(validation.username || '').trim();
+
+  const storeId = uniqueStoreId();
+  const dataset = buildDefaultDataset();
+  const hash = bcrypt.hashSync(password, 10);
+  const ts = nowIso();
+  const storeName = storeNameRaw || (botUsername ? `Store ${botUsername}` : 'New Store');
+
+  db.prepare(`
+    INSERT INTO stores (store_id, store_name, owner_email, owner_user_id, password_hash, invite_code, is_active, bot_token_enc, bot_username, settings_json, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    storeId,
+    storeName,
+    email,
+    identity,
+    hash,
+    encryptBotToken(botToken),
+    botUsername,
+    JSON.stringify({}),
+    JSON.stringify(dataset.config),
+    JSON.stringify(dataset.categories),
+    JSON.stringify(dataset.products),
+    ts,
+    ts,
+  );
+
+  replaceCategoriesTx(storeId, dataset.categories);
+  replaceProductsTx(storeId, dataset.products);
+  if (identity) upsertStoreUser(storeId, identity, 'owner');
+  if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
+
+  const menuSetup = await configureTelegramBotMenu(botToken, storeId);
+  return res.json({ ok: true, storeId, botId: storeId, botUsername, menuSetup });
+});
+
 app.post('/api/auth/register', (req, res) => {
   const storeName = String(req.body?.storeName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -821,7 +895,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 app.post('/api/auth/login', (req, res) => {
-  const storeId = String(req.body?.storeId || '').trim().toUpperCase();
+  const storeId = String(req.body?.storeId || req.body?.botId || '').trim().toUpperCase();
   const password = String(req.body?.password || '').trim();
   const identity = userIdentityFromRequest(req.body);
 
@@ -846,7 +920,7 @@ app.post('/api/auth/login', (req, res) => {
       `).all(fallbackIdentity).map((s) => ({ storeId: s.store_id, storeName: s.store_name }))
     : [{ storeId, storeName: row.store_name }];
 
-  return res.json({ ok: true, token, storeId, stores });
+  return res.json({ ok: true, token, storeId, botId: storeId, stores });
 });
 
 app.post('/api/auth/password-reset/request', async (req, res) => {
