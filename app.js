@@ -58,7 +58,7 @@ const state = {
 const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
 const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
 const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
-const SAAS_DEFAULT_REMOTE_API = 'https://lambrizsel.duckdns.org/api';
+const SAAS_DEFAULT_REMOTE_API = 'https://api.saaskatalog.ru/api';
 
 // Базовый контент главной страницы.
 // Если в config.json нет своих значений — используем эти.
@@ -1786,21 +1786,32 @@ function safeParse(value, fallback) {
 }
 
 function getSaasApiBase() {
+  const normalize = (value) => String(value || '').trim().replace(/\/$/, '');
+  const remapLegacyApi = (value) => {
+    const raw = normalize(value);
+    if (!raw) return '';
+    // Автомиграция со старого lambriz API на единый SaaS API.
+    if (raw.includes('lambrizsel.duckdns.org')) return SAAS_DEFAULT_REMOTE_API;
+    return raw;
+  };
   try {
     const params = new URLSearchParams(window.location.search || '');
     const queryApi = String(params.get('api') || '').trim();
     if (queryApi) {
-      const normalized = queryApi.replace(/\/$/, '');
+      const normalized = remapLegacyApi(queryApi);
       localStorage.setItem(SAAS_API_BASE_KEY, normalized);
       return normalized;
     }
   } catch {}
-  const fromStorage = String(localStorage.getItem(SAAS_API_BASE_KEY) || '').trim();
-  if (fromStorage) return fromStorage.replace(/\/$/, '');
+  const fromStorage = remapLegacyApi(localStorage.getItem(SAAS_API_BASE_KEY) || '');
+  if (fromStorage) {
+    localStorage.setItem(SAAS_API_BASE_KEY, fromStorage);
+    return fromStorage;
+  }
   const host = String(window.location.host || '').toLowerCase();
-  if (host.includes('github.io')) return SAAS_DEFAULT_REMOTE_API.replace(/\/$/, '');
+  if (host.includes('github.io')) return remapLegacyApi(SAAS_DEFAULT_REMOTE_API);
   const fallback = `${window.location.origin}/api`;
-  return fallback.replace(/\/$/, '');
+  return remapLegacyApi(fallback);
 }
 
 function clearSaasAuth() {
