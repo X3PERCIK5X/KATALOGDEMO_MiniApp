@@ -1961,7 +1961,7 @@ function ensureSaasAuthModal() {
         <div class="admin-modal-actions">
           <button type="button" class="secondary-button" data-auth-cancel>Отмена</button>
           <button type="button" class="secondary-button" data-auth-recover>Восстановить</button>
-          <button type="submit" class="primary-button" data-auth-submit>Войти</button>
+          <button type="button" class="primary-button" data-auth-submit>Войти</button>
         </div>
       </form>
     </div>
@@ -2005,11 +2005,21 @@ function openSaasAuthModal() {
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
     passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
-    storeInput.required = mode !== 'register';
-    botTokenInput.required = mode === 'register';
-    passwordInput.required = mode !== 'recover_code';
-    resetCodeInput.required = mode === 'recover_code';
-    repeatInput.required = (mode === 'register' || mode === 'recover_password');
+    const needStore = mode !== 'register';
+    const needBotToken = mode === 'register';
+    const needPassword = mode !== 'recover_code';
+    const needResetCode = mode === 'recover_code';
+    const needRepeat = (mode === 'register' || mode === 'recover_password');
+    storeInput.required = needStore;
+    botTokenInput.required = needBotToken;
+    passwordInput.required = needPassword;
+    resetCodeInput.required = needResetCode;
+    repeatInput.required = needRepeat;
+    storeInput.disabled = !needStore;
+    botTokenInput.disabled = !needBotToken;
+    passwordInput.disabled = !needPassword;
+    resetCodeInput.disabled = !needResetCode;
+    repeatInput.disabled = !needRepeat;
     recoverBtn.classList.toggle('hidden', mode !== 'login');
     submitBtn.textContent = mode === 'register'
       ? 'Сохранить пароль'
@@ -2037,7 +2047,8 @@ function openSaasAuthModal() {
       tabs.forEach((btn) => btn.removeEventListener('click', onTabClick));
       recoverBtn.removeEventListener('click', onRecover);
       cancelBtn.removeEventListener('click', onCancel);
-      form.removeEventListener('submit', onSubmit);
+      submitBtn.removeEventListener('click', onSubmitClick);
+      form.removeEventListener('keydown', onFormKeyDown);
     };
 
     const showError = (message) => {
@@ -2056,8 +2067,7 @@ function openSaasAuthModal() {
       resolve(null);
     };
 
-    const onSubmit = async (event) => {
-      event.preventDefault();
+    const onSubmit = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
       const botToken = String(botTokenInput?.value || '').trim();
       const password = String(passwordInput?.value || '').trim();
@@ -2105,6 +2115,17 @@ function openSaasAuthModal() {
       resolve({ mode, storeId, password, botToken });
     };
 
+    const onSubmitClick = (event) => {
+      event.preventDefault();
+      onSubmit();
+    };
+
+    const onFormKeyDown = (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      onSubmit();
+    };
+
     const onRecover = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
       if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Bot ID перед восстановлением.');
@@ -2136,7 +2157,8 @@ function openSaasAuthModal() {
     const cancelBtn = modal.querySelector('[data-auth-cancel]');
     recoverBtn.addEventListener('click', onRecover);
     cancelBtn.addEventListener('click', onCancel);
-    form.addEventListener('submit', onSubmit);
+    submitBtn.addEventListener('click', onSubmitClick);
+    form.addEventListener('keydown', onFormKeyDown);
   });
 }
 
