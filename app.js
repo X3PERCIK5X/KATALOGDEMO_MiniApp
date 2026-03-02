@@ -286,15 +286,26 @@ function debounce(fn, delay = 220) {
 }
 
 function isAdminModeRequested() {
+  const path = String(window.location.pathname || '').toLowerCase();
+  const isStoreRoute = /^\/store\/[a-z0-9]{6}$/i.test(path);
   const params = new URLSearchParams(window.location.search || '');
   const adminParam = params.get('admin');
+
+  // На витрине магазина admin-mode включаем только явным параметром (?admin=1|true).
+  if (isStoreRoute) {
+    const explicitAdmin = adminParam === '1' || adminParam === 'true' || params.get('mode') === 'admin';
+    if (!explicitAdmin) {
+      localStorage.removeItem('demo_catalog_force_admin');
+      return false;
+    }
+  }
+
   if (adminParam === '1' || adminParam === 'true') return true;
   if (params.get('mode') === 'admin') return true;
 
   const hash = String(window.location.hash || '').toLowerCase();
   if (hash.includes('admin')) return true;
 
-  const path = String(window.location.pathname || '').toLowerCase();
   if (path.includes('admin')) return true;
 
   const tgStartParam = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').toLowerCase();
