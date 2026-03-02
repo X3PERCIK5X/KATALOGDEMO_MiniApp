@@ -776,9 +776,7 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
         chat_id: String(chatId || '').trim(),
         text: welcomeImage ? 'Откройте каталог кнопкой ниже.' : welcomeText,
         reply_markup: {
-          keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
-          resize_keyboard: true,
-          is_persistent: true,
+          inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
         },
       }),
     });

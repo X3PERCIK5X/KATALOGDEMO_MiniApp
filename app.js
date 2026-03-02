@@ -5364,6 +5364,46 @@ function setProductionSlide(index) {
   });
 }
 
+function setupBottomDockKeyboardLock() {
+  if (!window.visualViewport) return;
+
+  let baseline = window.visualViewport.height || window.innerHeight || 0;
+  let rafId = 0;
+
+  const isEditorFocused = () => {
+    const active = document.activeElement;
+    if (!active) return false;
+    if (active.isContentEditable) return true;
+    const tag = String(active.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  };
+
+  const update = () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      if (!vh) return;
+      if (vh > baseline * 0.9) baseline = Math.max(baseline, vh);
+      const keyboardDelta = Math.max(0, baseline - vh);
+      const keyboardOpen = isEditorFocused() && keyboardDelta > 120;
+      document.body.classList.toggle('keyboard-open', keyboardOpen);
+      document.documentElement.style.setProperty('--kb-shift', keyboardOpen ? `${Math.round(keyboardDelta)}px` : '0px');
+    });
+  };
+
+  window.visualViewport.addEventListener('resize', update, { passive: true });
+  window.visualViewport.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('focusin', update, { passive: true });
+  window.addEventListener('focusout', () => setTimeout(update, 60), { passive: true });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      baseline = window.visualViewport ? window.visualViewport.height : (window.innerHeight || baseline);
+      update();
+    }, 220);
+  }, { passive: true });
+  update();
+}
+
 // Загружает конфигурацию витрины (тексты, баннеры, статьи, контакты).
 async function loadConfig() {
   if (!state.saas.datasetLoaded) {
@@ -5536,6 +5576,7 @@ async function init() {
   renderHomeBanners();
   renderHomeArticles();
   bindEvents();
+  setupBottomDockKeyboardLock();
   if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
   if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
   if (ui.productsSearch) ui.productsSearch.value = state.filters.products.search;

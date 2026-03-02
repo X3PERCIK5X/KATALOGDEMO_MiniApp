@@ -4413,3 +4413,78 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
   background: rgba(18, 42, 62, 0.08);
   box-shadow: 0 0 0 3px rgba(230, 106, 44, 0.14);
 }
+
+/* 2026-03-02: admin bot form readability + dock stability */
+#screen-bot .order-form.flat input,
+#screen-bot .order-form.flat textarea {
+  width: 100%;
+  border: 1px solid var(--stroke) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--text) !important;
+  padding: 12px 14px !important;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
+#screen-bot .order-form.flat textarea {
+  min-height: 124px;
+  resize: vertical;
+}
+
+#screen-bot .order-form.flat input::placeholder,
+#screen-bot .order-form.flat textarea::placeholder {
+  color: rgba(224, 233, 248, 0.55);
+}
+
+#screen-bot .order-form.flat input[readonly] {
+  color: rgba(224, 233, 248, 0.72) !important;
+}
+
+html[data-theme="light"] #screen-bot .order-form.flat input,
+html[data-theme="light"] #screen-bot .order-form.flat textarea {
+  border-color: rgba(14, 18, 26, 0.14) !important;
+  background: rgba(18, 42, 62, 0.04) !important;
+  color: #172033 !important;
+}
+
+html[data-theme="light"] #screen-bot .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-bot .order-form.flat textarea::placeholder {
+  color: rgba(23, 32, 51, 0.48);
+}
+
+body.admin-mode .bottom-nav {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+body.admin-mode .bottom-item {
+  min-height: 58px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+}
+
+body.admin-mode .bottom-item .icon-svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+body.admin-mode .bottom-item span {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.keyboard-open .bottom-nav {
+  transform: translate3d(0, var(--kb-shift, 0px), 0) scale(0.96);
+}
