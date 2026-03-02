@@ -700,10 +700,32 @@ async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
   }
 }
 
-async function notifyBotIdViaAdminBot(ownerTelegramId, storeId, botUsername = '') {
-  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+async function sendTelegramTextByToken(token, chatId, text) {
+  const safeToken = String(token || '').trim();
+  const safeChat = String(chatId || '').trim();
+  if (!safeToken) return { ok: false, error: 'BOT_TOKEN_REQUIRED' };
+  if (!safeChat) return { ok: false, error: 'CHAT_ID_REQUIRED' };
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(safeToken)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: safeChat,
+        text,
+        disable_web_page_preview: true,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SEND_FAILED' };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'SEND_FAILED' };
+  }
+}
+
+async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', fallbackBotToken = '' }) {
   const chatId = String(ownerTelegramId || '').trim();
-  if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
+  if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND', via: '' };
   const text = [
     'Регистрация магазина выполнена.',
     `Ваш Bot ID: ${storeId}`,
@@ -711,22 +733,17 @@ async function notifyBotIdViaAdminBot(ownerTelegramId, storeId, botUsername = ''
     '',
     'Для входа в админку используйте Bot ID + пароль.',
   ].filter(Boolean).join('\n');
-  try {
-    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.ok) return { ok: false, error: 'BOT_ID_SEND_FAILED' };
-    return { ok: true };
-  } catch {
-    return { ok: false, error: 'BOT_ID_SEND_FAILED' };
+  // 1) Основной канал: admin-бот (единый для SaaS)
+  if (ADMIN_BOT_TOKEN) {
+    const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text);
+    if (sentByAdmin.ok) return { ok: true, via: 'admin_bot' };
   }
+  // 2) Fallback: бот самого магазина из токена регистрации
+  if (fallbackBotToken) {
+    const sentByStoreBot = await sendTelegramTextByToken(fallbackBotToken, chatId, text);
+    if (sentByStoreBot.ok) return { ok: true, via: 'store_bot' };
+  }
+  return { ok: false, error: 'BOT_ID_SEND_FAILED', via: '' };
 }
 
 app.post('/api/owner/stores', ownerMiddleware, (req, res) => {
@@ -852,8 +869,12 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const botUsername = String(validation.username || '').trim();
 
   const storeId = uniqueStoreId();
-  const sent = await notifyBotIdViaAdminBot(ownerTelegramId, storeId, botUsername);
-  if (!sent.ok) return res.status(500).json({ error: sent.error || 'BOT_ID_SEND_FAILED' });
+  const sent = await notifyBotIdToOwner({
+    ownerTelegramId,
+    storeId,
+    botUsername,
+    fallbackBotToken: botToken,
+  });
 
   const dataset = buildDefaultDataset();
   const hash = bcrypt.hashSync(password, 10);
@@ -885,7 +906,16 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
 
   const menuSetup = await configureTelegramBotMenu(botToken, storeId);
-  return res.json({ ok: true, storeId, botId: storeId, botUsername, menuSetup, botIdSent: true });
+  return res.json({
+    ok: true,
+    storeId,
+    botId: storeId,
+    botUsername,
+    menuSetup,
+    botIdSent: Boolean(sent.ok),
+    botIdSentVia: sent.via || '',
+    botIdSendError: sent.ok ? '' : String(sent.error || 'BOT_ID_SEND_FAILED'),
+  });
 });
 
 app.post('/api/auth/register', (req, res) => {

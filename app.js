@@ -2317,11 +2317,21 @@ async function saasEnsureAdminSession() {
     try {
       let loginBotId = storeId;
       if (mode === 'register') {
-        await saasRequest('/auth/register-by-bot', {
+        const registration = await saasRequest('/auth/register-by-bot', {
           method: 'POST',
           body: { botToken, password, telegramUserId, email },
         });
-        window.alert('Регистрация завершена. Bot ID отправлен в admin-бот владельца. Войдите по Bot ID и паролю.');
+        const issuedBotId = String(registration?.botId || registration?.storeId || '').trim().toUpperCase();
+        const via = String(registration?.botIdSentVia || '').trim();
+        const sent = Boolean(registration?.botIdSent);
+        if (sent) {
+          const channelLabel = via === 'store_bot'
+            ? 'в бот магазина'
+            : 'в admin-бот владельца';
+          window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
+        } else {
+          window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);
+        }
         continue;
       }
       const login = await saasRequest('/auth/login', {
@@ -2350,7 +2360,7 @@ async function saasEnsureAdminSession() {
         BOT_TOKEN_INVALID: 'Bot token неверный.',
         BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
         TELEGRAM_ID_REQUIRED: 'Не удалось определить Telegram ID. Откройте mini app из Telegram.',
-        BOT_ID_SEND_FAILED: 'Не удалось отправить Bot ID в admin-бот.',
+        BOT_ID_SEND_FAILED: 'Не удалось отправить Bot ID в бот.',
         ADMIN_BOT_NOT_CONFIGURED: 'Admin-бот не настроен на сервере.',
         'HTTP 405': 'API сервер не подключен.',
         'HTTP 404': 'API сервер не найден.',
