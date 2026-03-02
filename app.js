@@ -2393,11 +2393,14 @@ async function saasLoadDatasetForCurrentContext() {
       return true;
     }
   }
-  const publicStoreId = getRequestedStoreId();
-  if (!state.admin.enabled && publicStoreId) {
-    const payload = await saasRequest(`/store/${encodeURIComponent(publicStoreId)}/public`);
+  const requestedPublicStoreId = String(getRequestedStoreId() || '').trim().toUpperCase();
+  const storedPublicStoreId = String(localStorage.getItem(SAAS_STORE_KEY) || '').trim().toUpperCase();
+  const publicStoreId = requestedPublicStoreId || storedPublicStoreId;
+  if (!state.admin.enabled && /^[A-Z0-9]{6}$/.test(publicStoreId)) {
+    const payload = await saasRequest(`/store/${encodeURIComponent(publicStoreId)}/public?_t=${Date.now()}`);
     applyStoreDataset(payload);
     state.saas.storeId = publicStoreId;
+    localStorage.setItem(SAAS_STORE_KEY, publicStoreId);
     state.saas.datasetLoaded = true;
     return true;
   }
