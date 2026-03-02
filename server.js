@@ -24,6 +24,7 @@ const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 const BOT_TOKEN_SECRET = String(process.env.BOT_TOKEN_SECRET || '').trim();
 const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const WEBAPP_URL = String(process.env.WEBAPP_URL || '').trim();
+const PUBLIC_API_BASE = String(process.env.PUBLIC_API_BASE || '').trim().replace(/\/$/, '');
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -35,6 +36,7 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+app.set('trust proxy', 1);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS stores (
@@ -184,6 +186,7 @@ function ensureSessionsColumn(columnName, ddl) {
 ensureStoresColumn('owner_user_id', "owner_user_id TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_token_enc', "bot_token_enc TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_username', "bot_username TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('bot_webhook_secret', "bot_webhook_secret TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('settings_json', "settings_json TEXT NOT NULL DEFAULT '{}'");
 ensureStoresColumn('categories_json', "categories_json TEXT NOT NULL DEFAULT '[]'");
 ensureStoresColumn('products_json', "products_json TEXT NOT NULL DEFAULT '[]'");
@@ -300,6 +303,14 @@ function createSession(storeId, userId = '') {
 
 function getStoreRow(storeId) {
   return db.prepare('SELECT * FROM stores WHERE store_id = ?').get(storeId);
+}
+
+function resolvePublicApiBase(req) {
+  if (PUBLIC_API_BASE) return PUBLIC_API_BASE;
+  const host = String(req?.get?.('host') || '').trim();
+  if (!host) return '';
+  const proto = String(req?.protocol || 'https').trim() || 'https';
+  return `${proto}://${host}`.replace(/\/$/, '');
 }
 
 function getStoreSettings(row) {
@@ -618,9 +629,68 @@ async function configureTelegramBotMenu(botToken, storeId) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.ok) return { ok: false, error: 'SET_MENU_BUTTON_FAILED' };
+    await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start', description: 'Открыть каталог' },
+        ],
+      }),
+    }).catch(() => null);
     return { ok: true, webAppUrl };
   } catch {
     return { ok: false, error: 'SET_MENU_BUTTON_FAILED' };
+  }
+}
+
+async function configureTelegramBotWebhook(botToken, storeId, webhookSecret, apiBase) {
+  const base = String(apiBase || '').trim().replace(/\/$/, '');
+  if (!base) return { ok: false, skipped: true, reason: 'PUBLIC_API_BASE_NOT_CONFIGURED' };
+  const hookUrl = `${base}/api/telegram/webhook/${encodeURIComponent(storeId)}`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: hookUrl,
+        secret_token: webhookSecret,
+        allowed_updates: ['message'],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SET_WEBHOOK_FAILED' };
+    return { ok: true, webhookUrl: hookUrl };
+  } catch {
+    return { ok: false, error: 'SET_WEBHOOK_FAILED' };
+  }
+}
+
+async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = false) {
+  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  if (!base) return { ok: false, error: 'WEBAPP_URL_NOT_CONFIGURED' };
+  const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
+  const ownerNote = isOwner ? '\n\nДля админки используйте ваш Bot ID + пароль в Admin mini app.' : '';
+  const text = `Добро пожаловать в каталог.${ownerNote}`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: String(chatId || '').trim(),
+        text,
+        reply_markup: {
+          keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
+          resize_keyboard: true,
+          is_persistent: true,
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SEND_START_KEYBOARD_FAILED' };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'SEND_START_KEYBOARD_FAILED' };
   }
 }
 
@@ -869,6 +939,7 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const botUsername = String(validation.username || '').trim();
 
   const storeId = uniqueStoreId();
+  const webhookSecret = crypto.randomBytes(16).toString('hex');
   const sent = await notifyBotIdToOwner({
     ownerTelegramId,
     storeId,
@@ -882,8 +953,8 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const storeName = storeNameRaw || (botUsername ? `Store ${botUsername}` : 'New Store');
 
   db.prepare(`
-    INSERT INTO stores (store_id, store_name, owner_email, owner_user_id, password_hash, invite_code, is_active, bot_token_enc, bot_username, settings_json, config_json, categories_json, products_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO stores (store_id, store_name, owner_email, owner_user_id, password_hash, invite_code, is_active, bot_token_enc, bot_username, bot_webhook_secret, settings_json, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     storeId,
     storeName,
@@ -892,6 +963,7 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     hash,
     encryptBotToken(botToken),
     botUsername,
+    webhookSecret,
     JSON.stringify({}),
     JSON.stringify(dataset.config),
     JSON.stringify(dataset.categories),
@@ -905,13 +977,18 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
 
+  const apiBase = resolvePublicApiBase(req);
   const menuSetup = await configureTelegramBotMenu(botToken, storeId);
+  const webhookSetup = await configureTelegramBotWebhook(botToken, storeId, webhookSecret, apiBase);
+  const onboarding = await sendStoreCatalogKeyboard(botToken, ownerTelegramId, storeId, true);
   return res.json({
     ok: true,
     storeId,
     botId: storeId,
     botUsername,
     menuSetup,
+    webhookSetup,
+    onboarding,
     botIdSent: Boolean(sent.ok),
     botIdSentVia: sent.via || '',
     botIdSendError: sent.ok ? '' : String(sent.error || 'BOT_ID_SEND_FAILED'),
@@ -1172,19 +1249,25 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   };
   if (orderChatId) mergedSettings.orderChatId = orderChatId;
 
+  let webhookSecret = String(req.store?.bot_webhook_secret || '').trim();
+  if (!webhookSecret) webhookSecret = crypto.randomBytes(16).toString('hex');
+
   db.prepare(`
     UPDATE stores
-    SET bot_token_enc = ?, bot_username = ?, settings_json = ?, updated_at = ?
+    SET bot_token_enc = ?, bot_username = ?, bot_webhook_secret = ?, settings_json = ?, updated_at = ?
     WHERE store_id = ?
   `).run(
     encryptBotToken(botToken),
     validation.username || '',
+    webhookSecret,
     JSON.stringify(mergedSettings),
     nowIso(),
     req.storeId,
   );
 
-  return res.json({ ok: true, storeId: req.storeId, botUsername: validation.username || '' });
+  const menuSetup = await configureTelegramBotMenu(botToken, req.storeId);
+  const webhookSetup = await configureTelegramBotWebhook(botToken, req.storeId, webhookSecret, resolvePublicApiBase(req));
+  return res.json({ ok: true, storeId: req.storeId, botUsername: validation.username || '', menuSetup, webhookSetup });
 });
 
 app.get('/api/admin/data', authMiddleware, (req, res) => {
@@ -1464,6 +1547,27 @@ app.get('/api/store/:storeId/public', storeParamMiddleware, (req, res) => {
 app.get('/api/stores/:storeId/public', storeParamMiddleware, (req, res) => {
   if (Number(req.store.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
   return res.json(rowToDataset(req.store));
+});
+
+app.post('/api/telegram/webhook/:storeId', storeParamMiddleware, async (req, res) => {
+  const secretHeader = String(req.headers['x-telegram-bot-api-secret-token'] || '').trim();
+  const expectedSecret = String(req.store?.bot_webhook_secret || '').trim();
+  if (!expectedSecret || !secretHeader || secretHeader !== expectedSecret) {
+    return res.status(401).json({ error: 'INVALID_WEBHOOK_SECRET' });
+  }
+
+  const update = req.body && typeof req.body === 'object' ? req.body : {};
+  const message = update?.message || null;
+  const text = String(message?.text || '').trim().toLowerCase();
+  const chatId = message?.chat?.id ? String(message.chat.id) : '';
+  if (!chatId) return res.json({ ok: true });
+
+  if (text === '/start' || text.startsWith('/start ')) {
+    const token = decryptBotToken(req.store?.bot_token_enc || '');
+    if (token) await sendStoreCatalogKeyboard(token, chatId, req.storeId, false);
+  }
+
+  return res.json({ ok: true });
 });
 
 app.get('/api/health', (_req, res) => {
