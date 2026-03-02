@@ -2325,9 +2325,7 @@ async function saasEnsureAdminSession() {
         const via = String(registration?.botIdSentVia || '').trim();
         const sent = Boolean(registration?.botIdSent);
         if (sent) {
-          const channelLabel = via === 'store_bot'
-            ? 'в бот магазина'
-            : 'в admin-бот владельца';
+          const channelLabel = via === 'admin_bot' ? 'в admin-бот владельца' : 'в admin-бот';
           window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
         } else {
           window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);

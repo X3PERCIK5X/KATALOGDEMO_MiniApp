@@ -793,7 +793,7 @@ async function sendTelegramTextByToken(token, chatId, text) {
   }
 }
 
-async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', fallbackBotToken = '' }) {
+async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '' }) {
   const chatId = String(ownerTelegramId || '').trim();
   if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND', via: '' };
   const text = [
@@ -803,16 +803,9 @@ async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', 
     '',
     'Для входа в админку используйте Bot ID + пароль.',
   ].filter(Boolean).join('\n');
-  // 1) Основной канал: admin-бот (единый для SaaS)
-  if (ADMIN_BOT_TOKEN) {
-    const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text);
-    if (sentByAdmin.ok) return { ok: true, via: 'admin_bot' };
-  }
-  // 2) Fallback: бот самого магазина из токена регистрации
-  if (fallbackBotToken) {
-    const sentByStoreBot = await sendTelegramTextByToken(fallbackBotToken, chatId, text);
-    if (sentByStoreBot.ok) return { ok: true, via: 'store_bot' };
-  }
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED', via: '' };
+  const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text);
+  if (sentByAdmin.ok) return { ok: true, via: 'admin_bot' };
   return { ok: false, error: 'BOT_ID_SEND_FAILED', via: '' };
 }
 
@@ -944,8 +937,10 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     ownerTelegramId,
     storeId,
     botUsername,
-    fallbackBotToken: botToken,
   });
+  if (!sent.ok) {
+    return res.status(500).json({ error: sent.error || 'BOT_ID_SEND_FAILED' });
+  }
 
   const dataset = buildDefaultDataset();
   const hash = bcrypt.hashSync(password, 10);
@@ -989,9 +984,9 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     menuSetup,
     webhookSetup,
     onboarding,
-    botIdSent: Boolean(sent.ok),
-    botIdSentVia: sent.via || '',
-    botIdSendError: sent.ok ? '' : String(sent.error || 'BOT_ID_SEND_FAILED'),
+    botIdSent: true,
+    botIdSentVia: sent.via || 'admin_bot',
+    botIdSendError: '',
   });
 });
 
