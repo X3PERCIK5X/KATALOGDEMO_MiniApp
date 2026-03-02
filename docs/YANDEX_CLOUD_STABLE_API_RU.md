@@ -27,7 +27,7 @@ sudo apt -y install nodejs
 ```bash
 sudo mkdir -p /opt/demokatalog-api
 sudo chown -R $USER:$USER /opt/demokatalog-api
-git clone https://github.com/X3PERCIK5X/KATALOGDEMO_MiniApp.git /opt/demokatalog-api
+rsync -av --delete /path/to/local/project/ /opt/demokatalog-api/
 cd /opt/demokatalog-api
 npm ci --omit=dev
 cp .env.example .env.local
@@ -38,7 +38,7 @@ cp .env.example .env.local
 - `DEFAULT_STORE_ID=111111`
 - `DEFAULT_ADMIN_PASSWORD=<сильный_пароль>`
 - `OWNER_API_KEY=<сильный_ключ>`
-- `ALLOWED_ORIGINS=https://x3percik5x.github.io,https://t.me`
+- `ALLOWED_ORIGINS=https://api.<your-domain>,https://t.me,https://web.telegram.org`
 
 ## 5) systemd сервис
 ```bash

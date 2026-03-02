@@ -1951,8 +1951,6 @@ function getSaasApiBase() {
     localStorage.setItem(SAAS_API_BASE_KEY, fromStorage);
     return fromStorage;
   }
-  const host = String(window.location.host || '').toLowerCase();
-  if (host.includes('github.io')) return remapLegacyApi(SAAS_DEFAULT_REMOTE_API);
   const fallback = `${window.location.origin}/api`;
   return remapLegacyApi(fallback);
 }
