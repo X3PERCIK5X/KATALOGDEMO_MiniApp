@@ -23,6 +23,7 @@ const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Adm
 const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 const BOT_TOKEN_SECRET = String(process.env.BOT_TOKEN_SECRET || '').trim();
 const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const ADMIN_BOT_WEBHOOK_SECRET = String(process.env.ADMIN_BOT_WEBHOOK_SECRET || '').trim();
 const WEBAPP_URL = String(process.env.WEBAPP_URL || '').trim();
 const PUBLIC_API_BASE = String(process.env.PUBLIC_API_BASE || '').trim().replace(/\/$/, '');
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
@@ -313,8 +314,52 @@ function resolvePublicApiBase(req) {
   return `${proto}://${host}`.replace(/\/$/, '');
 }
 
+function resolveCatalogBase(req) {
+  const preferred = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  if (preferred) return preferred;
+  const apiBase = resolvePublicApiBase(req);
+  if (!apiBase) return '';
+  return apiBase.replace(/\/api$/i, '');
+}
+
+function getStoreCatalogUrl(storeId, req) {
+  const base = resolveCatalogBase(req);
+  if (!base) return '';
+  return `${base}/store/${encodeURIComponent(String(storeId || '').trim().toUpperCase())}`;
+}
+
 function getStoreSettings(row) {
   return safeJsonParse(row?.settings_json || '{}', {});
+}
+
+function normalizePromoCode(raw) {
+  return String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function normalizePromoCodes(raw) {
+  if (!Array.isArray(raw)) return [];
+  const unique = new Map();
+  raw.forEach((item) => {
+    const code = normalizePromoCode(item?.code || '');
+    if (!code) return;
+    const type = String(item?.type || '').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percent';
+    const num = Number(item?.value || 0);
+    if (!Number.isFinite(num) || num <= 0) return;
+    const value = type === 'fixed'
+      ? Math.max(1, Math.round(num))
+      : Math.max(1, Math.min(100, Math.round(num)));
+    unique.set(code, { code, type, value, active: item?.active !== false });
+  });
+  return Array.from(unique.values()).slice(0, 100);
+}
+
+function sanitizeSettingsPatch(settingsPatch) {
+  if (!settingsPatch || typeof settingsPatch !== 'object') return {};
+  const out = { ...settingsPatch };
+  if (Object.prototype.hasOwnProperty.call(out, 'promoCodes')) {
+    out.promoCodes = normalizePromoCodes(out.promoCodes);
+  }
+  return out;
 }
 
 function listCategories(storeId) {
@@ -666,19 +711,70 @@ async function configureTelegramBotWebhook(botToken, storeId, webhookSecret, api
   }
 }
 
-async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = false) {
+async function configureAdminBotWebhook(apiBase) {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, skipped: true, reason: 'ADMIN_BOT_NOT_CONFIGURED' };
+  const base = String(apiBase || '').trim().replace(/\/$/, '');
+  if (!base) return { ok: false, skipped: true, reason: 'PUBLIC_API_BASE_NOT_CONFIGURED' };
+  const hookUrl = `${base}/api/telegram/admin/webhook`;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: hookUrl,
+        secret_token: ADMIN_BOT_WEBHOOK_SECRET || undefined,
+        allowed_updates: ['message'],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SET_ADMIN_WEBHOOK_FAILED' };
+
+    await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start', description: 'Открыть панель управления' },
+          { command: 'instruction', description: 'Инструкция по регистрации и настройке' },
+        ],
+      }),
+    }).catch(() => null);
+
+    return { ok: true, webhookUrl: hookUrl };
+  } catch {
+    return { ok: false, error: 'SET_ADMIN_WEBHOOK_FAILED' };
+  }
+}
+
+async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = false, storeRow = null) {
   const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
   if (!base) return { ok: false, error: 'WEBAPP_URL_NOT_CONFIGURED' };
   const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
+  const settings = getStoreSettings(storeRow);
   const ownerNote = isOwner ? '\n\nДля админки используйте ваш Bot ID + пароль в Admin mini app.' : '';
-  const text = `Добро пожаловать в каталог.${ownerNote}`;
+  const welcomeTextRaw = String(settings?.botWelcomeText || '').trim();
+  const welcomeText = welcomeTextRaw || `Добро пожаловать в каталог.${ownerNote}`;
+  const welcomeImage = String(settings?.botWelcomeImage || '').trim();
   try {
+    if (welcomeImage) {
+      const photoResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: String(chatId || '').trim(),
+          photo: welcomeImage,
+          caption: welcomeText.slice(0, 1024),
+        }),
+      });
+      const photoPayload = await photoResp.json().catch(() => ({}));
+      if (!photoResp.ok || !photoPayload?.ok) return { ok: false, error: 'SEND_START_PHOTO_FAILED' };
+    }
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: String(chatId || '').trim(),
-        text,
+        text: welcomeImage ? 'Откройте каталог кнопкой ниже.' : welcomeText,
         reply_markup: {
           keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
           resize_keyboard: true,
@@ -770,7 +866,7 @@ async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
   }
 }
 
-async function sendTelegramTextByToken(token, chatId, text) {
+async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
   const safeToken = String(token || '').trim();
   const safeChat = String(chatId || '').trim();
   if (!safeToken) return { ok: false, error: 'BOT_TOKEN_REQUIRED' };
@@ -783,6 +879,7 @@ async function sendTelegramTextByToken(token, chatId, text) {
         chat_id: safeChat,
         text,
         disable_web_page_preview: true,
+        ...extra,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -793,18 +890,94 @@ async function sendTelegramTextByToken(token, chatId, text) {
   }
 }
 
-async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '' }) {
+function getAdminMiniAppUrl() {
+  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  if (!base) return '';
+  return `${base}/?admin=1`;
+}
+
+function getAdminStartKeyboard() {
+  const adminUrl = getAdminMiniAppUrl();
+  const row = [];
+  if (adminUrl) {
+    row.push({ text: 'Открыть админку', web_app: { url: adminUrl } });
+  }
+  row.push({ text: 'Инструкция' });
+  return {
+    keyboard: [row],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
+
+function getAdminBotIntroText() {
+  return [
+    'ADMIN KATALOG BOT',
+    '',
+    'Этот бот управляет вашей SaaS-витриной.',
+    'Здесь вы получаете Bot ID магазина и быстрый вход в admin mini app.',
+    '',
+    'Нажмите «Инструкция», чтобы открыть пошаговое руководство.',
+  ].join('\n');
+}
+
+function getAdminBotInstructionsText() {
+  return [
+    'ИНСТРУКЦИЯ',
+    '',
+    '1) Регистрация магазина и подключение бота',
+    '• Откройте Admin mini app и выберите «Регистрация».',
+    '• Введите bot token вашего магазина и пароль.',
+    '• Где взять bot token:',
+    '  1. Откройте @BotFather в Telegram.',
+    '  2. Команда /newbot -> задайте имя и username бота.',
+    '  3. BotFather выдаст token вида 123456:ABC...',
+    '  4. Скопируйте token без пробелов и вставьте в регистрацию.',
+    '• После регистрации система выдаст Bot ID (6 символов).',
+    '• Для входа в админку используйте: Bot ID + пароль.',
+    '',
+    '2) Как редактировать внутри админки',
+    '• Главная: баннеры, статьи, блоки акций/популярного.',
+    '• Каталог: категории и товары.',
+    '• Карточка товара: фото, заголовок, описание, характеристики, цены.',
+    '• Управление:',
+    '  - кнопка «+» добавляет новый элемент по шаблону;',
+    '  - двойной тап по тексту — редактирование текста;',
+    '  - зажатие элемента — действия (открыть/редактировать/удалить);',
+    '  - стрелки перемещают выбранные блоки.',
+    '• После изменений нажмите «Выгрузить в каталог», чтобы публикация появилась в клиентском каталоге.',
+  ].join('\n');
+}
+
+async function sendAdminBotStartMessage(chatId) {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  return sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, getAdminBotIntroText(), {
+    reply_markup: getAdminStartKeyboard(),
+  });
+}
+
+async function sendAdminBotInstructions(chatId) {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  return sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, getAdminBotInstructionsText(), {
+    reply_markup: getAdminStartKeyboard(),
+  });
+}
+
+async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', catalogUrl = '' }) {
   const chatId = String(ownerTelegramId || '').trim();
   if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND', via: '' };
   const text = [
     'Регистрация магазина выполнена.',
     `Ваш Bot ID: ${storeId}`,
     botUsername ? `Подключён бот: ${botUsername}` : '',
+    catalogUrl ? `Ссылка на каталог: ${catalogUrl}` : '',
     '',
     'Для входа в админку используйте Bot ID + пароль.',
   ].filter(Boolean).join('\n');
   if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED', via: '' };
-  const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text);
+  const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text, {
+    reply_markup: getAdminStartKeyboard(),
+  });
   if (sentByAdmin.ok) return { ok: true, via: 'admin_bot' };
   return { ok: false, error: 'BOT_ID_SEND_FAILED', via: '' };
 }
@@ -932,11 +1105,13 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const botUsername = String(validation.username || '').trim();
 
   const storeId = uniqueStoreId();
+  const catalogUrl = getStoreCatalogUrl(storeId, req);
   const webhookSecret = crypto.randomBytes(16).toString('hex');
   const sent = await notifyBotIdToOwner({
     ownerTelegramId,
     storeId,
     botUsername,
+    catalogUrl,
   });
   if (!sent.ok) {
     return res.status(500).json({ error: sent.error || 'BOT_ID_SEND_FAILED' });
@@ -980,6 +1155,8 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     ok: true,
     storeId,
     botId: storeId,
+    catalogUrl,
+    storeUrl: catalogUrl,
     botUsername,
     menuSetup,
     webhookSetup,
@@ -1053,10 +1230,14 @@ app.post('/api/auth/login', (req, res) => {
         JOIN store_users su ON su.store_id = s.store_id
         WHERE su.user_id = ? AND s.is_active = 1
         ORDER BY s.created_at ASC
-      `).all(fallbackIdentity).map((s) => ({ storeId: s.store_id, storeName: s.store_name }))
-    : [{ storeId, storeName: row.store_name }];
+      `).all(fallbackIdentity).map((s) => ({
+        storeId: s.store_id,
+        storeName: s.store_name,
+        catalogUrl: getStoreCatalogUrl(s.store_id, req),
+      }))
+    : [{ storeId, storeName: row.store_name, catalogUrl: getStoreCatalogUrl(storeId, req) }];
 
-  return res.json({ ok: true, token, storeId, botId: storeId, stores });
+  return res.json({ ok: true, token, storeId, botId: storeId, catalogUrl: getStoreCatalogUrl(storeId, req), stores });
 });
 
 app.post('/api/auth/password-reset/request', async (req, res) => {
@@ -1136,7 +1317,7 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   const row = getStoreRow(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
 
-  let stores = [{ storeId: row.store_id, storeName: row.store_name }];
+  let stores = [{ storeId: row.store_id, storeName: row.store_name, catalogUrl: getStoreCatalogUrl(row.store_id, req) }];
   if (req.auth.userId) {
     stores = db.prepare(`
       SELECT s.store_id, s.store_name
@@ -1144,7 +1325,11 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
       JOIN store_users su ON su.store_id = s.store_id
       WHERE su.user_id = ? AND s.is_active = 1
       ORDER BY s.created_at ASC
-    `).all(req.auth.userId).map((s) => ({ storeId: s.store_id, storeName: s.store_name }));
+    `).all(req.auth.userId).map((s) => ({
+      storeId: s.store_id,
+      storeName: s.store_name,
+      catalogUrl: getStoreCatalogUrl(s.store_id, req),
+    }));
   }
 
   return res.json({
@@ -1170,6 +1355,7 @@ app.get('/api/admin/stores', authMiddleware, (req, res) => {
       storeId: s.store_id,
       storeName: s.store_name,
       botUsername: s.bot_username || '',
+      catalogUrl: getStoreCatalogUrl(s.store_id, req),
       createdAt: s.created_at,
       updatedAt: s.updated_at,
     }));
@@ -1184,6 +1370,7 @@ app.get('/api/admin/stores', authMiddleware, (req, res) => {
       storeId: row.store_id,
       storeName: row.store_name,
       botUsername: row.bot_username || '',
+      catalogUrl: getStoreCatalogUrl(row.store_id, req),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }],
@@ -1231,11 +1418,16 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
 app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
   const orderChatId = String(req.body?.orderChatId || '').trim();
-  const settingsPatch = req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : {};
-  if (!botToken) return res.status(400).json({ error: 'BOT_TOKEN_REQUIRED' });
+  const settingsPatch = sanitizeSettingsPatch(req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : {});
+  if (!botToken && !orderChatId && !Object.keys(settingsPatch).length) {
+    return res.status(400).json({ error: 'BOT_SETTINGS_REQUIRED' });
+  }
 
-  const validation = await validateTelegramBotToken(botToken);
-  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  let validation = { ok: true, username: req.store?.bot_username || '' };
+  if (botToken) {
+    validation = await validateTelegramBotToken(botToken);
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
 
   const oldSettings = getStoreSettings(req.store);
   const mergedSettings = {
@@ -1245,24 +1437,31 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   if (orderChatId) mergedSettings.orderChatId = orderChatId;
 
   let webhookSecret = String(req.store?.bot_webhook_secret || '').trim();
-  if (!webhookSecret) webhookSecret = crypto.randomBytes(16).toString('hex');
+  if (botToken && !webhookSecret) webhookSecret = crypto.randomBytes(16).toString('hex');
+
+  const tokenToStore = botToken ? encryptBotToken(botToken) : req.store.bot_token_enc;
+  const usernameToStore = botToken ? (validation.username || '') : (req.store.bot_username || '');
 
   db.prepare(`
     UPDATE stores
     SET bot_token_enc = ?, bot_username = ?, bot_webhook_secret = ?, settings_json = ?, updated_at = ?
     WHERE store_id = ?
   `).run(
-    encryptBotToken(botToken),
-    validation.username || '',
+    tokenToStore,
+    usernameToStore,
     webhookSecret,
     JSON.stringify(mergedSettings),
     nowIso(),
     req.storeId,
   );
 
-  const menuSetup = await configureTelegramBotMenu(botToken, req.storeId);
-  const webhookSetup = await configureTelegramBotWebhook(botToken, req.storeId, webhookSecret, resolvePublicApiBase(req));
-  return res.json({ ok: true, storeId: req.storeId, botUsername: validation.username || '', menuSetup, webhookSetup });
+  let menuSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
+  let webhookSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
+  if (botToken) {
+    menuSetup = await configureTelegramBotMenu(botToken, req.storeId);
+    webhookSetup = await configureTelegramBotWebhook(botToken, req.storeId, webhookSecret, resolvePublicApiBase(req));
+  }
+  return res.json({ ok: true, storeId: req.storeId, botUsername: usernameToStore, menuSetup, webhookSetup, settings: mergedSettings });
 });
 
 app.get('/api/admin/data', authMiddleware, (req, res) => {
@@ -1559,7 +1758,39 @@ app.post('/api/telegram/webhook/:storeId', storeParamMiddleware, async (req, res
 
   if (text === '/start' || text.startsWith('/start ')) {
     const token = decryptBotToken(req.store?.bot_token_enc || '');
-    if (token) await sendStoreCatalogKeyboard(token, chatId, req.storeId, false);
+    if (token) await sendStoreCatalogKeyboard(token, chatId, req.storeId, false, req.store);
+  }
+
+  return res.json({ ok: true });
+});
+
+app.post('/api/telegram/admin/webhook', async (req, res) => {
+  const expectedSecret = String(ADMIN_BOT_WEBHOOK_SECRET || '').trim();
+  const secretHeader = String(req.headers['x-telegram-bot-api-secret-token'] || '').trim();
+  if (expectedSecret && (!secretHeader || secretHeader !== expectedSecret)) {
+    return res.status(401).json({ error: 'INVALID_ADMIN_WEBHOOK_SECRET' });
+  }
+
+  const update = req.body && typeof req.body === 'object' ? req.body : {};
+  const message = update?.message || null;
+  const textRaw = String(message?.text || '').trim();
+  const text = textRaw.toLowerCase();
+  const chatId = message?.chat?.id ? String(message.chat.id) : '';
+  if (!chatId) return res.json({ ok: true });
+
+  if (
+    text === '/start'
+    || text.startsWith('/start ')
+    || text === '/instruction'
+    || text === '/help'
+    || text === 'инструкция'
+    || text === 'instruction'
+  ) {
+    if (text === '/instruction' || text === '/help' || text === 'инструкция' || text === 'instruction') {
+      await sendAdminBotInstructions(chatId);
+    } else {
+      await sendAdminBotStartMessage(chatId);
+    }
   }
 
   return res.json({ ok: true });
@@ -1583,8 +1814,27 @@ app.use((err, _req, res, _next) => {
   return res.status(500).json({ error: 'INTERNAL_ERROR' });
 });
 
+async function bootstrapAdminBot() {
+  if (!ADMIN_BOT_TOKEN) {
+    console.log('[admin-bot] skipped: ADMIN_BOT_TOKEN not configured');
+    return;
+  }
+  const base = String(PUBLIC_API_BASE || '').trim();
+  if (!base) {
+    console.log('[admin-bot] skipped: PUBLIC_API_BASE not configured');
+    return;
+  }
+  const setup = await configureAdminBotWebhook(base);
+  if (setup?.ok) {
+    console.log(`[admin-bot] webhook configured: ${setup.webhookUrl}`);
+  } else {
+    console.log(`[admin-bot] webhook setup failed: ${setup?.error || setup?.reason || 'unknown'}`);
+  }
+}
+
 const server = app.listen(PORT, () => {
   console.log(`SaaS server started on http://0.0.0.0:${PORT}`);
+  void bootstrapAdminBot();
 });
 
 function gracefulShutdown(signal) {

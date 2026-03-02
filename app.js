@@ -23,6 +23,7 @@ const state = {
   orders: [],
   promoCode: '',
   promoPercent: 0,
+  promoAmount: 0,
   promoKind: '',
   recentlyViewed: [],
   theme: 'dark',
@@ -35,6 +36,7 @@ const state = {
   homeBannerTimer: null,
   phoneAutofillAttempted: false,
   phoneAutofillSucceeded: false,
+  pendingPayment: null,
   admin: {
     enabled: false,
     holdMs: 4000,
@@ -51,7 +53,9 @@ const state = {
     token: '',
     userId: '',
     stores: [],
+    settings: {},
     datasetLoaded: false,
+    lastPublicSyncAt: 0,
   },
 };
 
@@ -113,6 +117,8 @@ const ui = {
   favoritesButton: document.getElementById('favoritesButton'),
   cartButton: document.getElementById('cartButton'),
   ordersButton: document.getElementById('ordersButton'),
+  botButton: document.getElementById('botButton'),
+  statsButton: document.getElementById('statsButton'),
   homeButton: document.getElementById('homeButton'),
   profileButton: document.getElementById('profileButton'),
   favoritesCount: document.getElementById('favoritesCount'),
@@ -204,10 +210,46 @@ const ui = {
   adminProfilePanel: document.getElementById('adminProfilePanel'),
   adminStoreIdValue: document.getElementById('adminStoreIdValue'),
   adminReloadStoresButton: document.getElementById('adminReloadStoresButton'),
+  adminOpenBotSectionButton: document.getElementById('adminOpenBotSectionButton'),
   adminCreateStoreButton: document.getElementById('adminCreateStoreButton'),
   adminConnectBotButton: document.getElementById('adminConnectBotButton'),
   adminLogoutButton: document.getElementById('adminLogoutButton'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
+  profileHistorySection: document.getElementById('profileHistorySection'),
+  statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
+  statsOpenOrdersButton: document.getElementById('statsOpenOrdersButton'),
+  statsRevenuePreview: document.getElementById('statsRevenuePreview'),
+  statsOrdersPreview: document.getElementById('statsOrdersPreview'),
+  statsRevenueList: document.getElementById('statsRevenueList'),
+  statsOrdersList: document.getElementById('statsOrdersList'),
+  profileSubscriptionSection: document.getElementById('profileSubscriptionSection'),
+  subscriptionTariffs: document.getElementById('subscriptionTariffs'),
+  subscriptionStatus: document.getElementById('subscriptionStatus'),
+  subscriptionPayButton: document.getElementById('subscriptionPayButton'),
+  profilePaymentLinkSection: document.getElementById('profilePaymentLinkSection'),
+  paymentLinkForm: document.getElementById('paymentLinkForm'),
+  paymentProviderInput: document.getElementById('paymentProviderInput'),
+  paymentLinkInput: document.getElementById('paymentLinkInput'),
+  paymentLinkStatus: document.getElementById('paymentLinkStatus'),
+  paymentLinkSaveButton: document.getElementById('paymentLinkSaveButton'),
+  profilePromoSection: document.getElementById('profilePromoSection'),
+  promoSettingsForm: document.getElementById('promoSettingsForm'),
+  promoSettingsCodeInput: document.getElementById('promoSettingsCodeInput'),
+  promoSettingsTypeInput: document.getElementById('promoSettingsTypeInput'),
+  promoSettingsValueInput: document.getElementById('promoSettingsValueInput'),
+  promoSettingsStatus: document.getElementById('promoSettingsStatus'),
+  promoSettingsList: document.getElementById('promoSettingsList'),
+  payScreenTitle: document.getElementById('payScreenTitle'),
+  payScreenText: document.getElementById('payScreenText'),
+  payOpenLinkButton: document.getElementById('payOpenLinkButton'),
+  botSettingsForm: document.getElementById('botSettingsForm'),
+  botCatalogUrlInput: document.getElementById('botCatalogUrlInput'),
+  botCatalogUrlCopyButton: document.getElementById('botCatalogUrlCopyButton'),
+  botWelcomeImageInput: document.getElementById('botWelcomeImageInput'),
+  botWelcomeImageUploadButton: document.getElementById('botWelcomeImageUploadButton'),
+  botWelcomeTextInput: document.getElementById('botWelcomeTextInput'),
+  botSettingsStatus: document.getElementById('botSettingsStatus'),
+  botSettingsSaveButton: document.getElementById('botSettingsSaveButton'),
   homeArticleTrack: document.getElementById('homeArticleTrack'),
   themeLabel: document.getElementById('themeLabel'),
   themeToggleButton: document.getElementById('themeToggleButton'),
@@ -216,6 +258,12 @@ const ui = {
   promoApplyButton: document.getElementById('promoApplyButton'),
   promoStatus: document.getElementById('promoStatus'),
   homePopularTrack: document.getElementById('homePopularTrack'),
+};
+
+const SUBSCRIPTION_TARIFFS = {
+  '30': { days: 30, amount: 4000, label: '30 дней' },
+  '180': { days: 180, amount: 20000, label: '180 дней' },
+  '365': { days: 365, amount: 30000, label: '365 дней' },
 };
 
 function reportStatus(message) {
@@ -262,6 +310,75 @@ const FIRST_ORDER_PROMO = {
   code: 'ПЕРВЫЙ',
   percent: 10,
 };
+
+function normalizePromoCode(raw) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+function normalizeStorePromoRules(source) {
+  if (!Array.isArray(source)) return [];
+  const result = [];
+  source.forEach((item) => {
+    const code = normalizePromoCode(item?.code || '');
+    if (!code) return;
+    const type = String(item?.type || '').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percent';
+    const value = Math.max(0, Number(item?.value || 0));
+    if (!Number.isFinite(value) || value <= 0) return;
+    const active = item?.active !== false;
+    result.push({
+      code,
+      type,
+      value: type === 'percent' ? Math.min(100, Math.round(value)) : Math.round(value),
+      active,
+    });
+  });
+  return result;
+}
+
+function getStorePromoRules() {
+  const settings = state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {};
+  return normalizeStorePromoRules(settings.promoCodes || []);
+}
+
+function findStorePromoRule(code) {
+  const promoCode = normalizePromoCode(code);
+  if (!promoCode) return null;
+  return getStorePromoRules().find((rule) => rule.active && rule.code === promoCode) || null;
+}
+
+function reconcileActivePromoState() {
+  const activeCode = normalizePromoCode(state.promoCode || '');
+  if (!activeCode) return;
+
+  if (activeCode === FIRST_ORDER_PROMO.code) {
+    if (hasUsedFirstOrderPromo()) {
+      state.promoCode = '';
+      state.promoPercent = 0;
+      state.promoAmount = 0;
+      state.promoKind = '';
+      saveStorage();
+    }
+    return;
+  }
+
+  const rule = findStorePromoRule(activeCode);
+  if (!rule) {
+    state.promoCode = '';
+    state.promoPercent = 0;
+    state.promoAmount = 0;
+    state.promoKind = '';
+    saveStorage();
+    return;
+  }
+
+  state.promoCode = rule.code;
+  state.promoPercent = rule.type === 'percent' ? rule.value : 0;
+  state.promoAmount = rule.type === 'fixed' ? rule.value : 0;
+  state.promoKind = rule.type === 'fixed' ? 'custom_fixed' : 'custom_percent';
+}
 
 const ADMIN_MARGIN_RATE = 0.3;
 const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
@@ -476,7 +593,22 @@ function setScreen(name) {
   ui.screens.forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   if (name === 'profile') {
     renderProfile();
-    renderOrders();
+    if (!state.admin.enabled) renderOrders();
+  }
+  if (name === 'bot') {
+    renderBotSettings();
+  }
+  if (name === 'stats') {
+    void renderAdminStatsOverview();
+  }
+  if (name === 'stats-revenue') {
+    void renderAdminStatsRevenue();
+  }
+  if (name === 'stats-orders') {
+    void renderAdminStatsOrders();
+  }
+  if (name === 'pay') {
+    renderPayScreen();
   }
   if (name === 'home') {
     startHomeBannerAutoplay();
@@ -535,13 +667,17 @@ function updateBottomNav(screen) {
     promo: ui.menuButton,
     cart: ui.cartButton,
     profile: ui.profileButton,
+    bot: ui.botButton,
+    stats: ui.statsButton,
+    'stats-revenue': ui.statsButton,
+    'stats-orders': ui.statsButton,
     orders: ui.profileButton,
     favorites: ui.favoritesButton,
     menu: ui.menuButton,
   };
   const defaultButton = ui.homeButton;
   const activeButton = map[screen] || defaultButton;
-  [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton].forEach((btn) => {
+  [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton, ui.botButton, ui.statsButton].forEach((btn) => {
     if (!btn) return;
     btn.classList.toggle('active', btn === activeButton);
   });
@@ -867,6 +1003,7 @@ async function adminPickAndUploadImage() {
 function adminBuildPayload() {
   return {
     config: state.config,
+    settings: state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {},
     categories: state.categories,
     products: state.products,
   };
@@ -1749,7 +1886,13 @@ function applyAdminModeUi() {
     const scope = String(btn.dataset.adminMoveScope || '');
     btn.disabled = !(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType);
   });
-  if (!state.admin.enabled) return;
+  if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
+  if (ui.statsButton) ui.statsButton.classList.toggle('nav-hidden', !state.admin.enabled);
+  if (!state.admin.enabled) {
+    if (ui.cartButton) ui.cartButton.classList.remove('admin-hidden-nav');
+    if (ui.favoritesButton) ui.favoritesButton.classList.remove('admin-hidden-nav');
+    return;
+  }
   if (ui.cartButton) ui.cartButton.classList.add('admin-hidden-nav');
   if (ui.favoritesButton) ui.favoritesButton.classList.add('admin-hidden-nav');
 }
@@ -1820,6 +1963,7 @@ function clearSaasAuth() {
   state.saas.storeId = '';
   state.saas.userId = '';
   state.saas.stores = [];
+  state.saas.settings = {};
   localStorage.removeItem(SAAS_TOKEN_KEY);
   localStorage.removeItem(SAAS_STORE_KEY);
 }
@@ -2246,8 +2390,75 @@ async function saasRequestWithForm(path, formData, { auth = false } = {}) {
 function applyStoreDataset(dataset) {
   if (!dataset || typeof dataset !== 'object') return;
   if (dataset.config && typeof dataset.config === 'object') state.config = dataset.config;
+  if (dataset.settings && typeof dataset.settings === 'object') state.saas.settings = dataset.settings;
   if (Array.isArray(dataset.categories)) state.categories = dataset.categories;
   if (Array.isArray(dataset.products)) state.products = dataset.products;
+  reconcileActivePromoState();
+}
+
+function getBotSettingsDraft() {
+  const settings = state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {};
+  return {
+    botWelcomeImage: String(settings.botWelcomeImage || '').trim(),
+    botWelcomeText: String(settings.botWelcomeText || '').trim(),
+  };
+}
+
+function getCurrentStoreMeta() {
+  const activeStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!activeStoreId || !Array.isArray(state.saas.stores)) return null;
+  return state.saas.stores.find((store) => String(store?.storeId || '').trim().toUpperCase() === activeStoreId) || null;
+}
+
+function getCurrentStoreCatalogUrl() {
+  const fromMeta = String(getCurrentStoreMeta()?.catalogUrl || '').trim();
+  if (fromMeta) return fromMeta;
+  const fromSettings = String(state.saas.settings?.catalogUrl || state.saas.settings?.storeUrl || '').trim();
+  if (fromSettings) return fromSettings;
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!storeId) return '';
+  const apiBase = String(state.saas.apiBase || getSaasApiBase() || '').trim();
+  if (apiBase) {
+    try {
+      const apiUrl = new URL(apiBase);
+      apiUrl.pathname = '';
+      apiUrl.search = '';
+      apiUrl.hash = '';
+      return `${apiUrl.origin}/store/${encodeURIComponent(storeId)}`;
+    } catch {}
+  }
+  return `${window.location.origin}/store/${encodeURIComponent(storeId)}`;
+}
+
+function renderBotSettings() {
+  const settings = getBotSettingsDraft();
+  if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = settings.botWelcomeImage;
+  if (ui.botWelcomeTextInput) ui.botWelcomeTextInput.value = settings.botWelcomeText;
+  if (ui.botCatalogUrlInput) ui.botCatalogUrlInput.value = getCurrentStoreCatalogUrl();
+  if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = '';
+}
+
+async function saveBotSettings() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  const image = String(ui.botWelcomeImageInput?.value || '').trim();
+  const text = String(ui.botWelcomeTextInput?.value || '').trim();
+  const patch = {
+    ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+    botWelcomeImage: image,
+    botWelcomeText: text,
+  };
+  if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Сохраняем настройки бота...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Сохранено. Новое приветствие работает в /start.';
+  } catch (error) {
+    if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+  }
 }
 
 function getRequestedStoreId() {
@@ -2402,9 +2613,37 @@ async function saasLoadDatasetForCurrentContext() {
     state.saas.storeId = publicStoreId;
     localStorage.setItem(SAAS_STORE_KEY, publicStoreId);
     state.saas.datasetLoaded = true;
+    state.saas.lastPublicSyncAt = Date.now();
     return true;
   }
   return false;
+}
+
+async function refreshPublicDataset(force = false) {
+  if (state.admin.enabled) return false;
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(storeId)) return false;
+  const now = Date.now();
+  if (!force && (now - Number(state.saas.lastPublicSyncAt || 0) < 8000)) return false;
+  try {
+    const payload = await saasRequest(`/store/${encodeURIComponent(storeId)}/public?_t=${now}`);
+    applyStoreDataset(payload);
+    state.saas.datasetLoaded = true;
+    state.saas.lastPublicSyncAt = now;
+    renderHomeBanners();
+    renderHomeArticles();
+    renderHeaderStore();
+    renderStores();
+    renderCategories();
+    if (state.currentScreen === 'products') renderProducts();
+    if (state.currentScreen === 'product') renderProductView();
+    renderPromos();
+    renderHomePopular();
+    buildMenuCatalog();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function loadStorage() {
@@ -2414,8 +2653,9 @@ function loadStorage() {
   state.selectedFavorites = new Set(safeParse(readScopedStorage('demo_catalog_fav_selected', '[]'), []));
   state.profile = safeParse(readScopedStorage('demo_catalog_profile', '{}'), {});
   state.orders = safeParse(readScopedStorage('demo_catalog_orders', '[]'), []);
-  state.promoCode = String(readScopedStorage('demo_catalog_promo_code', '') || '').trim().toUpperCase();
+  state.promoCode = normalizePromoCode(readScopedStorage('demo_catalog_promo_code', ''));
   state.promoPercent = Number(readScopedStorage('demo_catalog_promo_percent', '0') || 0) || 0;
+  state.promoAmount = Number(readScopedStorage('demo_catalog_promo_amount', '0') || 0) || 0;
   state.promoKind = String(readScopedStorage('demo_catalog_promo_kind', '') || '').trim();
   state.recentlyViewed = safeParse(readScopedStorage('demo_catalog_recent', '[]'), []).filter(Boolean).slice(0, 12);
   state.theme = String(readScopedStorage('demo_catalog_theme', 'dark')) === 'light' ? 'light' : 'dark';
@@ -2438,6 +2678,7 @@ function saveStorage() {
     localStorage.setItem(scopedStorageKey('demo_catalog_orders'), JSON.stringify(state.orders));
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_code'), state.promoCode || '');
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_percent'), String(state.promoPercent || 0));
+    localStorage.setItem(scopedStorageKey('demo_catalog_promo_amount'), String(state.promoAmount || 0));
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_kind'), state.promoKind || '');
     localStorage.setItem(scopedStorageKey('demo_catalog_recent'), JSON.stringify(state.recentlyViewed || []));
     localStorage.setItem(scopedStorageKey('demo_catalog_theme'), state.theme || 'dark');
@@ -2598,8 +2839,14 @@ function cartSummary() {
     }
   });
   const discountPercent = Number(state.promoPercent || 0);
+  const discountFixed = Math.max(0, Number(state.promoAmount || 0));
   const discountBase = state.promoKind === 'first_order' ? eligibleSum : sum;
-  const discountAmount = discountPercent > 0 ? Math.round(discountBase * (discountPercent / 100)) : 0;
+  let discountAmount = 0;
+  if (state.promoKind === 'custom_fixed') {
+    discountAmount = Math.min(sum, Math.round(discountFixed));
+  } else if (discountPercent > 0) {
+    discountAmount = Math.round(discountBase * (discountPercent / 100));
+  }
   const finalSum = Math.max(0, sum - discountAmount);
   return {
     sum: finalSum,
@@ -2607,6 +2854,7 @@ function cartSummary() {
     eligibleSum,
     discountAmount,
     discountPercent,
+    discountFixed,
     missing,
     count,
     requestCount,
@@ -2615,7 +2863,12 @@ function cartSummary() {
 
 function formatSummaryTotal(summary) {
   const hasNumericTotal = Number(summary.sum || 0) > 0;
-  const promoLabel = summary.discountAmount > 0 ? ` (скидка ${summary.discountPercent}%)` : '';
+  let promoLabel = '';
+  if (summary.discountAmount > 0) {
+    promoLabel = state.promoKind === 'custom_fixed'
+      ? ` (скидка ${formatPrice(summary.discountAmount)} ₽)`
+      : ` (скидка ${summary.discountPercent}%)`;
+  }
   if (summary.missing && hasNumericTotal) {
     return `${formatPrice(summary.sum)} ₽${promoLabel} + Запрос цены`;
   }
@@ -3251,12 +3504,17 @@ function renderCart() {
   }
   if (ui.promoCodeInput) ui.promoCodeInput.value = state.promoCode || '';
   if (ui.promoStatus) {
-    if (state.promoPercent > 0) {
+    if (state.promoPercent > 0 || state.promoKind === 'custom_fixed') {
       const kindLabel = state.promoKind === 'first_order'
         ? 'на товары без скидки'
-        : '';
-      ui.promoStatus.textContent = `Скидка ${state.promoPercent}% активна (${state.promoCode}) ${kindLabel}. Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
-    } else if (/активна/.test(ui.promoStatus.textContent || '')) {
+        : state.promoKind === 'custom_fixed'
+          ? 'фиксированная сумма'
+          : '';
+      const discountLabel = state.promoKind === 'custom_fixed'
+        ? `${formatPrice(state.promoAmount || 0)} ₽`
+        : `${state.promoPercent}%`;
+      ui.promoStatus.textContent = `Скидка ${discountLabel} активна (${state.promoCode}) ${kindLabel}. Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
+    } else if (/актив/i.test(ui.promoStatus.textContent || '')) {
       ui.promoStatus.textContent = '';
     }
   }
@@ -3264,7 +3522,7 @@ function renderCart() {
 
 function renderOrders() {
   if (state.admin.enabled) {
-    void renderAdminSalesAnalytics();
+    if (ui.ordersList) ui.ordersList.innerHTML = '';
     return;
   }
   if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История заказов';
@@ -3321,6 +3579,38 @@ function adminOrderTotal(order) {
 
 function adminOrderMargin(order) {
   return Math.round(adminOrderTotal(order) * ADMIN_MARGIN_RATE);
+}
+
+async function getAdminAnalyticsData() {
+  let orders = state.orders.slice();
+  let remoteMetrics = null;
+  if (state.saas.storeId && state.saas.token) {
+    try {
+      const storeId = encodeURIComponent(state.saas.storeId);
+      const [ordersRes, metricsRes] = await Promise.all([
+        saasRequest(`/stores/${storeId}/admin/orders`, { auth: true }),
+        saasRequest(`/stores/${storeId}/admin/metrics`, { auth: true }),
+      ]);
+      if (Array.isArray(ordersRes?.orders)) orders = ordersRes.orders;
+      if (metricsRes?.metrics && typeof metricsRes.metrics === 'object') remoteMetrics = metricsRes.metrics;
+    } catch {
+      // fallback to local analytics
+    }
+  }
+  orders = orders.slice().sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)));
+  const monthMap = new Map();
+  orders.forEach((order) => {
+    const key = adminMonthKey(order.createdAt);
+    const stat = monthMap.get(key) || { total: 0, margin: 0, count: 0, orders: [] };
+    const total = adminOrderTotal(order);
+    const margin = adminOrderMargin(order);
+    stat.total += total;
+    stat.margin += margin;
+    stat.count += 1;
+    stat.orders.push(order);
+    monthMap.set(key, stat);
+  });
+  return { orders, monthMap, remoteMetrics };
 }
 
 function adminEnsureReportModal() {
@@ -3499,6 +3789,118 @@ async function renderAdminSalesAnalytics() {
   });
 }
 
+async function renderAdminStatsOverview() {
+  if (!state.admin.enabled) return;
+  const { orders, monthMap } = await getAdminAnalyticsData();
+  const thisMonthKey = adminMonthKey(new Date().toISOString());
+  const thisMonth = monthMap.get(thisMonthKey) || { total: 0, margin: 0, count: 0 };
+  if (ui.statsRevenuePreview) ui.statsRevenuePreview.textContent = `${formatPrice(thisMonth.total)} ₽`;
+  if (ui.statsOrdersPreview) ui.statsOrdersPreview.textContent = String(orders.length);
+}
+
+async function renderAdminStatsRevenue() {
+  if (!state.admin.enabled || !ui.statsRevenueList) return;
+  const { monthMap, remoteMetrics } = await getAdminAnalyticsData();
+  const monthEntries = Array.from(monthMap.entries()).sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+  if (!monthEntries.length) {
+    ui.statsRevenueList.innerHTML = '<div class="text-card">Пока нет данных по выручке.</div>';
+    return;
+  }
+
+  const topProductsHtml = Array.isArray(remoteMetrics?.topProducts) && remoteMetrics.topProducts.length
+    ? `
+      <div class="admin-analytics-months">
+        ${remoteMetrics.topProducts.slice(0, 5).map((item) => `
+          <div class="admin-month-card">
+            <div class="admin-month-title">${escapeHtml(item.title || 'Товар')}</div>
+            <div class="admin-month-meta">Шт: ${formatPrice(Number(item.qty || 0))}</div>
+            <div class="admin-month-meta">Выручка: ${formatPrice(Number(item.revenue || 0))} ₽</div>
+          </div>
+        `).join('')}
+      </div>
+    `
+    : '';
+
+  ui.statsRevenueList.innerHTML = `
+    ${topProductsHtml}
+    <div class="admin-analytics-months">
+      ${monthEntries.map(([key, stat]) => `
+        <button class="admin-month-card" data-admin-month="${escapeHtml(key)}" type="button">
+          <div class="admin-month-title">${escapeHtml(adminMonthLabel(key))}</div>
+          <div class="admin-month-meta">Выручка: ${formatPrice(stat.total)} ₽</div>
+          <div class="admin-month-meta">Маржа: ${formatPrice(stat.margin)} ₽</div>
+          <div class="admin-month-meta">Заказов: ${stat.count}</div>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  const openMonthReport = (key) => {
+    const stat = monthMap.get(key);
+    if (!stat) return;
+    adminOpenReportModal(
+      `Выручка: ${adminMonthLabel(key)}`,
+      `
+        <div><strong>Заказов:</strong> ${stat.count}</div>
+        <div><strong>Выручка:</strong> ${formatPrice(stat.total)} ₽</div>
+        <div><strong>Маржа:</strong> ${formatPrice(stat.margin)} ₽</div>
+      `
+    );
+  };
+  ui.statsRevenueList.querySelectorAll('[data-admin-month]').forEach((btn) => {
+    btn.addEventListener('click', () => openMonthReport(btn.dataset.adminMonth || ''));
+  });
+}
+
+async function renderAdminStatsOrders() {
+  if (!state.admin.enabled || !ui.statsOrdersList) return;
+  const { orders } = await getAdminAnalyticsData();
+  if (!orders.length) {
+    ui.statsOrdersList.innerHTML = '<div class="text-card">Покупок пока нет.</div>';
+    return;
+  }
+
+  ui.statsOrdersList.innerHTML = `
+    <div class="admin-analytics-orders">
+      ${orders.map((order) => `
+        <button class="admin-order-card" data-admin-order="${order.id}" type="button">
+          <div class="admin-order-head">
+            <strong>${escapeHtml(order.customer?.name || 'Клиент')}</strong>
+            <span>${new Date(order.createdAt).toLocaleString('ru-RU')}</span>
+          </div>
+          <div class="admin-order-meta">Телефон: ${escapeHtml(order.customer?.phone || '—')}</div>
+          <div class="admin-order-meta">Email: ${escapeHtml(order.customer?.email || '—')}</div>
+          <div class="admin-order-meta">Сумма: ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  ui.statsOrdersList.querySelectorAll('[data-admin-order]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.adminOrder);
+      const order = orders.find((x) => Number(x.id) === id);
+      if (!order) return;
+      adminOpenReportModal(
+        `Заказ №${order.id}`,
+        `
+          <div><strong>Клиент:</strong> ${escapeHtml(order.customer?.name || '—')}</div>
+          <div><strong>Телефон:</strong> ${escapeHtml(order.customer?.phone || '—')}</div>
+          <div><strong>Email:</strong> ${escapeHtml(order.customer?.email || '—')}</div>
+          <div><strong>Telegram ID:</strong> ${escapeHtml(order.customer?.telegramId || order.telegramUserId || '—')}</div>
+          <div><strong>Дата:</strong> ${new Date(order.createdAt).toLocaleString('ru-RU')}</div>
+          <div><strong>Сумма:</strong> ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
+          <hr />
+          <strong>Состав:</strong>
+          <ul>
+            ${(order.items || []).map((i) => `<li>${escapeHtml(i.title || 'Товар')} × ${Number(i.qty || 1)}</li>`).join('')}
+          </ul>
+        `
+      );
+    });
+  });
+}
+
 function renderProfile() {
   const user = getTelegramUser();
   const firstName = String(user.first_name || state.profile.name || 'Пользователь').trim();
@@ -3522,6 +3924,285 @@ function renderProfile() {
       ui.adminStoreIdValue.textContent = state.saas.storeId;
     }
   }
+  if (ui.profileSubscriptionSection) {
+    ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (ui.profilePaymentLinkSection) {
+    ui.profilePaymentLinkSection.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (state.admin.enabled) renderPaymentLinkSettings();
+  renderAdminPromoSettings();
+  if (state.admin.enabled && ui.subscriptionStatus) {
+    const t = getSelectedSubscriptionTariff();
+    ui.subscriptionStatus.textContent = `Выбран тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+  }
+  if (ui.profileHistorySection) {
+    ui.profileHistorySection.classList.toggle('hidden', state.admin.enabled);
+  }
+}
+
+function getPaymentLinkSettingsDraft() {
+  const settings = state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {};
+  const provider = String(
+    settings.paymentProvider
+    || settings.paymentGatewayProvider
+    || 'yookassa'
+  ).trim().toLowerCase();
+  const urlTemplate = String(
+    settings.paymentUrlTemplate
+    || settings.paymentLinkUrl
+    || settings.paymentUrl
+    || settings.yookassaUrl
+    || ''
+  ).trim();
+  return {
+    provider: provider || 'yookassa',
+    urlTemplate,
+  };
+}
+
+function renderPaymentLinkSettings() {
+  const draft = getPaymentLinkSettingsDraft();
+  if (ui.paymentProviderInput) ui.paymentProviderInput.value = draft.provider;
+  if (ui.paymentLinkInput) ui.paymentLinkInput.value = draft.urlTemplate;
+  if (ui.paymentLinkStatus) {
+    ui.paymentLinkStatus.textContent = draft.urlTemplate
+      ? `Текущая ссылка оплаты подключена (${draft.provider}).`
+      : 'Ссылка оплаты пока не задана.';
+  }
+}
+
+async function savePaymentLinkSettings() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  const provider = String(ui.paymentProviderInput?.value || 'custom').trim().toLowerCase();
+  const urlTemplate = String(ui.paymentLinkInput?.value || '').trim();
+  if (!urlTemplate) {
+    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = 'Введите ссылку оплаты.';
+    return;
+  }
+  const patch = {
+    ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+    paymentProvider: provider,
+    paymentUrlTemplate: urlTemplate,
+  };
+  if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = 'Сохраняем ссылку оплаты...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = `Сохранено. Провайдер: ${provider}.`;
+  } catch (error) {
+    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+  }
+}
+
+function renderAdminPromoSettings() {
+  if (!ui.profilePromoSection) return;
+  const show = Boolean(state.admin.enabled);
+  ui.profilePromoSection.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const rules = getStorePromoRules();
+  if (ui.promoSettingsList) {
+    if (!rules.length) {
+      ui.promoSettingsList.innerHTML = '<div class="text-card">Промокоды пока не добавлены.</div>';
+    } else {
+      ui.promoSettingsList.innerHTML = rules.map((rule) => `
+        <div class="promo-admin-item">
+          <div class="promo-admin-title">${escapeHtml(rule.code)}</div>
+          <div class="promo-admin-meta">${rule.type === 'fixed' ? `Скидка ${formatPrice(rule.value)} ₽` : `Скидка ${rule.value}%`}</div>
+          <button class="ghost-button promo-admin-delete" data-promo-remove="${escapeHtml(rule.code)}" type="button">Удалить</button>
+        </div>
+      `).join('');
+    }
+  }
+}
+
+async function saveAdminPromoCode() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  const code = normalizePromoCode(ui.promoSettingsCodeInput?.value || '');
+  const type = String(ui.promoSettingsTypeInput?.value || 'percent').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percent';
+  const rawValue = Number(ui.promoSettingsValueInput?.value || 0);
+  const value = type === 'fixed'
+    ? Math.max(1, Math.round(rawValue))
+    : Math.max(1, Math.min(100, Math.round(rawValue)));
+
+  if (!code) {
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = 'Введите промокод.';
+    return;
+  }
+  if (!Number.isFinite(rawValue) || rawValue <= 0) {
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = 'Введите корректное значение скидки.';
+    return;
+  }
+
+  const nextRules = getStorePromoRules().filter((rule) => rule.code !== code);
+  nextRules.push({ code, type, value, active: true });
+  const patch = {
+    ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+    promoCodes: nextRules,
+  };
+  if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = 'Сохраняем промокод...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    state.promoCode = '';
+    state.promoPercent = 0;
+    state.promoAmount = 0;
+    state.promoKind = '';
+    saveStorage();
+    renderCart();
+    renderAdminPromoSettings();
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = `Промокод ${code} сохранен.`;
+  } catch (error) {
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+  }
+}
+
+async function removeAdminPromoCode(codeRaw) {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  const code = normalizePromoCode(codeRaw);
+  if (!code) return;
+  const nextRules = getStorePromoRules().filter((rule) => rule.code !== code);
+  const patch = {
+    ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+    promoCodes: nextRules,
+  };
+  if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = `Удаляем ${code}...`;
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    if (state.promoCode === code) {
+      state.promoCode = '';
+      state.promoPercent = 0;
+      state.promoAmount = 0;
+      state.promoKind = '';
+      saveStorage();
+      renderCart();
+    }
+    renderAdminPromoSettings();
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = `Промокод ${code} удален.`;
+  } catch (error) {
+    if (ui.promoSettingsStatus) ui.promoSettingsStatus.textContent = `Ошибка удаления: ${String(error?.message || 'unknown')}`;
+  }
+}
+
+function resolveOrderPaymentLink(order, amountValue) {
+  const draft = getPaymentLinkSettingsDraft();
+  const template = String(draft.urlTemplate || '').trim();
+  if (!template) return { url: '', provider: draft.provider || 'custom' };
+  const data = {
+    store_id: String(state.saas.storeId || '').trim().toUpperCase(),
+    order_id: String(order?.id || '').trim(),
+    amount: String(Math.max(0, Number(amountValue || 0))),
+    currency: String(order?.currency || 'RUB'),
+    telegram_user_id: String(order?.telegramUserId || getTelegramId() || ''),
+  };
+  let built = template;
+  Object.entries(data).forEach(([key, value]) => {
+    built = built.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(String(value || '')));
+  });
+  return { url: built, provider: draft.provider || 'custom' };
+}
+
+function openExternalPaymentLink(url) {
+  const safe = String(url || '').trim();
+  if (!safe) return;
+  if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(safe, { try_instant_view: false });
+    return;
+  }
+  window.open(safe, '_blank', 'noopener');
+}
+
+function renderPayScreen() {
+  const provider = String(state.pendingPayment?.provider || '').trim();
+  const providerLabelMap = {
+    yookassa: 'ЮKassa',
+    tbank: 'Т-Банк',
+    custom: 'Платёжный провайдер',
+  };
+  const providerLabel = providerLabelMap[provider] || 'Платёжный провайдер';
+  if (ui.payScreenTitle) ui.payScreenTitle.textContent = `Оплата через ${providerLabel}`;
+  if (ui.payScreenText) {
+    ui.payScreenText.textContent = state.pendingPayment?.url
+      ? 'Нажмите кнопку ниже, чтобы открыть страницу оплаты.'
+      : 'Ссылка оплаты не настроена.';
+  }
+  if (ui.payOpenLinkButton) {
+    ui.payOpenLinkButton.disabled = !state.pendingPayment?.url;
+  }
+}
+
+function getSelectedSubscriptionTariff() {
+  const checked = document.querySelector('input[name="subscriptionTariff"]:checked');
+  const code = String(checked?.value || '30');
+  return SUBSCRIPTION_TARIFFS[code] || SUBSCRIPTION_TARIFFS['30'];
+}
+
+function resolveSubscriptionPaymentLink(tariff) {
+  const daysKey = String(tariff?.days || '');
+  const fromSettingsMap = state.saas.settings?.subscriptionLinks && typeof state.saas.settings.subscriptionLinks === 'object'
+    ? String(state.saas.settings.subscriptionLinks[daysKey] || '').trim()
+    : '';
+  if (fromSettingsMap) return fromSettingsMap;
+
+  const fromConfigMap = state.config?.subscriptionLinks && typeof state.config.subscriptionLinks === 'object'
+    ? String(state.config.subscriptionLinks[daysKey] || '').trim()
+    : '';
+  if (fromConfigMap) return fromConfigMap;
+
+  const direct = String(
+    state.saas.settings?.subscriptionPaymentUrl
+    || state.saas.settings?.yookassaUrl
+    || state.config?.subscriptionPaymentUrl
+    || state.config?.yookassaUrl
+    || ''
+  ).trim();
+  if (!direct) return '';
+
+  try {
+    const u = new URL(direct);
+    u.searchParams.set('store_id', String(state.saas.storeId || '').trim().toUpperCase());
+    u.searchParams.set('tariff_days', String(tariff.days));
+    u.searchParams.set('amount', String(tariff.amount));
+    const tgId = getTelegramId();
+    if (tgId) u.searchParams.set('telegram_user_id', tgId);
+    return u.toString();
+  } catch {
+    return direct;
+  }
+}
+
+function openSubscriptionPayment() {
+  if (!state.admin.enabled) return;
+  const tariff = getSelectedSubscriptionTariff();
+  const link = resolveSubscriptionPaymentLink(tariff);
+  if (!link) {
+    if (ui.subscriptionStatus) {
+      ui.subscriptionStatus.textContent = 'Ссылка оплаты не настроена. Добавьте subscriptionPaymentUrl или subscriptionLinks в настройках магазина.';
+    }
+    return;
+  }
+  if (ui.subscriptionStatus) {
+    ui.subscriptionStatus.textContent = `Переход к оплате: ${tariff.label} — ${formatPrice(tariff.amount)} ₽`;
+  }
+  if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(link, { try_instant_view: false });
+    return;
+  }
+  window.open(link, '_blank', 'noopener');
 }
 
 function validatePhone(value) {
@@ -3534,19 +4215,38 @@ function validateEmail(value) {
 }
 
 function applyPromoCode() {
-  const code = String(ui.promoCodeInput?.value || '').trim().toUpperCase();
+  const code = normalizePromoCode(ui.promoCodeInput?.value || '');
   if (!code) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoAmount = 0;
     state.promoKind = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод очищен.';
     saveStorage();
     renderCart();
     return;
   }
+  const customRule = findStorePromoRule(code);
+  if (customRule) {
+    state.promoCode = customRule.code;
+    state.promoPercent = customRule.type === 'percent' ? customRule.value : 0;
+    state.promoAmount = customRule.type === 'fixed' ? customRule.value : 0;
+    state.promoKind = customRule.type === 'fixed' ? 'custom_fixed' : 'custom_percent';
+    if (ui.promoStatus) {
+      const label = customRule.type === 'fixed'
+        ? `${formatPrice(customRule.value)} ₽`
+        : `${customRule.value}%`;
+      ui.promoStatus.textContent = `Промокод "${customRule.code}" активирован: скидка ${label}.`;
+    }
+    saveStorage();
+    renderCart();
+    return;
+  }
+
   if (code !== FIRST_ORDER_PROMO.code) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoAmount = 0;
     state.promoKind = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод не найден.';
     saveStorage();
@@ -3556,6 +4256,7 @@ function applyPromoCode() {
   if (hasUsedFirstOrderPromo()) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoAmount = 0;
     state.promoKind = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" уже использован для этого Telegram аккаунта.';
     saveStorage();
@@ -3572,6 +4273,7 @@ function applyPromoCode() {
   }
   state.promoCode = FIRST_ORDER_PROMO.code;
   state.promoPercent = FIRST_ORDER_PROMO.percent;
+  state.promoAmount = 0;
   state.promoKind = 'first_order';
   if (ui.promoStatus) {
     ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" активирован: -10% на товары без скидки.';
@@ -3750,6 +4452,11 @@ function bindEvents() {
     if (!state.admin.enabled) return;
     void saasPromptSelectStore();
   });
+  on(ui.adminOpenBotSectionButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    renderBotSettings();
+    setScreen('bot');
+  });
   on(ui.adminCreateStoreButton, 'click', () => {
     if (!state.admin.enabled) return;
     void saasCreateStoreFlow();
@@ -3762,6 +4469,67 @@ function bindEvents() {
     clearSaasAuth();
     reportStatus('Сессия админки завершена');
     window.location.reload();
+  });
+  on(ui.subscriptionTariffs, 'change', () => {
+    if (!state.admin.enabled || !ui.subscriptionStatus) return;
+    const t = getSelectedSubscriptionTariff();
+    ui.subscriptionStatus.textContent = `Выбран тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+  });
+  on(ui.subscriptionPayButton, 'click', () => {
+    openSubscriptionPayment();
+  });
+  on(ui.paymentLinkForm, 'submit', async (e) => {
+    e.preventDefault();
+    await savePaymentLinkSettings();
+  });
+  on(ui.promoSettingsForm, 'submit', async (e) => {
+    e.preventDefault();
+    await saveAdminPromoCode();
+  });
+  on(ui.promoSettingsList, 'click', async (e) => {
+    const btn = e.target.closest('[data-promo-remove]');
+    if (!btn) return;
+    const code = String(btn.dataset.promoRemove || '').trim();
+    if (!code) return;
+    await removeAdminPromoCode(code);
+  });
+  on(ui.payOpenLinkButton, 'click', () => {
+    if (!state.pendingPayment?.url) return;
+    openExternalPaymentLink(state.pendingPayment.url);
+  });
+  on(ui.botWelcomeImageUploadButton, 'click', async () => {
+    if (!state.admin.enabled) return;
+    const imageUrl = await adminPickAndUploadImage();
+    if (!imageUrl) return;
+    if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = imageUrl;
+    if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Картинка загружена. Нажмите "Сохранить в боте".';
+  });
+  on(ui.botCatalogUrlCopyButton, 'click', async () => {
+    const value = String(ui.botCatalogUrlInput?.value || '').trim();
+    if (!value) {
+      reportStatus('Ссылка каталога не найдена');
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = value;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        temp.remove();
+      }
+      if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Ссылка скопирована';
+    } catch {
+      if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Не удалось скопировать ссылку';
+    }
+  });
+  on(ui.botSettingsForm, 'submit', async (e) => {
+    e.preventDefault();
+    if (!state.admin.enabled) return;
+    await saveBotSettings();
   });
   on(document, 'click', (e) => {
     const addBtn = e.target.closest('[data-admin-add]');
@@ -3830,7 +4598,7 @@ function bindEvents() {
     if (target === 'orders') renderOrders();
     if (target === 'profile') {
       renderProfile();
-      renderOrders();
+      if (!state.admin.enabled) renderOrders();
     }
   });
 
@@ -4165,8 +4933,28 @@ function bindEvents() {
 
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
-  on(ui.ordersButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
-  on(ui.profileButton, 'click', () => { renderProfile(); renderOrders(); setScreen('profile'); });
+  on(ui.ordersButton, 'click', () => { renderProfile(); if (!state.admin.enabled) renderOrders(); setScreen('profile'); });
+  on(ui.profileButton, 'click', () => { renderProfile(); if (!state.admin.enabled) renderOrders(); setScreen('profile'); });
+  on(ui.botButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    renderBotSettings();
+    setScreen('bot');
+  });
+  on(ui.statsButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void renderAdminStatsOverview();
+    setScreen('stats');
+  });
+  on(ui.statsOpenRevenueButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void renderAdminStatsRevenue();
+    setScreen('stats-revenue');
+  });
+  on(ui.statsOpenOrdersButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    void renderAdminStatsOrders();
+    setScreen('stats-orders');
+  });
   on(ui.homeButton, 'click', () => { renderHomePopular(); setScreen('home'); });
   on(ui.checkoutButton, 'click', () => {
     saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
@@ -4316,10 +5104,16 @@ function bindEvents() {
         }
       });
       const discountPercent = Number(state.promoPercent || 0);
+      const discountFixed = Math.max(0, Number(state.promoAmount || 0));
       const discountBase = state.promoKind === 'first_order' ? eligibleSum : sum;
-      const discountAmount = discountPercent > 0 ? Math.round(discountBase * (discountPercent / 100)) : 0;
+      let discountAmount = 0;
+      if (state.promoKind === 'custom_fixed') {
+        discountAmount = Math.min(sum, Math.round(discountFixed));
+      } else if (discountPercent > 0) {
+        discountAmount = Math.round(discountBase * (discountPercent / 100));
+      }
       const finalSum = Math.max(0, sum - discountAmount);
-      return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, missing, count, requestCount };
+      return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, discountFixed, missing, count, requestCount };
     })();
     const mappedItems = items.map((i) => ({
       id: i.id,
@@ -4372,6 +5166,8 @@ function bindEvents() {
       status: 'Счёт отправлен',
       promo: state.promoCode ? {
         code: state.promoCode,
+        type: state.promoKind === 'custom_fixed' ? 'fixed' : 'percent',
+        value: state.promoKind === 'custom_fixed' ? (state.promoAmount || 0) : (state.promoPercent || 0),
         percent: state.promoPercent || 0,
         discountAmount: summary.discountAmount || 0,
       } : null,
@@ -4419,13 +5215,22 @@ function bindEvents() {
       }
       state.promoCode = '';
       state.promoPercent = 0;
+      state.promoAmount = 0;
       state.promoKind = '';
       state.profile = profile;
       saveStorage();
       saasTrackEvent('create_order', { payload: { orderId: order.id, total: summary.sum } });
-      saasTrackEvent('payment_success', { payload: { orderId: order.id, total: summary.sum } });
-      ui.orderStatus.textContent = 'Заказ отправлен.';
-      setScreen('confirmation');
+      const payment = resolveOrderPaymentLink(order, summary.sum);
+      if (payment.url) {
+        state.pendingPayment = payment;
+        ui.orderStatus.textContent = 'Заказ отправлен. Переходим к оплате...';
+        openExternalPaymentLink(payment.url);
+        setScreen('pay');
+      } else {
+        saasTrackEvent('payment_success', { payload: { orderId: order.id, total: summary.sum } });
+        ui.orderStatus.textContent = 'Заказ отправлен.';
+        setScreen('confirmation');
+      }
     } catch (err) {
       saasTrackEvent('payment_fail', { payload: { reason: String(err?.message || 'unknown') } });
       ui.orderStatus.textContent = 'Ошибка отправки в бот. Попробуйте ещё раз.';
@@ -4716,14 +5521,10 @@ async function init() {
   if (state.admin.enabled) {
     reportStatus('Админ-режим активен');
   }
-  if (state.promoCode && state.promoCode !== FIRST_ORDER_PROMO.code) {
-    state.promoCode = '';
-    state.promoPercent = 0;
-    state.promoKind = '';
-  }
   if (state.promoCode === FIRST_ORDER_PROMO.code && hasUsedFirstOrderPromo()) {
     state.promoCode = '';
     state.promoPercent = 0;
+    state.promoAmount = 0;
     state.promoKind = '';
   }
   applyTheme(state.theme);
@@ -4839,3 +5640,21 @@ window.addEventListener('storage', (event) => {
   renderPromos();
   renderHomePopular();
 });
+
+window.addEventListener('pageshow', () => {
+  void refreshPublicDataset(true);
+});
+
+window.addEventListener('focus', () => {
+  void refreshPublicDataset(false);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    void refreshPublicDataset(false);
+  }
+});
+
+window.setInterval(() => {
+  void refreshPublicDataset(false);
+}, 20000);
