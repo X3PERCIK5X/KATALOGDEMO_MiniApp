@@ -894,6 +894,14 @@ img { max-width: 100%; display: block; }
   box-shadow: var(--shadow-soft);
 }
 
+.bot-settings-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  box-shadow: var(--shadow-soft);
+}
+
 
 .order-form input:focus,
 .order-form select:focus,
@@ -1860,6 +1868,7 @@ html {
 .cart-item,
 .text-card,
 .feedback-card,
+.bot-settings-card,
 .order-card,
 .cart-checkout,
 .filter-bar,
@@ -2278,6 +2287,75 @@ button:disabled {
   width: 100%;
 }
 
+.profile-subscription-card {
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subscription-tariffs {
+  display: grid;
+  gap: 8px;
+}
+
+.subscription-tariff {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.subscription-tariff input {
+  width: 16px;
+  height: 16px;
+}
+
+.subscription-tariff strong {
+  white-space: nowrap;
+}
+
+.promo-admin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.promo-admin-item {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.promo-admin-title {
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.promo-admin-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.promo-admin-delete {
+  grid-row: 1 / span 2;
+}
+
 .bottom-nav {
   position: fixed;
   left: 12px;
@@ -2427,6 +2505,7 @@ body {
 .profile-manager-button,
 .text-card,
 .feedback-card,
+.bot-settings-card,
 .order-card,
 .cart-checkout,
 .order-form,
@@ -2740,6 +2819,7 @@ html[data-theme="light"] .profile-card,
 html[data-theme="light"] .profile-manager-button,
 html[data-theme="light"] .text-card,
 html[data-theme="light"] .feedback-card,
+html[data-theme="light"] .bot-settings-card,
 html[data-theme="light"] .order-card,
 html[data-theme="light"] .cart-checkout,
 html[data-theme="light"] .order-form,
@@ -3741,6 +3821,7 @@ html[data-theme="light"] .profile-card,
 html[data-theme="light"] .profile-manager-button,
 html[data-theme="light"] .text-card,
 html[data-theme="light"] .feedback-card,
+html[data-theme="light"] .bot-settings-card,
 html[data-theme="light"] .order-card,
 html[data-theme="light"] .cart-checkout,
 html[data-theme="light"] .order-form,
@@ -3766,6 +3847,18 @@ body.admin-mode .admin-hidden-nav {
 
 body.admin-mode .bottom-nav {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body.admin-mode #botButton {
+  display: inline-flex !important;
+}
+
+body.admin-mode #statsButton {
+  display: inline-flex !important;
+}
+
+body.admin-mode .bottom-nav {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 /* В админке запрещаем выделение текста в интерфейсе,
@@ -3797,6 +3890,11 @@ body.admin-mode [contenteditable="true"],
   background: linear-gradient(150deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
   color: var(--text);
   text-align: left;
+}
+
+.stats-nav-list {
+  display: grid;
+  gap: 12px;
 }
 
 .admin-analytics-card {

@@ -294,9 +294,10 @@
         </div>
         <div class="confirmation">
           <div class="confirmation-icon" aria-hidden="true">₽</div>
-          <div class="confirmation-title">Тут будет оплата</div>
-          <p class="confirmation-text">Экран оплаты подключим на следующем шаге.</p>
+          <div id="payScreenTitle" class="confirmation-title">Переход к оплате</div>
+          <p id="payScreenText" class="confirmation-text">Нажмите кнопку ниже, чтобы открыть страницу оплаты.</p>
           <div class="confirmation-actions">
+            <button id="payOpenLinkButton" class="primary-button" type="button">Перейти к оплате</button>
             <button class="primary-button" data-screen="home">Вернуться в каталог</button>
             <button class="ghost-button" data-screen="cart">Назад в корзину</button>
           </div>
@@ -350,12 +351,138 @@
           <div class="profile-admin-store">Bot ID: <strong id="adminStoreIdValue">—</strong></div>
           <div class="profile-admin-actions">
             <button id="adminReloadStoresButton" class="secondary-button profile-admin-logout" type="button">Мои магазины</button>
+            <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел Бот</button>
             <button id="adminConnectBotButton" class="secondary-button profile-admin-logout" type="button">Подключить бота</button>
           </div>
           <button id="adminLogoutButton" class="secondary-button profile-admin-logout" type="button">Выйти из админки</button>
         </div>
-        <div class="home-section-title">История заказов</div>
-        <div id="ordersList" class="orders-list"></div>
+        <div id="profilePromoSection" class="profile-subscription-card hidden">
+          <div class="section-title">Промокоды</div>
+          <p class="feedback-note">Промокоды применяются только в текущем магазине (<strong>store_id</strong>).</p>
+          <form id="promoSettingsForm" class="order-form flat">
+            <label>Промокод
+              <input id="promoSettingsCodeInput" type="text" placeholder="Например: SALE10" autocomplete="off" />
+            </label>
+            <label>Тип скидки
+              <select id="promoSettingsTypeInput">
+                <option value="percent">Процент</option>
+                <option value="fixed">Фиксированная сумма</option>
+              </select>
+            </label>
+            <label>Значение скидки
+              <input id="promoSettingsValueInput" type="number" min="1" step="1" placeholder="10" />
+            </label>
+            <div id="promoSettingsStatus" class="status"></div>
+            <button class="primary-button" type="submit">Сохранить промокод</button>
+          </form>
+          <div id="promoSettingsList" class="promo-admin-list"></div>
+        </div>
+        <div id="profilePaymentLinkSection" class="profile-subscription-card hidden">
+          <div class="section-title">Ссылка на оплату</div>
+          <p class="feedback-note">Универсальная настройка оплаты каталога (ЮKassa, Т-Банк и др.).</p>
+          <form id="paymentLinkForm" class="order-form flat">
+            <label>Провайдер оплаты
+              <select id="paymentProviderInput">
+                <option value="yookassa">ЮKassa</option>
+                <option value="tbank">Т-Банк</option>
+                <option value="custom">Другое</option>
+              </select>
+            </label>
+            <label>Ссылка / шаблон ссылки
+              <input id="paymentLinkInput" type="url" placeholder="https://..." />
+            </label>
+            <p class="feedback-note">Можно использовать шаблон с параметрами: <code>{store_id}</code>, <code>{order_id}</code>, <code>{amount}</code>, <code>{currency}</code>, <code>{telegram_user_id}</code>.</p>
+            <div id="paymentLinkStatus" class="status"></div>
+            <button id="paymentLinkSaveButton" class="primary-button" type="submit">Сохранить ссылку оплаты</button>
+          </form>
+        </div>
+        <div id="profileSubscriptionSection" class="profile-subscription-card hidden">
+          <div class="section-title">Оплата подписки</div>
+          <div class="subscription-tariffs" id="subscriptionTariffs">
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="30" checked />
+              <span>30 дней</span>
+              <strong>4 000 ₽</strong>
+            </label>
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="180" />
+              <span>180 дней</span>
+              <strong>20 000 ₽</strong>
+            </label>
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="365" />
+              <span>365 дней</span>
+              <strong>30 000 ₽</strong>
+            </label>
+          </div>
+          <div id="subscriptionStatus" class="status"></div>
+          <button id="subscriptionPayButton" class="primary-button" type="button">Оплатить</button>
+        </div>
+        <div id="profileHistorySection">
+          <div class="home-section-title">История заказов</div>
+          <div id="ordersList" class="orders-list"></div>
+        </div>
+      </section>
+
+      <section id="screen-bot" class="screen">
+        <div class="screen-head">
+          <h2>Бот</h2>
+        </div>
+        <div class="bot-settings-card">
+          <div class="section-title">Приветствие в боте</div>
+          <p class="feedback-note">Настройте, что получает пользователь при команде <code>/start</code>. Кнопка каталога сохраняется автоматически.</p>
+          <div class="order-form flat">
+            <label>Ссылка каталога этого магазина
+              <input id="botCatalogUrlInput" type="text" readonly />
+            </label>
+            <button id="botCatalogUrlCopyButton" class="secondary-button" type="button">Скопировать ссылку</button>
+          </div>
+          <form id="botSettingsForm" class="order-form flat">
+            <label>Ссылка на приветственную картинку
+              <input id="botWelcomeImageInput" type="url" placeholder="https://..." />
+            </label>
+            <button id="botWelcomeImageUploadButton" class="secondary-button" type="button">Загрузить картинку</button>
+            <label>Приветственный текст
+              <textarea id="botWelcomeTextInput" rows="6" placeholder="Введите текст приветствия"></textarea>
+            </label>
+            <div id="botSettingsStatus" class="status"></div>
+            <button id="botSettingsSaveButton" class="primary-button" type="submit">Сохранить в боте</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="screen-stats" class="screen">
+        <div class="screen-head">
+          <h2>Статистика</h2>
+        </div>
+        <div class="stats-nav-list">
+          <button id="statsOpenRevenueButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Выручка</div>
+            <div id="statsRevenuePreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Открыть детализацию по месяцам</div>
+          </button>
+          <button id="statsOpenOrdersButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Заказы с данными о клиенте</div>
+            <div id="statsOrdersPreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Открыть список заказов и контакты</div>
+          </button>
+        </div>
+      </section>
+
+      <section id="screen-stats-revenue" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="stats" aria-label="Назад">←</button>
+          <h2>Выручка</h2>
+        </div>
+        <div id="statsRevenueList" class="orders-list"></div>
+      </section>
+
+      <section id="screen-stats-orders" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="stats" aria-label="Назад">←</button>
+          <h2>Заказы с данными о клиенте</h2>
+        </div>
+        <div id="statsOrdersList" class="orders-list"></div>
       </section>
 
       <section id="screen-about" class="screen">
@@ -503,11 +630,30 @@
         </svg>
         <span>Профиль</span>
       </button>
+      <button id="botButton" class="bottom-item nav-hidden" type="button" aria-label="Бот">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2v3" />
+          <rect x="4" y="5" width="16" height="14" rx="4" />
+          <circle cx="9" cy="12" r="1" />
+          <circle cx="15" cy="12" r="1" />
+          <path d="M8 16h8" />
+        </svg>
+        <span>Бот</span>
+      </button>
+      <button id="statsButton" class="bottom-item nav-hidden" type="button" aria-label="Статистика">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 20h16" />
+          <path d="M7 16V9" />
+          <path d="M12 16V5" />
+          <path d="M17 16v-3" />
+        </svg>
+        <span>Статистика</span>
+      </button>
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="telegram.js?v=20260224-4"></script>
-    <script src="app.js?v=20260227-31"></script>
+    <script src="app.js?v=20260302-38"></script>
   </body>
 </html>
