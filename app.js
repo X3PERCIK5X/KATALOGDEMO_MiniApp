@@ -2042,12 +2042,15 @@ function openSaasAuthModal() {
   setTimeout(() => storeInput?.focus(), 20);
 
   return new Promise((resolve) => {
+    let submitBusy = false;
     const cleanup = () => {
       modal.classList.add('hidden');
       tabs.forEach((btn) => btn.removeEventListener('click', onTabClick));
-      recoverBtn.removeEventListener('click', onRecover);
+      recoverBtn.removeEventListener('click', onRecoverClick);
       cancelBtn.removeEventListener('click', onCancel);
       submitBtn.removeEventListener('click', onSubmitClick);
+      submitBtn.removeEventListener('touchend', onSubmitTouchEnd);
+      recoverBtn.removeEventListener('touchend', onRecoverTouchEnd);
       form.removeEventListener('keydown', onFormKeyDown);
     };
 
@@ -2115,15 +2118,49 @@ function openSaasAuthModal() {
       resolve({ mode, storeId, password, botToken });
     };
 
-    const onSubmitClick = (event) => {
+    const triggerSubmit = (event) => {
       event.preventDefault();
-      onSubmit();
+      event.stopPropagation();
+      if (submitBusy) return;
+      submitBusy = true;
+      const active = document.activeElement;
+      if (active && typeof active.blur === 'function') active.blur();
+      window.setTimeout(async () => {
+        try {
+          await onSubmit();
+        } finally {
+          submitBusy = false;
+        }
+      }, 0);
+    };
+
+    const onSubmitClick = (event) => {
+      triggerSubmit(event);
+    };
+
+    const onSubmitTouchEnd = (event) => {
+      triggerSubmit(event);
+    };
+
+    const triggerRecover = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const active = document.activeElement;
+      if (active && typeof active.blur === 'function') active.blur();
+      window.setTimeout(() => { onRecover(); }, 0);
+    };
+
+    const onRecoverTouchEnd = (event) => {
+      triggerRecover(event);
+    };
+
+    const onRecoverClick = (event) => {
+      triggerRecover(event);
     };
 
     const onFormKeyDown = (event) => {
       if (event.key !== 'Enter') return;
-      event.preventDefault();
-      onSubmit();
+      triggerSubmit(event);
     };
 
     const onRecover = async () => {
@@ -2155,9 +2192,11 @@ function openSaasAuthModal() {
 
     tabs.forEach((btn) => btn.addEventListener('click', onTabClick));
     const cancelBtn = modal.querySelector('[data-auth-cancel]');
-    recoverBtn.addEventListener('click', onRecover);
+    recoverBtn.addEventListener('click', onRecoverClick);
+    recoverBtn.addEventListener('touchend', onRecoverTouchEnd, { passive: false });
     cancelBtn.addEventListener('click', onCancel);
     submitBtn.addEventListener('click', onSubmitClick);
+    submitBtn.addEventListener('touchend', onSubmitTouchEnd, { passive: false });
     form.addEventListener('keydown', onFormKeyDown);
   });
 }
