@@ -71,6 +71,15 @@ curl -s https://api.<your-domain>/api/health
 
 ## 8) Обновление приложения
 ```bash
+# С локальной машины копируем проект на сервер:
+rsync -av --delete \
+  --exclude ".git" \
+  --exclude ".env.local" \
+  --exclude "storage" \
+  --exclude "uploads" \
+  /path/to/local/project/ user@server:/opt/demokatalog-api/
+
+# На сервере применяем обновление:
 cd /opt/demokatalog-api
 ./deploy/yandex/deploy.sh
 ```
