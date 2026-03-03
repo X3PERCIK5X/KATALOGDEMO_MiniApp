@@ -252,6 +252,12 @@ function generateResetCode() {
 
 function telegramIdFromIdentity(identity) {
   const raw = String(identity || '').trim();
+  // Backward compatibility: в старых записях owner_user_id мог храниться без префикса.
+  if (/^[0-9]{5,20}$/.test(raw)) return raw;
+  if (raw.startsWith('telegram:')) {
+    const id = raw.slice('telegram:'.length).trim();
+    return /^[0-9]{5,20}$/.test(id) ? id : '';
+  }
   if (!raw.startsWith('tg:')) return '';
   const id = raw.slice(3).trim();
   return /^[0-9]{5,20}$/.test(id) ? id : '';
@@ -314,8 +320,25 @@ function resolvePublicApiBase(req) {
   return `${proto}://${host}`.replace(/\/$/, '');
 }
 
+function normalizeCatalogBase(rawBase) {
+  const normalized = String(rawBase || '').trim().replace(/\/$/, '');
+  if (!normalized) return '';
+  const lowered = normalized.toLowerCase();
+  // Жесткая защита от старых ссылок на GitHub Pages / legacy-стенд.
+  if (lowered.includes('github.io') || lowered.includes('lambrizsel.duckdns.org')) return '';
+  return normalized;
+}
+
+function resolveCatalogBaseFromEnv() {
+  const envBase = normalizeCatalogBase(WEBAPP_URL);
+  if (envBase) return envBase;
+  const apiBase = normalizeCatalogBase(PUBLIC_API_BASE);
+  if (!apiBase) return '';
+  return apiBase.replace(/\/api$/i, '');
+}
+
 function resolveCatalogBase(req) {
-  const preferred = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  const preferred = resolveCatalogBaseFromEnv();
   if (preferred) return preferred;
   const apiBase = resolvePublicApiBase(req);
   if (!apiBase) return '';
@@ -657,7 +680,7 @@ async function validateTelegramBotToken(token) {
 }
 
 async function configureTelegramBotMenu(botToken, storeId) {
-  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  const base = resolveCatalogBaseFromEnv();
   if (!base) return { ok: false, skipped: true, reason: 'WEBAPP_URL_NOT_CONFIGURED' };
   const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
   try {
@@ -747,7 +770,7 @@ async function configureAdminBotWebhook(apiBase) {
 }
 
 async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = false, storeRow = null) {
-  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  const base = resolveCatalogBaseFromEnv();
   if (!base) return { ok: false, error: 'WEBAPP_URL_NOT_CONFIGURED' };
   const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
   const settings = getStoreSettings(storeRow);
@@ -769,12 +792,27 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
       const photoPayload = await photoResp.json().catch(() => ({}));
       if (!photoResp.ok || !photoPayload?.ok) return { ok: false, error: 'SEND_START_PHOTO_FAILED' };
     }
-    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
+    // Удаляем возможную "залипшую" reply-клавиатуру (например, старые кнопки "Инструкция"/"Админ").
+    const cleanupResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: String(chatId || '').trim(),
         text: welcomeImage ? 'Откройте каталог кнопкой ниже.' : welcomeText,
+        reply_markup: {
+          remove_keyboard: true,
+        },
+      }),
+    });
+    const cleanupPayload = await cleanupResp.json().catch(() => ({}));
+    if (!cleanupResp.ok || !cleanupPayload?.ok) return { ok: false, error: 'SEND_START_KEYBOARD_FAILED' };
+
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: String(chatId || '').trim(),
+        text: 'Открыть каталог:',
         reply_markup: {
           inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
         },
@@ -889,7 +927,7 @@ async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
 }
 
 function getAdminMiniAppUrl() {
-  const base = String(WEBAPP_URL || '').trim().replace(/\/$/, '');
+  const base = resolveCatalogBaseFromEnv();
   if (!base) return '';
   return `${base}/?admin=1`;
 }
@@ -1246,7 +1284,22 @@ app.post('/api/auth/password-reset/request', async (req, res) => {
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
   if (Number(row.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
 
-  const ownerTelegramId = resolveOwnerTelegramId(row);
+  let ownerTelegramId = resolveOwnerTelegramId(row);
+  // Авто-восстановление owner telegram id для старых магазинов:
+  // если owner_user_id пуст, но текущий tg уже привязан как owner в store_users.
+  if (!ownerTelegramId && telegramUserId) {
+    const ownerLink = db.prepare(`
+      SELECT 1 AS ok
+      FROM store_users
+      WHERE store_id = ? AND user_id = ? AND role = 'owner'
+      LIMIT 1
+    `).get(storeId, `tg:${telegramUserId}`);
+    if (ownerLink?.ok) {
+      ownerTelegramId = telegramUserId;
+      db.prepare('UPDATE stores SET owner_user_id = ?, updated_at = ? WHERE store_id = ?')
+        .run(`tg:${telegramUserId}`, nowIso(), storeId);
+    }
+  }
   if (!ownerTelegramId) return res.status(400).json({ error: 'OWNER_TELEGRAM_ID_NOT_FOUND' });
   if (!telegramUserId || telegramUserId !== ownerTelegramId) return res.status(403).json({ error: 'FORBIDDEN_OWNER_MISMATCH' });
 

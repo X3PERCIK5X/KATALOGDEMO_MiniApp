@@ -311,9 +311,6 @@ function isAdminModeRequested() {
   const tgStartParam = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').toLowerCase();
   if (tgStartParam.includes('admin')) return true;
 
-  const forced = String(localStorage.getItem('demo_catalog_force_admin') || '');
-  if (forced === '1') return true;
-
   return false;
 }
 
