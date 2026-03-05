@@ -4141,6 +4141,18 @@ body.admin-mode .admin-catalog-controls {
   display: inline-flex;
 }
 
+body.subscription-locked .admin-catalog-controls,
+body.subscription-locked .admin-add-row {
+  display: none !important;
+}
+
+body.subscription-locked .admin-inline-plus,
+body.subscription-locked .admin-inline-move,
+body.subscription-locked .admin-catalog-select {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
 .admin-catalog-select {
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
@@ -4486,5 +4498,5 @@ body.admin-mode .bottom-item span {
 }
 
 body.keyboard-open .bottom-nav {
-  transform: translate3d(0, var(--kb-shift, 0px), 0) scale(0.96);
+  transform: none;
 }

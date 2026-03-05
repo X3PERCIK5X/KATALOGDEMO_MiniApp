@@ -26,6 +26,13 @@ const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGR
 const ADMIN_BOT_WEBHOOK_SECRET = String(process.env.ADMIN_BOT_WEBHOOK_SECRET || '').trim();
 const WEBAPP_URL = String(process.env.WEBAPP_URL || '').trim();
 const PUBLIC_API_BASE = String(process.env.PUBLIC_API_BASE || '').trim().replace(/\/$/, '');
+const SUBSCRIPTION_PAYMENT_URL = String(process.env.SUBSCRIPTION_PAYMENT_URL || '').trim();
+const SUBSCRIPTION_PAYMENT_URL_30 = String(process.env.SUBSCRIPTION_PAYMENT_URL_30 || '').trim();
+const SUBSCRIPTION_PAYMENT_URL_180 = String(process.env.SUBSCRIPTION_PAYMENT_URL_180 || '').trim();
+const SUBSCRIPTION_PAYMENT_URL_365 = String(process.env.SUBSCRIPTION_PAYMENT_URL_365 || '').trim();
+const YOOKASSA_SHOP_ID = String(process.env.YOOKASSA_SHOP_ID || '').trim();
+const YOOKASSA_SECRET_KEY = String(process.env.YOOKASSA_SECRET_KEY || '').trim();
+const SUBSCRIPTION_RETURN_URL = String(process.env.SUBSCRIPTION_RETURN_URL || '').trim();
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -170,6 +177,70 @@ CREATE TABLE IF NOT EXISTS password_resets (
   FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_password_resets_store_created ON password_resets(store_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS admin_telegram_users (
+  user_id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL DEFAULT '',
+  username TEXT NOT NULL DEFAULT '',
+  first_name TEXT NOT NULL DEFAULT '',
+  last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_telegram_users_last_seen ON admin_telegram_users(last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS pending_admin_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL DEFAULT '',
+  telegram_user_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pending_admin_messages_state
+  ON pending_admin_messages(status, telegram_user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS store_subscriptions (
+  store_id TEXT PRIMARY KEY,
+  trial_started_at TEXT NOT NULL,
+  trial_ends_at TEXT NOT NULL,
+  paid_until TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_store_subscriptions_paid_until ON store_subscriptions(paid_until);
+
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  payment_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'yookassa',
+  amount REAL NOT NULL DEFAULT 0,
+  tariff_days INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(provider, payment_id),
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_store_created
+  ON subscription_payments(store_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS subscription_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  reminder_date TEXT NOT NULL,
+  reminder_type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(store_id, reminder_date, reminder_type),
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_reminders_lookup
+  ON subscription_reminders(store_id, reminder_date, reminder_type);
 `);
 
 function ensureStoresColumn(columnName, ddl) {
@@ -242,6 +313,14 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const TRIAL_DAYS = 14;
+const GRACE_DAYS = 3;
+
+function addDaysIso(iso, days) {
+  const ms = new Date(String(iso || nowIso())).getTime();
+  return new Date(ms + Number(days || 0) * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function hashResetCode(storeId, code) {
   return crypto.createHash('sha256').update(`${String(storeId || '')}:${String(code || '')}`).digest('hex');
 }
@@ -261,6 +340,80 @@ function telegramIdFromIdentity(identity) {
   if (!raw.startsWith('tg:')) return '';
   const id = raw.slice(3).trim();
   return /^[0-9]{5,20}$/.test(id) ? id : '';
+}
+
+function upsertAdminTelegramUser(userId, chatId, username = '', firstName = '') {
+  const uid = String(userId || '').trim();
+  const cid = String(chatId || '').trim();
+  if (!/^[0-9]{5,20}$/.test(uid) || !cid) return;
+  db.prepare(`
+    INSERT INTO admin_telegram_users (user_id, chat_id, username, first_name, last_seen_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      chat_id = excluded.chat_id,
+      username = excluded.username,
+      first_name = excluded.first_name,
+      last_seen_at = excluded.last_seen_at
+  `).run(uid, cid, String(username || '').trim(), String(firstName || '').trim(), nowIso());
+}
+
+function resolveRecentAdminTelegramId(maxAgeMinutes = 120) {
+  const row = db.prepare(`
+    SELECT user_id, last_seen_at
+    FROM admin_telegram_users
+    ORDER BY datetime(last_seen_at) DESC
+    LIMIT 1
+  `).get();
+  const userId = String(row?.user_id || '').trim();
+  if (!/^[0-9]{5,20}$/.test(userId)) return '';
+  const seen = String(row?.last_seen_at || '').trim();
+  if (maxAgeMinutes > 0 && seen) {
+    const ageMs = Date.now() - new Date(seen).getTime();
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs > maxAgeMinutes * 60 * 1000) return '';
+  }
+  return userId;
+}
+
+function queueAdminMessage({ storeId = '', telegramUserId = '', text = '', payload = {} }) {
+  const uid = String(telegramUserId || '').trim();
+  const body = String(text || '').trim();
+  if (!/^[0-9]{5,20}$/.test(uid) || !body) return;
+  const ts = nowIso();
+  db.prepare(`
+    INSERT INTO pending_admin_messages
+      (store_id, telegram_user_id, text, payload_json, status, attempts, last_error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'pending', 0, '', ?, ?)
+  `).run(
+    String(storeId || '').trim().toUpperCase(),
+    uid,
+    body,
+    JSON.stringify(payload || {}),
+    ts,
+    ts,
+  );
+}
+
+function markPendingAdminMessageResult(id, ok, errorCode = '') {
+  const ts = nowIso();
+  if (ok) {
+    db.prepare(`
+      UPDATE pending_admin_messages
+      SET status = 'sent',
+          attempts = attempts + 1,
+          last_error = '',
+          updated_at = ?
+      WHERE id = ?
+    `).run(ts, id);
+    return;
+  }
+  db.prepare(`
+    UPDATE pending_admin_messages
+    SET status = CASE WHEN attempts >= 9 THEN 'failed' ELSE 'pending' END,
+        attempts = attempts + 1,
+        last_error = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(String(errorCode || 'SEND_FAILED'), ts, id);
 }
 
 function deriveBotKey() {
@@ -349,6 +502,118 @@ function getStoreCatalogUrl(storeId, req) {
   const base = resolveCatalogBase(req);
   if (!base) return '';
   return `${base}/store/${encodeURIComponent(String(storeId || '').trim().toUpperCase())}`;
+}
+
+const SUBSCRIPTION_TARIFFS = {
+  '30': 4000,
+  '180': 20000,
+  '365': 30000,
+};
+
+function resolveSubscriptionBaseUrl(days) {
+  const key = String(days || '').trim();
+  if (key === '30' && SUBSCRIPTION_PAYMENT_URL_30) return SUBSCRIPTION_PAYMENT_URL_30;
+  if (key === '180' && SUBSCRIPTION_PAYMENT_URL_180) return SUBSCRIPTION_PAYMENT_URL_180;
+  if (key === '365' && SUBSCRIPTION_PAYMENT_URL_365) return SUBSCRIPTION_PAYMENT_URL_365;
+  return SUBSCRIPTION_PAYMENT_URL;
+}
+
+function buildSubscriptionPaymentLink({ days, storeId, userId }) {
+  const daysKey = String(days || '').trim();
+  if (!Object.prototype.hasOwnProperty.call(SUBSCRIPTION_TARIFFS, daysKey)) return '';
+  const base = resolveSubscriptionBaseUrl(daysKey);
+  if (!base) return '';
+  const amount = SUBSCRIPTION_TARIFFS[daysKey];
+  try {
+    const u = new URL(base);
+    u.searchParams.set('kind', 'subscription');
+    u.searchParams.set('store_id', String(storeId || '').trim().toUpperCase());
+    u.searchParams.set('bot_id', String(storeId || '').trim().toUpperCase());
+    u.searchParams.set('tariff_days', daysKey);
+    u.searchParams.set('amount', String(amount));
+    if (String(userId || '').startsWith('tg:')) {
+      u.searchParams.set('telegram_user_id', String(userId).slice(3));
+    }
+    return u.toString();
+  } catch {
+    return base;
+  }
+}
+
+function yookassaConfigured() {
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) return false;
+  const value = `${YOOKASSA_SHOP_ID} ${YOOKASSA_SECRET_KEY}`.toLowerCase();
+  return !value.includes('your_shop_id') && !value.includes('your_secret_key') && !value.includes('replace_me');
+}
+
+async function createYookassaSubscriptionPayment({ storeId, userId, days, amount, req }) {
+  if (!yookassaConfigured()) return { ok: false, error: 'SUBSCRIPTION_PAYMENT_NOT_CONFIGURED' };
+  const idempotenceKey = crypto.randomUUID();
+  const auth = Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString('base64');
+  const fallbackReturn = `${resolveCatalogBase(req) || resolveCatalogBaseFromEnv() || 'https://api.saaskatalog.ru'}/?admin=1`;
+  const returnUrl = SUBSCRIPTION_RETURN_URL || fallbackReturn;
+  const payload = {
+    amount: {
+      value: Number(amount).toFixed(2),
+      currency: 'RUB',
+    },
+    confirmation: {
+      type: 'redirect',
+      return_url: returnUrl,
+    },
+    capture: true,
+    description: `Подписка SaaS каталога (${days} дней, Store ${storeId})`,
+    metadata: {
+      kind: 'subscription',
+      store_id: String(storeId || '').trim().toUpperCase(),
+      bot_id: String(storeId || '').trim().toUpperCase(),
+      tariff_days: String(days || ''),
+      telegram_user_id: String(userId || '').startsWith('tg:') ? String(userId).slice(3) : '',
+    },
+  };
+  try {
+    const response = await fetch('https://api.yookassa.ru/v3/payments', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Idempotence-Key': idempotenceKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, error: 'SUBSCRIPTION_PAYMENT_CREATE_FAILED' };
+    const url = String(data?.confirmation?.confirmation_url || '').trim();
+    if (!url) return { ok: false, error: 'SUBSCRIPTION_PAYMENT_CREATE_FAILED' };
+    const paymentId = String(data?.id || '').trim();
+    if (paymentId) {
+      const ts = nowIso();
+      db.prepare(`
+        INSERT INTO subscription_payments (store_id, payment_id, provider, amount, tariff_days, status, payload_json, created_at, updated_at)
+        VALUES (?, ?, 'yookassa', ?, ?, 'pending', ?, ?, ?)
+        ON CONFLICT(provider, payment_id) DO UPDATE SET
+          amount = excluded.amount,
+          tariff_days = excluded.tariff_days,
+          payload_json = excluded.payload_json,
+          updated_at = excluded.updated_at
+      `).run(
+        String(storeId || '').trim().toUpperCase(),
+        paymentId,
+        Number(amount || 0),
+        Number(days || 0),
+        JSON.stringify({
+          request_metadata: payload.metadata,
+          response_status: String(data?.status || ''),
+          user_id: String(userId || ''),
+        }),
+        ts,
+        ts,
+      );
+    }
+    return { ok: true, url, paymentId };
+  } catch {
+    return { ok: false, error: 'SUBSCRIPTION_PAYMENT_CREATE_FAILED' };
+  }
 }
 
 function getStoreSettings(row) {
@@ -518,6 +783,135 @@ function resolveOwnerTelegramId(storeRow) {
   return '';
 }
 
+function ensureStoreSubscriptionRow(storeId, anchorIso = '') {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(sid)) return null;
+  const existing = db.prepare('SELECT * FROM store_subscriptions WHERE store_id = ?').get(sid);
+  if (existing) return existing;
+  const base = String(anchorIso || nowIso()).trim() || nowIso();
+  const trialEnds = addDaysIso(base, TRIAL_DAYS);
+  const ts = nowIso();
+  db.prepare(`
+    INSERT INTO store_subscriptions (store_id, trial_started_at, trial_ends_at, paid_until, created_at, updated_at)
+    VALUES (?, ?, ?, '', ?, ?)
+  `).run(sid, base, trialEnds, ts, ts);
+  return db.prepare('SELECT * FROM store_subscriptions WHERE store_id = ?').get(sid);
+}
+
+function getStoreSubscriptionState(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(sid)) {
+    return {
+      code: 'expired',
+      isActive: false,
+      isTrial: false,
+      isGrace: false,
+      featureAccess: false,
+      notifyOrders: false,
+      reason: 'INVALID_STORE_ID',
+      trialEndsAt: '',
+      paidUntil: '',
+      graceEndsAt: '',
+      daysLeft: 0,
+      graceDaysLeft: 0,
+    };
+  }
+  const row = ensureStoreSubscriptionRow(sid);
+  if (!row) {
+    return {
+      code: 'expired',
+      isActive: false,
+      isTrial: false,
+      isGrace: false,
+      featureAccess: false,
+      notifyOrders: false,
+      reason: 'SUBSCRIPTION_NOT_FOUND',
+      trialEndsAt: '',
+      paidUntil: '',
+      graceEndsAt: '',
+      daysLeft: 0,
+      graceDaysLeft: 0,
+    };
+  }
+  const now = Date.now();
+  const trialEndsAt = String(row.trial_ends_at || '').trim();
+  const paidUntil = String(row.paid_until || '').trim();
+  const trialEndMs = trialEndsAt ? new Date(trialEndsAt).getTime() : 0;
+  const paidUntilMs = paidUntil ? new Date(paidUntil).getTime() : 0;
+  const paidActive = paidUntilMs > now;
+  const trialActive = !paidActive && trialEndMs > now;
+  const baseEndMs = Math.max(trialEndMs || 0, paidUntilMs || 0);
+  const graceEndsMs = baseEndMs > 0 ? baseEndMs + GRACE_DAYS * 24 * 60 * 60 * 1000 : 0;
+  const graceActive = !paidActive && !trialActive && graceEndsMs > now;
+
+  let code = 'expired';
+  if (paidActive) code = 'active';
+  else if (trialActive) code = 'trial';
+  else if (graceActive) code = 'grace';
+
+  const daysLeft = code === 'active'
+    ? Math.max(0, Math.ceil((paidUntilMs - now) / (24 * 60 * 60 * 1000)))
+    : code === 'trial'
+      ? Math.max(0, Math.ceil((trialEndMs - now) / (24 * 60 * 60 * 1000)))
+      : 0;
+  const graceDaysLeft = code === 'grace'
+    ? Math.max(0, Math.ceil((graceEndsMs - now) / (24 * 60 * 60 * 1000)))
+    : 0;
+
+  return {
+    code,
+    isActive: code === 'active' || code === 'trial',
+    isTrial: code === 'trial',
+    isGrace: code === 'grace',
+    featureAccess: code === 'active' || code === 'trial',
+    // Заказы продолжают создаваться даже без подписки, но уведомления отключаем.
+    notifyOrders: code === 'active' || code === 'trial',
+    reason: '',
+    trialEndsAt,
+    paidUntil,
+    graceEndsAt: graceEndsMs > 0 ? new Date(graceEndsMs).toISOString() : '',
+    daysLeft,
+    graceDaysLeft,
+  };
+}
+
+function upsertStoreSubscriptionPaidUntil(storeId, paidUntilIso) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(sid)) return;
+  ensureStoreSubscriptionRow(sid);
+  db.prepare(`
+    UPDATE store_subscriptions
+    SET paid_until = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(String(paidUntilIso || '').trim(), nowIso(), sid);
+}
+
+function activateStoreTrialIfNeeded(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(sid)) return;
+  const row = ensureStoreSubscriptionRow(sid);
+  const hasPaid = String(row?.paid_until || '').trim().length > 0;
+  if (hasPaid) return;
+  const started = nowIso();
+  db.prepare(`
+    UPDATE store_subscriptions
+    SET trial_started_at = ?, trial_ends_at = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(started, addDaysIso(started, TRIAL_DAYS), nowIso(), sid);
+}
+
+function requireActiveSubscriptionForAdmin(req, res, next) {
+  const sid = String(req.storeId || req.auth?.storeId || '').trim().toUpperCase();
+  const subscription = getStoreSubscriptionState(sid);
+  req.subscription = subscription;
+  if (subscription.featureAccess) return next();
+  return res.status(402).json({
+    error: 'SUBSCRIPTION_REQUIRED',
+    storeId: sid,
+    subscription,
+  });
+}
+
 function rowToDataset(row) {
   return {
     storeId: row.store_id,
@@ -592,6 +986,7 @@ function migrateLegacyToTenantTables() {
     if (!store.settings_json) {
       db.prepare('UPDATE stores SET settings_json = ? WHERE store_id = ?').run('{}', store.store_id);
     }
+    ensureStoreSubscriptionRow(store.store_id);
   });
 }
 
@@ -657,11 +1052,86 @@ function storeAdminAccessMiddleware(req, res, next) {
   return next();
 }
 
-function userIdentityFromRequest(body) {
-  const tg = String(body?.telegramUserId || '').trim();
+function userIdentityFromRequest(body, options = {}) {
+  const tg = resolveTelegramUserIdFromBody(body, options);
   if (tg) return `tg:${tg}`;
   const email = String(body?.email || '').trim().toLowerCase();
   if (email) return `email:${email}`;
+  return '';
+}
+
+function parseTelegramIdFromInitData(initData, botToken) {
+  const raw = String(initData || '').trim();
+  const token = String(botToken || '').trim();
+  if (!raw || !token) return '';
+  try {
+    const params = new URLSearchParams(raw);
+    const hash = String(params.get('hash') || '').trim();
+    if (!hash) return '';
+
+    const dataPairs = [];
+    for (const [key, value] of params.entries()) {
+      if (key === 'hash') continue;
+      dataPairs.push(`${key}=${value}`);
+    }
+    dataPairs.sort();
+    const dataCheckString = dataPairs.join('\n');
+
+    const secretKey = crypto
+      .createHmac('sha256', 'WebAppData')
+      .update(token)
+      .digest();
+    const expectedHash = crypto
+      .createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+    if (expectedHash !== hash) return '';
+
+    const userRaw = String(params.get('user') || '').trim();
+    if (!userRaw) return '';
+    const user = JSON.parse(userRaw);
+    const id = String(user?.id || '').trim();
+    return /^[0-9]{5,20}$/.test(id) ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+function parseTelegramIdFromInitDataUnsafe(initData) {
+  const raw = String(initData || '').trim();
+  if (!raw) return '';
+  try {
+    const params = new URLSearchParams(raw);
+    const userRaw = String(params.get('user') || '').trim();
+    if (!userRaw) return '';
+    const user = JSON.parse(userRaw);
+    const id = String(user?.id || '').trim();
+    return /^[0-9]{5,20}$/.test(id) ? id : '';
+  } catch {
+    return '';
+  }
+}
+
+function resolveTelegramUserIdFromBody(body, { preferStoreToken = false, storeRow = null, allowUnverified = false } = {}) {
+  const direct = String(body?.telegramUserId || '').trim();
+  if (/^[0-9]{5,20}$/.test(direct)) return direct;
+
+  const initData = String(body?.telegramInitData || '').trim();
+  if (!initData) return '';
+
+  // Для auth mini app главный источник подписи — токен admin-бота.
+  const fromAdmin = parseTelegramIdFromInitData(initData, ADMIN_BOT_TOKEN);
+  if (fromAdmin) return fromAdmin;
+
+  if (preferStoreToken && storeRow) {
+    const storeToken = decryptBotToken(storeRow.bot_token_enc || '');
+    const fromStore = parseTelegramIdFromInitData(initData, storeToken);
+    if (fromStore) return fromStore;
+  }
+  if (allowUnverified) {
+    const loose = parseTelegramIdFromInitDataUnsafe(initData);
+    if (loose) return loose;
+  }
   return '';
 }
 
@@ -776,8 +1246,11 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
   const settings = getStoreSettings(storeRow);
   const ownerNote = isOwner ? '\n\nДля админки используйте ваш Bot ID + пароль в Admin mini app.' : '';
   const welcomeTextRaw = String(settings?.botWelcomeText || '').trim();
-  const welcomeText = welcomeTextRaw || `Добро пожаловать в каталог.${ownerNote}`;
+  const welcomeText = welcomeTextRaw ? `${welcomeTextRaw}${ownerNote}` : '';
   const welcomeImage = String(settings?.botWelcomeImage || '').trim();
+  const inlineKeyboard = {
+    inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
+  };
   try {
     if (welcomeImage) {
       const photoResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendPhoto`, {
@@ -786,36 +1259,22 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
         body: JSON.stringify({
           chat_id: String(chatId || '').trim(),
           photo: welcomeImage,
-          caption: welcomeText.slice(0, 1024),
+          caption: welcomeText ? welcomeText.slice(0, 1024) : undefined,
+          reply_markup: inlineKeyboard,
         }),
       });
       const photoPayload = await photoResp.json().catch(() => ({}));
       if (!photoResp.ok || !photoPayload?.ok) return { ok: false, error: 'SEND_START_PHOTO_FAILED' };
+      return { ok: true };
     }
-    // Удаляем возможную "залипшую" reply-клавиатуру (например, старые кнопки "Инструкция"/"Админ").
-    const cleanupResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: String(chatId || '').trim(),
-        text: welcomeImage ? 'Откройте каталог кнопкой ниже.' : welcomeText,
-        reply_markup: {
-          remove_keyboard: true,
-        },
-      }),
-    });
-    const cleanupPayload = await cleanupResp.json().catch(() => ({}));
-    if (!cleanupResp.ok || !cleanupPayload?.ok) return { ok: false, error: 'SEND_START_KEYBOARD_FAILED' };
 
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: String(chatId || '').trim(),
-        text: 'Открыть каталог:',
-        reply_markup: {
-          inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
-        },
+        text: welcomeText || 'Открыть каталог',
+        reply_markup: inlineKeyboard,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -902,6 +1361,22 @@ async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
   }
 }
 
+async function notifySubscriptionViaAdminBot(ownerTelegramId, text) {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  const chatId = String(ownerTelegramId || '').trim();
+  if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
+  const sent = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, String(text || '').trim(), {
+    reply_markup: getAdminStartKeyboard(),
+  });
+  if (sent.ok) return sent;
+  queueAdminMessage({
+    telegramUserId: chatId,
+    text: String(text || '').trim(),
+    payload: { chatId, extra: { reply_markup: getAdminStartKeyboard() } },
+  });
+  return sent;
+}
+
 async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
   const safeToken = String(token || '').trim();
   const safeChat = String(chatId || '').trim();
@@ -919,11 +1394,45 @@ async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
       }),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.ok) return { ok: false, error: 'SEND_FAILED' };
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'SEND_FAILED', description: String(payload?.description || '') };
     return { ok: true };
   } catch {
     return { ok: false, error: 'SEND_FAILED' };
   }
+}
+
+async function flushPendingAdminMessages(telegramUserId = '') {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, flushed: 0, reason: 'ADMIN_BOT_NOT_CONFIGURED' };
+  const uid = String(telegramUserId || '').trim();
+  const rows = uid
+    ? db.prepare(`
+        SELECT id, text, payload_json
+        FROM pending_admin_messages
+        WHERE telegram_user_id = ? AND status = 'pending'
+        ORDER BY id ASC
+        LIMIT 30
+      `).all(uid)
+    : db.prepare(`
+        SELECT id, text, payload_json
+        FROM pending_admin_messages
+        WHERE status = 'pending'
+        ORDER BY id ASC
+        LIMIT 30
+      `).all();
+  let flushed = 0;
+  for (const row of rows) {
+    const payload = safeJsonParse(row?.payload_json || '{}', {});
+    // eslint-disable-next-line no-await-in-loop
+    const sent = await sendTelegramTextByToken(
+      ADMIN_BOT_TOKEN,
+      uid || payload?.chatId || '',
+      String(row?.text || ''),
+      payload?.extra && typeof payload.extra === 'object' ? payload.extra : {},
+    );
+    markPendingAdminMessageResult(row.id, Boolean(sent?.ok), String(sent?.error || 'SEND_FAILED'));
+    if (sent?.ok) flushed += 1;
+  }
+  return { ok: true, flushed };
 }
 
 function getAdminMiniAppUrl() {
@@ -1011,10 +1520,15 @@ async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', 
     'Для входа в админку используйте Bot ID + пароль.',
   ].filter(Boolean).join('\n');
   if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED', via: '' };
-  const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text, {
-    reply_markup: getAdminStartKeyboard(),
-  });
+  const extra = { reply_markup: getAdminStartKeyboard() };
+  const sentByAdmin = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, text, extra);
   if (sentByAdmin.ok) return { ok: true, via: 'admin_bot' };
+  queueAdminMessage({
+    storeId,
+    telegramUserId: chatId,
+    text,
+    payload: { chatId, extra },
+  });
   return { ok: false, error: 'BOT_ID_SEND_FAILED', via: '' };
 }
 
@@ -1054,6 +1568,7 @@ app.post('/api/owner/stores', ownerMiddleware, (req, res) => {
 
   replaceCategoriesTx(storeId, dataset.categories);
   replaceProductsTx(storeId, dataset.products);
+  ensureStoreSubscriptionRow(storeId, ts);
   if (ownerUserId) upsertStoreUser(storeId, ownerUserId, 'owner');
   if (ownerEmail) upsertStoreUser(storeId, `email:${ownerEmail}`, 'owner');
 
@@ -1092,6 +1607,7 @@ app.post('/api/auth/activate', (req, res) => {
 
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
+  activateStoreTrialIfNeeded(storeId);
 
   return res.json({ ok: true, storeId, active: true });
 });
@@ -1120,6 +1636,7 @@ app.post('/api/auth/register-by-store', (req, res) => {
   `).run(hash, identity, nowIso(), storeId);
 
   if (identity) upsertStoreUser(storeId, identity, 'owner');
+  activateStoreTrialIfNeeded(storeId);
   return res.json({ ok: true, storeId, active: true });
 });
 
@@ -1127,14 +1644,20 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
   const password = String(req.body?.password || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const identity = userIdentityFromRequest(req.body);
+  let identity = userIdentityFromRequest(req.body, { allowUnverified: true });
   const storeNameRaw = String(req.body?.storeName || '').trim();
 
   if (!botToken || !password || password.length < 6) {
     return res.status(400).json({ error: 'INVALID_REGISTER_BY_BOT_PAYLOAD' });
   }
-  const ownerTelegramId = telegramIdFromIdentity(identity);
-  if (!ownerTelegramId) return res.status(400).json({ error: 'TELEGRAM_ID_REQUIRED' });
+  let ownerTelegramId = telegramIdFromIdentity(identity);
+  if (!ownerTelegramId) {
+    const recentTelegramId = resolveRecentAdminTelegramId(0);
+    if (recentTelegramId) {
+      ownerTelegramId = recentTelegramId;
+      identity = `tg:${recentTelegramId}`;
+    }
+  }
 
   const validation = await validateTelegramBotToken(botToken);
   if (!validation.ok) return res.status(400).json({ error: validation.error || 'BOT_TOKEN_INVALID' });
@@ -1143,14 +1666,17 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const storeId = uniqueStoreId();
   const catalogUrl = getStoreCatalogUrl(storeId, req);
   const webhookSecret = crypto.randomBytes(16).toString('hex');
-  const sent = await notifyBotIdToOwner({
-    ownerTelegramId,
-    storeId,
-    botUsername,
-    catalogUrl,
-  });
-  if (!sent.ok) {
-    return res.status(500).json({ error: sent.error || 'BOT_ID_SEND_FAILED' });
+  let sent = { ok: false, via: '', error: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
+  if (ownerTelegramId) {
+    sent = await notifyBotIdToOwner({
+      ownerTelegramId,
+      storeId,
+      botUsername,
+      catalogUrl,
+    });
+    if (!sent.ok) {
+      return res.status(500).json({ error: sent.error || 'BOT_ID_SEND_FAILED' });
+    }
   }
 
   const dataset = buildDefaultDataset();
@@ -1180,13 +1706,16 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
 
   replaceCategoriesTx(storeId, dataset.categories);
   replaceProductsTx(storeId, dataset.products);
+  ensureStoreSubscriptionRow(storeId, ts);
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
 
   const apiBase = resolvePublicApiBase(req);
   const menuSetup = await configureTelegramBotMenu(botToken, storeId);
   const webhookSetup = await configureTelegramBotWebhook(botToken, storeId, webhookSecret, apiBase);
-  const onboarding = await sendStoreCatalogKeyboard(botToken, ownerTelegramId, storeId, true);
+  const onboarding = ownerTelegramId
+    ? await sendStoreCatalogKeyboard(botToken, ownerTelegramId, storeId, true)
+    : { ok: false, skipped: true, reason: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
   return res.json({
     ok: true,
     storeId,
@@ -1197,9 +1726,9 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     menuSetup,
     webhookSetup,
     onboarding,
-    botIdSent: true,
-    botIdSentVia: sent.via || 'admin_bot',
-    botIdSendError: '',
+    botIdSent: Boolean(sent.ok),
+    botIdSentVia: sent.via || '',
+    botIdSendError: sent.ok ? '' : String(sent.error || ''),
   });
 });
 
@@ -1237,6 +1766,7 @@ app.post('/api/auth/register', (req, res) => {
 
   replaceCategoriesTx(storeId, dataset.categories);
   replaceProductsTx(storeId, dataset.products);
+  ensureStoreSubscriptionRow(storeId, ts);
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
 
@@ -1278,13 +1808,22 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/password-reset/request', async (req, res) => {
   const storeId = String(req.body?.storeId || '').trim().toUpperCase();
-  const telegramUserId = String(req.body?.telegramUserId || '').trim();
+  const telegramUserId = resolveTelegramUserIdFromBody(req.body);
   if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
   const row = getStoreRow(storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
   if (Number(row.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
 
   let ownerTelegramId = resolveOwnerTelegramId(row);
+  if (!ownerTelegramId) {
+    const recentOwnerId = resolveRecentAdminTelegramId(0);
+    if (recentOwnerId) {
+      ownerTelegramId = recentOwnerId;
+      db.prepare('UPDATE stores SET owner_user_id = ?, updated_at = ? WHERE store_id = ?')
+        .run(`tg:${recentOwnerId}`, nowIso(), storeId);
+      upsertStoreUser(storeId, `tg:${recentOwnerId}`, 'owner');
+    }
+  }
   // Авто-восстановление owner telegram id для старых магазинов:
   // если owner_user_id пуст, но текущий tg уже привязан как owner в store_users.
   if (!ownerTelegramId && telegramUserId) {
@@ -1323,7 +1862,7 @@ app.post('/api/auth/password-reset/confirm', (req, res) => {
   const storeId = String(req.body?.storeId || '').trim().toUpperCase();
   const code = String(req.body?.code || '').trim();
   const newPassword = String(req.body?.newPassword || '').trim();
-  const telegramUserId = String(req.body?.telegramUserId || '').trim();
+  const telegramUserId = resolveTelegramUserIdFromBody(req.body);
 
   if (!isValidStoreId(storeId) || !/^[0-9]{6}$/.test(code) || newPassword.length < 6) {
     return res.status(400).json({ error: 'INVALID_RESET_PAYLOAD' });
@@ -1389,9 +1928,125 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
     storeName: row.store_name,
     email: row.owner_email,
     isActive: Number(row.is_active || 0) === 1,
+    subscription: getStoreSubscriptionState(row.store_id),
     userId: req.auth.userId || '',
     stores,
   });
+});
+
+app.get('/api/subscription/status', authMiddleware, (req, res) => {
+  const storeId = String(req.query?.storeId || req.auth.storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  if (req.auth.userId) {
+    if (!hasStoreAccess(req.auth.userId, storeId)) return res.status(403).json({ error: 'FORBIDDEN' });
+  } else if (storeId !== String(req.auth.storeId || '').trim().toUpperCase()) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  return res.json({ ok: true, storeId, subscription: getStoreSubscriptionState(storeId) });
+});
+
+app.get('/api/subscription/payment-link', authMiddleware, (req, res) => {
+  const days = String(req.query?.days || '30').trim();
+  const amount = SUBSCRIPTION_TARIFFS[days];
+  if (!amount) return res.status(400).json({ error: 'INVALID_TARIFF_DAYS' });
+  const fallbackUrl = buildSubscriptionPaymentLink({
+    days,
+    storeId: req.auth.storeId,
+    userId: req.auth.userId,
+  });
+  if (yookassaConfigured()) {
+    return createYookassaSubscriptionPayment({
+      storeId: req.auth.storeId,
+      userId: req.auth.userId,
+      days,
+      amount,
+      req,
+    }).then((created) => {
+      if (!created?.ok) return res.status(503).json({ error: created?.error || 'SUBSCRIPTION_PAYMENT_NOT_CONFIGURED' });
+      return res.json({
+        ok: true,
+        url: created.url,
+        paymentId: created.paymentId || '',
+        tariffDays: Number(days),
+        amount,
+        storeId: req.auth.storeId,
+        provider: 'yookassa',
+      });
+    });
+  }
+  if (!fallbackUrl) return res.status(503).json({ error: 'SUBSCRIPTION_PAYMENT_NOT_CONFIGURED' });
+  return res.json({
+    ok: true,
+    url: fallbackUrl,
+    tariffDays: Number(days),
+    amount,
+    storeId: req.auth.storeId,
+    provider: 'link',
+  });
+});
+
+app.post('/api/subscription/yookassa/webhook', async (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const event = String(payload?.event || '').trim();
+  const object = payload?.object && typeof payload.object === 'object' ? payload.object : {};
+  const paymentId = String(object?.id || '').trim();
+  if (!paymentId) return res.json({ ok: true });
+
+  const metadata = object?.metadata && typeof object.metadata === 'object' ? object.metadata : {};
+  const storeId = String(metadata?.store_id || metadata?.bot_id || '').trim().toUpperCase();
+  const tariffDays = Number(metadata?.tariff_days || 0);
+  const amountValue = Number(object?.amount?.value || 0);
+  const status = String(object?.status || '').trim();
+  const ts = nowIso();
+
+  if (isValidStoreId(storeId)) {
+    db.prepare(`
+      INSERT INTO subscription_payments (store_id, payment_id, provider, amount, tariff_days, status, payload_json, created_at, updated_at)
+      VALUES (?, ?, 'yookassa', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(provider, payment_id) DO UPDATE SET
+        status = excluded.status,
+        amount = excluded.amount,
+        tariff_days = excluded.tariff_days,
+        payload_json = excluded.payload_json,
+        updated_at = excluded.updated_at
+    `).run(
+      storeId,
+      paymentId,
+      amountValue,
+      Number.isFinite(tariffDays) ? tariffDays : 0,
+      status || event || 'pending',
+      JSON.stringify(payload),
+      ts,
+      ts,
+    );
+  }
+
+  const successEvent = event === 'payment.succeeded' || status === 'succeeded';
+  if (!successEvent || !isValidStoreId(storeId) || ![30, 180, 365].includes(tariffDays)) {
+    return res.json({ ok: true });
+  }
+
+  const current = ensureStoreSubscriptionRow(storeId);
+  const nowMs = Date.now();
+  const trialEndMs = current?.trial_ends_at ? new Date(String(current.trial_ends_at)).getTime() : 0;
+  const paidMs = current?.paid_until ? new Date(String(current.paid_until)).getTime() : 0;
+  const baseMs = Math.max(nowMs, trialEndMs || 0, paidMs || 0);
+  const nextPaidUntil = new Date(baseMs + tariffDays * 24 * 60 * 60 * 1000).toISOString();
+  upsertStoreSubscriptionPaidUntil(storeId, nextPaidUntil);
+
+  const store = getStoreRow(storeId);
+  const ownerTelegramId = resolveOwnerTelegramId(store);
+  if (ownerTelegramId) {
+    const text = [
+      `Оплата подписки подтверждена ✅`,
+      `Store: ${storeId}`,
+      `Тариф: ${tariffDays} дней`,
+      `Доступ активен до: ${new Date(nextPaidUntil).toLocaleString('ru-RU')}`,
+    ].join('\n');
+    await notifySubscriptionViaAdminBot(ownerTelegramId, text);
+  }
+
+  return res.json({ ok: true });
 });
 
 app.get('/api/admin/stores', authMiddleware, (req, res) => {
@@ -1461,12 +2116,13 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
 
   replaceCategoriesTx(storeId, dataset.categories);
   replaceProductsTx(storeId, dataset.products);
+  ensureStoreSubscriptionRow(storeId, ts);
   upsertStoreUser(storeId, identity, 'owner');
 
   return res.json({ ok: true, storeId, active: false });
 });
 
-app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, async (req, res) => {
+app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
   const orderChatId = String(req.body?.orderChatId || '').trim();
   const settingsPatch = sanitizeSettingsPatch(req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : {});
@@ -1518,12 +2174,20 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
 app.get('/api/admin/data', authMiddleware, (req, res) => {
   const row = getStoreRow(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  const subscription = getStoreSubscriptionState(req.auth.storeId);
+  if (!subscription.featureAccess) {
+    return res.status(402).json({ error: 'SUBSCRIPTION_REQUIRED', storeId: req.auth.storeId, subscription });
+  }
   return res.json(rowToDataset(row));
 });
 
 app.put('/api/admin/data', authMiddleware, (req, res) => {
   const row = getStoreRow(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  const subscription = getStoreSubscriptionState(req.auth.storeId);
+  if (!subscription.featureAccess) {
+    return res.status(402).json({ error: 'SUBSCRIPTION_REQUIRED', storeId: req.auth.storeId, subscription });
+  }
 
   const config = req.body?.config;
   const settings = req.body?.settings;
@@ -1556,11 +2220,11 @@ app.put('/api/admin/data', authMiddleware, (req, res) => {
   return res.json({ ok: true, storeId: req.auth.storeId });
 });
 
-app.get('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, (req, res) => {
+app.get('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   return res.json(rowToDataset(req.store));
 });
 
-app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, (req, res) => {
+app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const config = req.body?.config;
   const settings = req.body?.settings;
   const categories = req.body?.categories;
@@ -1603,6 +2267,10 @@ app.post('/api/upload-image', authMiddleware, upload.single('file'), (req, res) 
     if (!hasStoreAccess(authUserId, requestedStoreId)) return res.status(403).json({ error: 'FORBIDDEN' });
   } else if (String(req.auth?.storeId || '').trim().toUpperCase() !== requestedStoreId) {
     return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const subscription = getStoreSubscriptionState(requestedStoreId);
+  if (!subscription.featureAccess) {
+    return res.status(402).json({ error: 'SUBSCRIPTION_REQUIRED', storeId: requestedStoreId, subscription });
   }
   const extByMime = {
     'image/jpeg': '.jpg',
@@ -1724,11 +2392,14 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     return res.status(409).json({ error: 'ORDER_ALREADY_EXISTS' });
   }
 
-  const notify = await notifyOrderViaTelegram(req.store, { ...incoming, id: orderId, items, customer, total, telegramUserId });
+  const subscription = getStoreSubscriptionState(req.storeId);
+  const notify = subscription.notifyOrders
+    ? await notifyOrderViaTelegram(req.store, { ...incoming, id: orderId, items, customer, total, telegramUserId })
+    : { ok: false, skipped: true, reason: 'SUBSCRIPTION_INACTIVE' };
   return res.json({ ok: true, orderId, notification: notify });
 });
 
-app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, (req, res) => {
+app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const orders = db.prepare(`
     SELECT id, telegram_user_id, status, total_amount, currency, customer_json, payload_json, created_at, updated_at
     FROM orders
@@ -1749,7 +2420,7 @@ app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddlewar
   return res.json({ ok: true, storeId: req.storeId, orders });
 });
 
-app.get('/api/stores/:storeId/admin/metrics', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, (req, res) => {
+app.get('/api/stores/:storeId/admin/metrics', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const ordersTotal = Number(db.prepare('SELECT COUNT(*) AS c FROM orders WHERE store_id = ?').get(req.storeId)?.c || 0);
   const paidTotal = Number(db.prepare("SELECT COUNT(*) AS c FROM orders WHERE store_id = ? AND status IN ('paid','payment_success')").get(req.storeId)?.c || 0);
   const beginCheckout = Number(db.prepare("SELECT COUNT(*) AS c FROM events WHERE store_id = ? AND event_type = 'begin_checkout'").get(req.storeId)?.c || 0);
@@ -1827,6 +2498,13 @@ app.post('/api/telegram/admin/webhook', async (req, res) => {
   const textRaw = String(message?.text || '').trim();
   const text = textRaw.toLowerCase();
   const chatId = message?.chat?.id ? String(message.chat.id) : '';
+  const fromId = message?.from?.id ? String(message.from.id) : '';
+  const fromUsername = String(message?.from?.username || '').trim();
+  const fromFirstName = String(message?.from?.first_name || '').trim();
+  if (/^[0-9]{5,20}$/.test(fromId) && chatId) {
+    upsertAdminTelegramUser(fromId, chatId, fromUsername, fromFirstName);
+    await flushPendingAdminMessages(fromId);
+  }
   if (!chatId) return res.json({ ok: true });
 
   if (
@@ -1850,6 +2528,44 @@ app.post('/api/telegram/admin/webhook', async (req, res) => {
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'demo-katalog-lite-saas', ts: nowIso() });
 });
+
+async function runSubscriptionReminderTick() {
+  if (!ADMIN_BOT_TOKEN) return;
+  const stores = db.prepare('SELECT store_id, owner_user_id FROM stores WHERE is_active = 1').all();
+  const today = new Date().toISOString().slice(0, 10);
+  for (const row of stores) {
+    const storeId = String(row?.store_id || '').trim().toUpperCase();
+    if (!isValidStoreId(storeId)) continue;
+    const sub = getStoreSubscriptionState(storeId);
+    if (!sub.isGrace) continue;
+
+    const exists = db.prepare(`
+      SELECT 1 AS ok
+      FROM subscription_reminders
+      WHERE store_id = ? AND reminder_date = ? AND reminder_type = 'grace'
+      LIMIT 1
+    `).get(storeId, today);
+    if (exists?.ok) continue;
+
+    const ownerTg = resolveOwnerTelegramId(getStoreRow(storeId));
+    if (!ownerTg) continue;
+
+    const text = [
+      'Подписка скоро отключится ⚠️',
+      `Store: ${storeId}`,
+      `Льготный период: ${sub.graceDaysLeft} дн.`,
+      'Продлите подписку, чтобы не потерять доступ к редактированию и статистике.',
+    ].join('\n');
+    // eslint-disable-next-line no-await-in-loop
+    const sent = await notifySubscriptionViaAdminBot(ownerTg, text);
+    if (sent?.ok) {
+      db.prepare(`
+        INSERT OR IGNORE INTO subscription_reminders (store_id, reminder_date, reminder_type, created_at)
+        VALUES (?, ?, 'grace', ?)
+      `).run(storeId, today, nowIso());
+    }
+  }
+}
 
 app.get(/^\/store\/[A-Za-z0-9]{6}$/u, (_req, res) => {
   res.sendFile(path.join(ROOT, 'index.html'));
@@ -1878,6 +2594,7 @@ async function bootstrapAdminBot() {
   const setup = await configureAdminBotWebhook(base);
   if (setup?.ok) {
     console.log(`[admin-bot] webhook configured: ${setup.webhookUrl}`);
+    await flushPendingAdminMessages();
   } else {
     console.log(`[admin-bot] webhook setup failed: ${setup?.error || setup?.reason || 'unknown'}`);
   }
@@ -1888,8 +2605,21 @@ const server = app.listen(PORT, () => {
   void bootstrapAdminBot();
 });
 
+const pendingAdminMessagesTimer = setInterval(() => {
+  void flushPendingAdminMessages();
+}, 60 * 1000);
+pendingAdminMessagesTimer.unref?.();
+
+const subscriptionReminderTimer = setInterval(() => {
+  void runSubscriptionReminderTick();
+}, 60 * 60 * 1000);
+subscriptionReminderTimer.unref?.();
+void runSubscriptionReminderTick();
+
 function gracefulShutdown(signal) {
   console.log(`Received ${signal}, shutting down...`);
+  clearInterval(pendingAdminMessagesTimer);
+  clearInterval(subscriptionReminderTimer);
   server.close(() => {
     try {
       db.close();

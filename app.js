@@ -57,6 +57,14 @@ const state = {
     datasetLoaded: false,
     lastPublicSyncAt: 0,
   },
+  subscription: {
+    code: 'unknown',
+    featureAccess: true,
+    isTrial: false,
+    isGrace: false,
+    daysLeft: 0,
+    graceDaysLeft: 0,
+  },
 };
 
 const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
@@ -272,6 +280,14 @@ function reportStatus(message) {
   ui.dataStatus.textContent = message;
 }
 
+function requireAdminFeatureAccess(message = 'Функция недоступна: требуется активная подписка.') {
+  if (!state.admin.enabled) return true;
+  if (subscriptionAllowsAdminFeatures()) return true;
+  reportStatus(message);
+  if (ui.subscriptionStatus) ui.subscriptionStatus.textContent = message;
+  return false;
+}
+
 function on(el, event, handler, options) {
   if (!el) return;
   el.addEventListener(event, handler, options);
@@ -399,12 +415,74 @@ function getAdminDraftKey() {
 }
 
 function getTelegramUser() {
-  return window.HORECA_TG?.initDataUnsafe?.user || {};
+  const cachedUser = window.HORECA_TG?.initDataUnsafe?.user;
+  if (cachedUser && typeof cachedUser === 'object') return cachedUser;
+
+  const liveUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  if (liveUser && typeof liveUser === 'object') return liveUser;
+
+  const rawInitData = getTelegramInitData();
+  if (rawInitData) {
+    try {
+      const params = new URLSearchParams(rawInitData);
+      const rawUser = params.get('user');
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+  }
+
+  return {};
 }
 
 function getTelegramId() {
-  const id = getTelegramUser().id;
+  const id = getTelegramUser()?.id;
   return id ? String(id) : '';
+}
+
+function getTelegramInitData() {
+  const live = String(window.Telegram?.WebApp?.initData || '').trim();
+  if (live) return live;
+  const cached = String(window.HORECA_TG?.initData || '').trim();
+  if (cached) return cached;
+  try {
+    const query = new URLSearchParams(window.location.search || '');
+    const fromQuery = String(query.get('tgWebAppData') || '').trim();
+    if (fromQuery) return decodeURIComponent(fromQuery);
+  } catch {}
+  try {
+    const hashRaw = String(window.location.hash || '').replace(/^#/, '');
+    if (hashRaw) {
+      const hashParams = new URLSearchParams(hashRaw);
+      const fromHash = String(hashParams.get('tgWebAppData') || '').trim();
+      if (fromHash) return decodeURIComponent(fromHash);
+    }
+  } catch {}
+  return '';
+}
+
+async function resolveTelegramIdentity({ retries = 8, delayMs = 140 } = {}) {
+  for (let i = 0; i < retries; i += 1) {
+    const telegramUserId = getTelegramId();
+    const telegramInitData = getTelegramInitData();
+    if (telegramUserId || telegramInitData) {
+      return { telegramUserId, telegramInitData };
+    }
+    const sessionUserId = String(state.saas?.userId || '').trim();
+    if (sessionUserId.startsWith('tg:')) {
+      const fallbackId = sessionUserId.slice(3).trim();
+      if (/^[0-9]{5,20}$/.test(fallbackId)) {
+        return { telegramUserId: fallbackId, telegramInitData: '' };
+      }
+    }
+    if (window.Telegram?.WebApp?.ready) {
+      try { window.Telegram.WebApp.ready(); } catch {}
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  }
+  return { telegramUserId: '', telegramInitData: '' };
 }
 
 function getTelegramUsername() {
@@ -1063,6 +1141,7 @@ function adminEnsureActionSheet() {
 }
 
 function adminOpenActionSheet(title, actions = []) {
+  if (!requireAdminFeatureAccess()) return Promise.resolve(null);
   const modal = adminEnsureActionSheet();
   const titleEl = modal.querySelector('.admin-actions-title');
   const listEl = modal.querySelector('.admin-actions-list');
@@ -1102,6 +1181,7 @@ function adminOpenActionSheet(title, actions = []) {
 }
 
 function adminEditValue(title, currentValue, { numeric = false, multiline = false, allowDelete = false } = {}) {
+  if (!requireAdminFeatureAccess()) return Promise.resolve(null);
   const current = currentValue == null ? '' : String(currentValue);
   const modal = adminEnsureModal();
   const titleEl = modal.querySelector('.admin-edit-title');
@@ -1358,6 +1438,7 @@ function adminAddStoreTemplate() {
 }
 
 function adminSaveDraft(silent = false) {
+  if (!requireAdminFeatureAccess()) return;
   const payload = adminBuildPayload();
   try {
     localStorage.setItem(getAdminDraftKey(), JSON.stringify(payload));
@@ -1368,6 +1449,7 @@ function adminSaveDraft(silent = false) {
 }
 
 async function adminPublishToCatalog() {
+  if (!requireAdminFeatureAccess()) return;
   adminSaveDraft(true);
   const payload = adminBuildPayload();
   if (state.saas.enabled && state.admin.enabled && state.saas.storeId) {
@@ -1380,7 +1462,12 @@ async function adminPublishToCatalog() {
       reportStatus(`Изменения выгружены в каталог ${state.saas.storeId}`);
       return;
     } catch (error) {
-      reportStatus(`Ошибка выгрузки: ${error.message || 'unknown'}`);
+      const code = String(error?.message || '');
+      if (code === 'SUBSCRIPTION_REQUIRED') {
+        reportStatus('Выгрузка недоступна: активируйте подписку в профиле.');
+      } else {
+        reportStatus(`Ошибка выгрузки: ${code || 'unknown'}`);
+      }
       return;
     }
   }
@@ -1881,18 +1968,32 @@ function adminBuildPanel() {
 
 function applyAdminModeUi() {
   document.body.classList.toggle('admin-mode', state.admin.enabled);
+  document.body.classList.toggle('subscription-locked', state.admin.enabled && !subscriptionAllowsAdminFeatures());
   if (ui.adminHeaderActions) ui.adminHeaderActions.classList.toggle('hidden', !state.admin.enabled);
+  if (ui.adminHeaderActions) {
+    const locked = state.admin.enabled && !subscriptionAllowsAdminFeatures();
+    ui.adminHeaderActions.querySelectorAll('button').forEach((btn) => { btn.disabled = locked; });
+  }
   const selectButtons = Array.from(document.querySelectorAll('[data-admin-select-toggle]'));
   selectButtons.forEach((btn) => {
     const scope = String(btn.dataset.adminSelectToggle || '');
     const active = state.admin.enabled && state.admin.selectionMode && scope === state.admin.selectedType;
     btn.classList.toggle('active', active);
     btn.textContent = active ? 'Выделение: вкл' : 'Выделить';
+    btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
   });
   const moveButtons = Array.from(document.querySelectorAll('[data-admin-move]'));
   moveButtons.forEach((btn) => {
+    if (state.admin.enabled && !subscriptionAllowsAdminFeatures()) {
+      btn.disabled = true;
+      return;
+    }
     const scope = String(btn.dataset.adminMoveScope || '');
     btn.disabled = !(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType);
+  });
+  const addButtons = Array.from(document.querySelectorAll('[data-admin-add]'));
+  addButtons.forEach((btn) => {
+    btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
   });
   if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (ui.statsButton) ui.statsButton.classList.toggle('nav-hidden', !state.admin.enabled);
@@ -1907,6 +2008,7 @@ function applyAdminModeUi() {
 
 function handleAdminInlineAdd(action) {
   if (!state.admin.enabled) return;
+  if (!requireAdminFeatureAccess()) return;
   if (action === 'banner') adminAddBannerTemplate();
   if (action === 'article') adminAddArticleTemplate();
   if (action === 'category') adminAddCategoryTemplate();
@@ -1993,6 +2095,7 @@ async function saasSwitchStore(nextStoreId) {
   localStorage.setItem(SAAS_STORE_KEY, normalized);
   const payload = await saasRequest(`/stores/${encodeURIComponent(normalized)}/admin/data`, { auth: true });
   applyStoreDataset(payload);
+  await refreshSubscriptionStatus();
   state.saas.datasetLoaded = true;
   saveStorage();
   renderHeaderStore();
@@ -2008,6 +2111,7 @@ async function saasSwitchStore(nextStoreId) {
   renderFavorites();
   renderProfile();
   renderOrders();
+  applyAdminModeUi();
   reportStatus(`Переключено на магазин ${normalized}`);
   return true;
 }
@@ -2240,11 +2344,11 @@ function openSaasAuthModal() {
       if ((mode === 'register' || mode === 'recover_password') && password !== passwordRepeat) return showError('Пароли не совпадают.');
       if (mode === 'register' && !botToken.includes(':')) return showError('Введите корректный bot token.');
       if (mode === 'recover_password') {
-        const telegramUserId = getTelegramId();
+        const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
         try {
           await saasRequest('/auth/password-reset/confirm', {
             method: 'POST',
-            body: { storeId, code: resetCode, newPassword: password, telegramUserId },
+            body: { storeId, code: resetCode, newPassword: password, telegramUserId, telegramInitData },
           });
           resetCode = '';
           setMode('login');
@@ -2316,12 +2420,11 @@ function openSaasAuthModal() {
     const onRecover = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
       if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Bot ID перед восстановлением.');
-      const telegramUserId = getTelegramId();
-      if (!telegramUserId) return showError('Не удалось определить Telegram ID владельца.');
+      const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
       try {
         await saasRequest('/auth/password-reset/request', {
           method: 'POST',
-          body: { storeId, telegramUserId },
+          body: { storeId, telegramUserId, telegramInitData },
         });
         resetCode = '';
         setMode('recover_code');
@@ -2446,6 +2549,7 @@ function renderBotSettings() {
 
 async function saveBotSettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
   const image = String(ui.botWelcomeImageInput?.value || '').trim();
   const text = String(ui.botWelcomeTextInput?.value || '').trim();
   const patch = {
@@ -2522,6 +2626,7 @@ async function saasEnsureAdminSession() {
     } catch {
       // токен проверим позже на загрузке датасета
     }
+    await refreshSubscriptionStatus();
     return true;
   }
 
@@ -2529,21 +2634,24 @@ async function saasEnsureAdminSession() {
     const authData = await openSaasAuthModal();
     if (!authData) return false;
     const { mode, storeId, password, botToken } = authData;
-    const telegramUserId = getTelegramId();
+    const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
     const email = String(state.profile?.email || '').trim().toLowerCase();
     try {
       let loginBotId = storeId;
       if (mode === 'register') {
         const registration = await saasRequest('/auth/register-by-bot', {
           method: 'POST',
-          body: { botToken, password, telegramUserId, email },
+          body: { botToken, password, telegramUserId, telegramInitData, email },
         });
         const issuedBotId = String(registration?.botId || registration?.storeId || '').trim().toUpperCase();
         const via = String(registration?.botIdSentVia || '').trim();
         const sent = Boolean(registration?.botIdSent);
+        const queued = String(registration?.botIdSendError || '').trim() === 'BOT_ID_SEND_FAILED';
         if (sent) {
           const channelLabel = via === 'admin_bot' ? 'в admin-бот владельца' : 'в admin-бот';
           window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
+        } else if (queued) {
+          window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nОтправка в admin-бот поставлена в очередь и будет доставлена автоматически.`);
         } else {
           window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);
         }
@@ -2551,7 +2659,7 @@ async function saasEnsureAdminSession() {
       }
       const login = await saasRequest('/auth/login', {
         method: 'POST',
-        body: { botId: loginBotId, password, telegramUserId, email },
+        body: { botId: loginBotId, password, telegramUserId, telegramInitData, email },
       });
       state.saas.enabled = true;
       state.saas.storeId = loginBotId;
@@ -2564,6 +2672,7 @@ async function saasEnsureAdminSession() {
         state.saas.userId = String(me?.userId || '');
         if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
       } catch {}
+      await refreshSubscriptionStatus();
       return true;
     } catch (error) {
       const code = String(error?.message || '');
@@ -2595,6 +2704,8 @@ async function saasLoadDatasetForCurrentContext() {
     try {
       const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/data`, { auth: true });
       applyStoreDataset(payload);
+      await refreshSubscriptionStatus();
+      applyAdminModeUi();
       state.saas.datasetLoaded = true;
       return true;
     } catch (error) {
@@ -2606,6 +2717,8 @@ async function saasLoadDatasetForCurrentContext() {
       if (!reloginOk) return false;
       const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/data`, { auth: true });
       applyStoreDataset(payload);
+      await refreshSubscriptionStatus();
+      applyAdminModeUi();
       state.saas.datasetLoaded = true;
       return true;
     }
@@ -3940,7 +4053,18 @@ function renderProfile() {
   renderAdminPromoSettings();
   if (state.admin.enabled && ui.subscriptionStatus) {
     const t = getSelectedSubscriptionTariff();
-    ui.subscriptionStatus.textContent = `Выбран тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+    const code = String(state.subscription?.code || '');
+    if (code === 'active') {
+      ui.subscriptionStatus.textContent = `Подписка активна. Осталось дней: ${Number(state.subscription?.daysLeft || 0)}. Тариф для продления: ${t.label} — ${formatPrice(t.amount)} ₽`;
+    } else if (code === 'trial') {
+      ui.subscriptionStatus.textContent = `Тестовый период активен. Осталось дней: ${Number(state.subscription?.daysLeft || 0)}. Тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+    } else if (code === 'grace') {
+      ui.subscriptionStatus.textContent = `Льготный период: ${Number(state.subscription?.graceDaysLeft || 0)} дн. Редактирование и статистика отключены до оплаты.`;
+    } else if (code === 'expired') {
+      ui.subscriptionStatus.textContent = `Подписка не активна. Редактирование и статистика отключены. Выберите тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+    } else {
+      ui.subscriptionStatus.textContent = `Выбран тариф: ${t.label} — ${formatPrice(t.amount)} ₽`;
+    }
   }
   if (ui.profileHistorySection) {
     ui.profileHistorySection.classList.toggle('hidden', state.admin.enabled);
@@ -3980,6 +4104,7 @@ function renderPaymentLinkSettings() {
 
 async function savePaymentLinkSettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
   const provider = String(ui.paymentProviderInput?.value || 'custom').trim().toLowerCase();
   const urlTemplate = String(ui.paymentLinkInput?.value || '').trim();
   if (!urlTemplate) {
@@ -4029,6 +4154,7 @@ function renderAdminPromoSettings() {
 
 async function saveAdminPromoCode() {
   if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
   const code = normalizePromoCode(ui.promoSettingsCodeInput?.value || '');
   const type = String(ui.promoSettingsTypeInput?.value || 'percent').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percent';
   const rawValue = Number(ui.promoSettingsValueInput?.value || 0);
@@ -4074,6 +4200,7 @@ async function saveAdminPromoCode() {
 
 async function removeAdminPromoCode(codeRaw) {
   if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
   const code = normalizePromoCode(codeRaw);
   if (!code) return;
   const nextRules = getStorePromoRules().filter((rule) => rule.code !== code);
@@ -4157,47 +4284,47 @@ function getSelectedSubscriptionTariff() {
   return SUBSCRIPTION_TARIFFS[code] || SUBSCRIPTION_TARIFFS['30'];
 }
 
-function resolveSubscriptionPaymentLink(tariff) {
-  const daysKey = String(tariff?.days || '');
-  const fromSettingsMap = state.saas.settings?.subscriptionLinks && typeof state.saas.settings.subscriptionLinks === 'object'
-    ? String(state.saas.settings.subscriptionLinks[daysKey] || '').trim()
-    : '';
-  if (fromSettingsMap) return fromSettingsMap;
+function subscriptionAllowsAdminFeatures() {
+  if (!state.admin.enabled) return true;
+  return state.subscription?.featureAccess !== false;
+}
 
-  const fromConfigMap = state.config?.subscriptionLinks && typeof state.config.subscriptionLinks === 'object'
-    ? String(state.config.subscriptionLinks[daysKey] || '').trim()
-    : '';
-  if (fromConfigMap) return fromConfigMap;
-
-  const direct = String(
-    state.saas.settings?.subscriptionPaymentUrl
-    || state.saas.settings?.yookassaUrl
-    || state.config?.subscriptionPaymentUrl
-    || state.config?.yookassaUrl
-    || ''
-  ).trim();
-  if (!direct) return '';
-
+async function refreshSubscriptionStatus() {
+  if (!state.admin.enabled || !state.saas.token) return;
   try {
-    const u = new URL(direct);
-    u.searchParams.set('store_id', String(state.saas.storeId || '').trim().toUpperCase());
-    u.searchParams.set('tariff_days', String(tariff.days));
-    u.searchParams.set('amount', String(tariff.amount));
-    const tgId = getTelegramId();
-    if (tgId) u.searchParams.set('telegram_user_id', tgId);
-    return u.toString();
+    const payload = await saasRequest(`/subscription/status?storeId=${encodeURIComponent(state.saas.storeId || '')}`, { auth: true });
+    if (payload?.subscription && typeof payload.subscription === 'object') {
+      state.subscription = {
+        ...state.subscription,
+        ...payload.subscription,
+      };
+    }
   } catch {
-    return direct;
+    // keep previous state silently
   }
 }
 
-function openSubscriptionPayment() {
+async function resolveSubscriptionPaymentLink(tariff) {
+  const days = String(tariff?.days || '').trim();
+  if (!days) return '';
+  try {
+    const response = await saasRequest(`/subscription/payment-link?days=${encodeURIComponent(days)}`, { auth: true });
+    return String(response?.url || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function openSubscriptionPayment() {
   if (!state.admin.enabled) return;
   const tariff = getSelectedSubscriptionTariff();
-  const link = resolveSubscriptionPaymentLink(tariff);
+  if (ui.subscriptionPayButton) ui.subscriptionPayButton.disabled = true;
+  if (ui.subscriptionStatus) ui.subscriptionStatus.textContent = 'Готовим ссылку оплаты подписки...';
+  const link = await resolveSubscriptionPaymentLink(tariff);
+  if (ui.subscriptionPayButton) ui.subscriptionPayButton.disabled = false;
   if (!link) {
     if (ui.subscriptionStatus) {
-      ui.subscriptionStatus.textContent = 'Ссылка оплаты не настроена. Добавьте subscriptionPaymentUrl или subscriptionLinks в настройках магазина.';
+      ui.subscriptionStatus.textContent = 'Ссылка оплаты подписки не настроена на сервере.';
     }
     return;
   }
@@ -4505,6 +4632,7 @@ function bindEvents() {
   });
   on(ui.botWelcomeImageUploadButton, 'click', async () => {
     if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
     const imageUrl = await adminPickAndUploadImage();
     if (!imageUrl) return;
     if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = imageUrl;
@@ -4939,25 +5067,51 @@ function bindEvents() {
 
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
-  on(ui.ordersButton, 'click', () => { renderProfile(); if (!state.admin.enabled) renderOrders(); setScreen('profile'); });
-  on(ui.profileButton, 'click', () => { renderProfile(); if (!state.admin.enabled) renderOrders(); setScreen('profile'); });
+  on(ui.ordersButton, 'click', () => {
+    if (state.admin.enabled) {
+      void refreshSubscriptionStatus().then(() => {
+        applyAdminModeUi();
+        renderProfile();
+      });
+    } else {
+      renderProfile();
+      renderOrders();
+    }
+    setScreen('profile');
+  });
+  on(ui.profileButton, 'click', () => {
+    if (state.admin.enabled) {
+      void refreshSubscriptionStatus().then(() => {
+        applyAdminModeUi();
+        renderProfile();
+      });
+    } else {
+      renderProfile();
+      renderOrders();
+    }
+    setScreen('profile');
+  });
   on(ui.botButton, 'click', () => {
     if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
     renderBotSettings();
     setScreen('bot');
   });
   on(ui.statsButton, 'click', () => {
     if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
     void renderAdminStatsOverview();
     setScreen('stats');
   });
   on(ui.statsOpenRevenueButton, 'click', () => {
     if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
     void renderAdminStatsRevenue();
     setScreen('stats-revenue');
   });
   on(ui.statsOpenOrdersButton, 'click', () => {
     if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
     void renderAdminStatsOrders();
     setScreen('stats-orders');
   });
@@ -5185,6 +5339,7 @@ function bindEvents() {
 
     try {
       let sendOk = false;
+      let serverOrderResult = null;
       if (state.saas.storeId) {
         const result = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/orders`, {
           method: 'POST',
@@ -5193,6 +5348,7 @@ function bindEvents() {
             telegramUserId: telegramId || '',
           },
         });
+        serverOrderResult = result;
         sendOk = Boolean(result?.ok);
       } else {
         const result = await window.HORECA_TG.sendCheckoutOrder(order);
@@ -5227,7 +5383,11 @@ function bindEvents() {
       saveStorage();
       saasTrackEvent('create_order', { payload: { orderId: order.id, total: summary.sum } });
       const payment = resolveOrderPaymentLink(order, summary.sum);
-      if (payment.url) {
+      const subscriptionLocked = String(serverOrderResult?.notification?.reason || '') === 'SUBSCRIPTION_INACTIVE';
+      if (subscriptionLocked) {
+        ui.orderStatus.textContent = 'Заказ принят. Онлайн-оплата и уведомления временно отключены до продления подписки магазина.';
+        setScreen('confirmation');
+      } else if (payment.url) {
         state.pendingPayment = payment;
         ui.orderStatus.textContent = 'Заказ отправлен. Переходим к оплате...';
         openExternalPaymentLink(payment.url);
