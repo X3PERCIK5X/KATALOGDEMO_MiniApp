@@ -4603,16 +4603,10 @@ function applyHomeTrackSizing() {
     const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
     if (!hostWidth) return;
     const gap = hostWidth <= 430 ? 8 : 10;
-    const perView = hostWidth <= 430
-      ? 2.2
-      : hostWidth <= 640
-        ? 2.6
-        : hostWidth <= 900
-          ? 3.1
-          : 4;
+    const perView = hostWidth <= 900 ? 4 : 4.2;
     const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
-    const minWidth = hostWidth <= 900 ? 132 : 110;
-    const maxWidth = hostWidth <= 430 ? 172 : hostWidth <= 900 ? 208 : 220;
+    const minWidth = hostWidth <= 900 ? 82 : 78;
+    const maxWidth = hostWidth <= 900 ? 108 : 112;
     const cardWidth = Math.max(minWidth, Math.min(maxWidth, raw));
     track.style.setProperty('--home-track-card-w', `${cardWidth}px`);
   };
@@ -4622,15 +4616,9 @@ function applyHomeTrackSizing() {
     const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
     if (!hostWidth) return;
     const gap = hostWidth <= 900 ? 10 : 12;
-    const perView = hostWidth <= 430
-      ? 1.08
-      : hostWidth <= 640
-        ? 1.2
-        : hostWidth <= 900
-          ? 1.35
-          : 1.85;
+    const perView = hostWidth <= 430 ? 1.25 : hostWidth <= 900 ? 1.55 : 2;
     const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
-    const cardWidth = Math.max(240, Math.min(520, raw));
+    const cardWidth = Math.max(220, Math.min(360, raw));
     track.style.setProperty('--article-card-w', `${cardWidth}px`);
   };
 
