@@ -34,6 +34,11 @@ const state = {
   productStats: {},
   homeBannerIndex: 0,
   homeBannerTimer: null,
+  homeCarouselOffset: {
+    promo: 0,
+    popular: 0,
+    articles: 0,
+  },
   phoneAutofillAttempted: false,
   phoneAutofillSucceeded: false,
   pendingPayment: null,
@@ -52,6 +57,7 @@ const state = {
     storeId: '',
     token: '',
     userId: '',
+    userProfile: null,
     stores: [],
     settings: {},
     datasetLoaded: false,
@@ -495,6 +501,12 @@ function getTelegramFirstName() {
   return firstName ? String(firstName) : '';
 }
 
+function buildTelegramUsernameAvatarUrl(usernameRaw) {
+  const username = String(usernameRaw || '').trim().replace(/^@+/, '');
+  if (!username) return '';
+  return `https://t.me/i/userpic/320/${encodeURIComponent(username)}.jpg`;
+}
+
 function getPromoOwnerKey() {
   const tgId = getTelegramId();
   if (tgId) return `tg:${tgId}`;
@@ -888,14 +900,20 @@ function renderHomeBanners() {
 function renderHomeArticles() {
   if (!ui.homeArticleTrack) return;
   const articles = normalizeHomeArticles(state.config.homeArticles);
-  ui.homeArticleTrack.innerHTML = articles.map((article) => `
+  ui.homeArticleTrack.innerHTML = `
+    <div class="home-carousel-inner" data-carousel-inner="articles">
+      ${articles.map((article) => `
     <button class="home-article-slide" data-screen="${escapeHtml(article.screen)}" type="button" data-article-id="${escapeHtml(article.id)}">
       <span class="home-article-kicker">${escapeHtml(article.kicker)}</span>
       <strong>${escapeHtml(article.title)}</strong>
       <span>${escapeHtml(article.text)}</span>
     </button>
-  `).join('');
+      `).join('')}
+    </div>
+  `;
   applyHomeBlockOrder();
+  applyHomeTrackSizing();
+  bindHorizontalTrackSwipe(ui.homeArticleTrack);
   if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
@@ -2070,6 +2088,7 @@ function clearSaasAuth() {
   state.saas.token = '';
   state.saas.storeId = '';
   state.saas.userId = '';
+  state.saas.userProfile = null;
   state.saas.stores = [];
   state.saas.settings = {};
   localStorage.removeItem(SAAS_TOKEN_KEY);
@@ -2622,6 +2641,7 @@ async function saasEnsureAdminSession() {
     try {
       const me = await saasRequest('/auth/me', { auth: true });
       state.saas.userId = String(me?.userId || '');
+      state.saas.userProfile = me?.telegramProfile && typeof me.telegramProfile === 'object' ? me.telegramProfile : null;
       state.saas.stores = Array.isArray(me?.stores) ? me.stores : [];
     } catch {
       // токен проверим позже на загрузке датасета
@@ -2670,6 +2690,7 @@ async function saasEnsureAdminSession() {
       try {
         const me = await saasRequest('/auth/me', { auth: true });
         state.saas.userId = String(me?.userId || '');
+        state.saas.userProfile = me?.telegramProfile && typeof me.telegramProfile === 'object' ? me.telegramProfile : null;
         if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
       } catch {}
       await refreshSubscriptionStatus();
@@ -3214,7 +3235,7 @@ function renderProducts() {
 }
 
 function getPromoProducts() {
-  return state.products.filter((p) => hasPrice(p)).slice(0, 8);
+  return state.products.filter((p) => hasPrice(p));
 }
 
 function getRecommendedProducts(product, limit = 8) {
@@ -3230,7 +3251,9 @@ function renderPromos() {
   const list = getPromoProducts();
   const filtered = applyFilters(list, state.filters.promo);
   if (ui.promoTrack) {
-    ui.promoTrack.innerHTML = list.map((p) => {
+    ui.promoTrack.innerHTML = `
+      <div class="home-carousel-inner" data-carousel-inner="promo">
+      ${list.map((p) => {
       const newPrice = Math.round((p.price || 0) * 0.9);
       return `
     <article class="promo-card" data-open="${p.id}">
@@ -3242,8 +3265,12 @@ function renderPromos() {
         <span class="promo-old">${formatPrice(p.price)} ₽</span>
       </div>
     </article>
-  `;
-    }).join('');
+      `;
+    }).join('')}
+      </div>
+    `;
+    applyHomeTrackSizing();
+    bindHorizontalTrackSwipe(ui.promoTrack);
   }
   if (ui.promoList) {
     if (!filtered.length) {
@@ -3318,14 +3345,15 @@ function getPopularProducts(limit = 8) {
     return { product, score, stats };
   });
   const hasSignals = scored.some((item) => item.score > 0);
-  if (!hasSignals) return source.slice(0, limit);
+  if (!hasSignals) return source.slice(0, Math.min(limit, source.length));
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (b.stats.orderedQty !== a.stats.orderedQty) return b.stats.orderedQty - a.stats.orderedQty;
     if (b.stats.views !== a.stats.views) return b.stats.views - a.stats.views;
     return String(a.product.title || '').localeCompare(String(b.product.title || ''), 'ru');
   });
-  return scored.slice(0, limit).map((item) => item.product);
+  const sorted = scored.map((item) => item.product);
+  return sorted.slice(0, Math.min(limit, sorted.length));
 }
 
 function renderHomePopular() {
@@ -3337,15 +3365,22 @@ function renderHomePopular() {
         <div class="empty-title">Популярные товары появятся после первых просмотров и заказов</div>
       </div>
     `;
+    applyHomeTrackSizing();
     return;
   }
-  ui.homePopularTrack.innerHTML = popular.map((p) => `
+  ui.homePopularTrack.innerHTML = `
+    <div class="home-carousel-inner" data-carousel-inner="popular">
+    ${popular.map((p) => `
     <article class="promo-card" data-open="${p.id}">
       <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div class="promo-title">${p.title}</div>
       <div class="promo-price">${priceLabel(p)}</div>
     </article>
-  `).join('');
+    `).join('')}
+    </div>
+  `;
+  applyHomeTrackSizing();
+  bindHorizontalTrackSwipe(ui.homePopularTrack);
 }
 
 function getFallbackStores() {
@@ -4022,11 +4057,22 @@ async function renderAdminStatsOrders() {
 
 function renderProfile() {
   const user = getTelegramUser();
-  const firstName = String(user.first_name || state.profile.name || 'Пользователь').trim();
-  const username = String(user.username || '').trim();
-  const photoUrl = String(user.photo_url || '').trim();
+  const saasUser = state.saas.userProfile && typeof state.saas.userProfile === 'object' ? state.saas.userProfile : {};
+  const storeMeta = getCurrentStoreMeta() || {};
+  const fallbackName = String(saasUser.firstName || storeMeta.storeName || state.profile.name || 'Пользователь').trim();
+  const firstName = String(user.first_name || fallbackName || 'Пользователь').trim();
+  const username = String(user.username || saasUser.username || '').trim();
+  const photoUrl = String(
+    user.photo_url
+    || saasUser.photoUrl
+    || buildTelegramUsernameAvatarUrl(username)
+    || ''
+  ).trim();
+  const tgIdFromWebApp = String(getTelegramId() || '').trim();
+  const tgIdFromSaas = String(saasUser.id || (String(state.saas.userId || '').startsWith('tg:') ? String(state.saas.userId).slice(3) : '') || '').trim();
+  const resolvedTgId = tgIdFromWebApp || tgIdFromSaas;
   if (ui.profileName) ui.profileName.textContent = firstName || 'Пользователь';
-  if (ui.profileHandle) ui.profileHandle.textContent = username ? `@${username}` : `ID: ${getTelegramId() || '—'}`;
+  if (ui.profileHandle) ui.profileHandle.textContent = username ? `@${username}` : `ID: ${resolvedTgId || '—'}`;
   if (ui.profileAvatar) {
     if (photoUrl) {
       ui.profileAvatar.classList.add('has-photo');
@@ -4441,6 +4487,168 @@ function addToCart(id) {
   saveStorage();
   updateBadges();
   saasTrackEvent('add_to_cart', { productId: id, payload: { qty: state.cart[id] } });
+}
+
+function bindHorizontalTrackSwipe(track) {
+  if (!track || track.dataset.swipeBound === '1') return;
+  track.dataset.swipeBound = '1';
+  track.style.setProperty('touch-action', 'pan-x pan-y');
+
+  let startX = 0;
+  let startY = 0;
+  let startScrollLeft = 0;
+  let draggingX = false;
+  let suppressClick = false;
+
+  track.addEventListener('touchstart', (event) => {
+    if (!event.touches || !event.touches.length) return;
+    const t = event.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    startScrollLeft = track.scrollLeft || 0;
+    draggingX = false;
+    suppressClick = false;
+  }, { passive: true });
+
+  track.addEventListener('touchmove', (event) => {
+    if (!event.touches || !event.touches.length) return;
+    const t = event.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (!draggingX) draggingX = true;
+      track.scrollLeft = startScrollLeft - dx;
+      suppressClick = true;
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  track.addEventListener('touchend', () => {
+    draggingX = false;
+    if (!suppressClick) return;
+    window.setTimeout(() => {
+      suppressClick = false;
+    }, 220);
+  }, { passive: true });
+
+  track.addEventListener('touchcancel', () => {
+    draggingX = false;
+    suppressClick = false;
+  }, { passive: true });
+
+  track.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
+
+  track.addEventListener('wheel', (event) => {
+    if (Math.abs(event.deltaX) <= Math.abs(event.deltaY) && !event.shiftKey) return;
+    event.preventDefault();
+    track.scrollBy({
+      left: event.shiftKey ? event.deltaY : event.deltaX,
+      behavior: 'auto',
+    });
+  }, { passive: false });
+}
+
+function bindBannerSwipe() {
+  const track = ui.homeBannerTrack;
+  if (!track || track.dataset.bannerSwipeBound === '1') return;
+  track.dataset.bannerSwipeBound = '1';
+
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+
+  track.addEventListener('touchstart', (event) => {
+    if (!event.touches || !event.touches.length) return;
+    const t = event.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    dragging = false;
+  }, { passive: true });
+
+  track.addEventListener('touchmove', (event) => {
+    if (!event.touches || !event.touches.length) return;
+    const t = event.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) <= Math.abs(dy)) return;
+    dragging = true;
+    event.preventDefault();
+  }, { passive: false });
+
+  track.addEventListener('touchend', (event) => {
+    if (!event.changedTouches || !event.changedTouches.length) return;
+    const t = event.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (!dragging || Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+    const slidesCount = track.children.length || 1;
+    const dir = dx < 0 ? 1 : -1;
+    const next = Math.max(0, Math.min(slidesCount - 1, state.homeBannerIndex + dir));
+    if (next !== state.homeBannerIndex) {
+      setHomeBanner(next);
+      if (!state.admin.enabled) startHomeBannerAutoplay();
+    }
+  }, { passive: true });
+}
+
+function applyHomeTrackSizing() {
+  const setPromoWidth = (track) => {
+    if (!track) return;
+    const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
+    if (!hostWidth) return;
+    const gap = hostWidth <= 430 ? 8 : 10;
+    const perView = hostWidth <= 430
+      ? 2.2
+      : hostWidth <= 640
+        ? 2.6
+        : hostWidth <= 900
+          ? 3.1
+          : 4;
+    const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
+    const minWidth = hostWidth <= 900 ? 132 : 110;
+    const maxWidth = hostWidth <= 430 ? 172 : hostWidth <= 900 ? 208 : 220;
+    const cardWidth = Math.max(minWidth, Math.min(maxWidth, raw));
+    track.style.setProperty('--home-track-card-w', `${cardWidth}px`);
+  };
+
+  const setArticleWidth = (track) => {
+    if (!track) return;
+    const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
+    if (!hostWidth) return;
+    const gap = hostWidth <= 900 ? 10 : 12;
+    const perView = hostWidth <= 430
+      ? 1.08
+      : hostWidth <= 640
+        ? 1.2
+        : hostWidth <= 900
+          ? 1.35
+          : 1.85;
+    const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
+    const cardWidth = Math.max(240, Math.min(520, raw));
+    track.style.setProperty('--article-card-w', `${cardWidth}px`);
+  };
+
+  setPromoWidth(ui.promoTrack);
+  setPromoWidth(ui.homePopularTrack);
+  setArticleWidth(ui.homeArticleTrack);
+}
+
+function scrollHomeTrackBy(track, direction) {
+  if (!track) return;
+  const inner = track.querySelector('.home-carousel-inner');
+  const first = inner?.firstElementChild;
+  const gap = inner ? (parseFloat(window.getComputedStyle(inner).gap || '8') || 8) : 8;
+  const step = first ? Math.max(64, Math.round(first.getBoundingClientRect().width + gap)) : Math.max(120, Math.round(track.clientWidth * 0.5));
+  track.scrollBy({
+    left: direction * step,
+    behavior: 'smooth',
+  });
 }
 
 // Центральная регистрация всех обработчиков интерфейса.
@@ -4984,9 +5192,29 @@ function bindEvents() {
     setScreen('product');
   });
 
+  bindHorizontalTrackSwipe(ui.promoTrack);
+  bindHorizontalTrackSwipe(ui.homePopularTrack);
+  bindHorizontalTrackSwipe(ui.homeArticleTrack);
+  bindBannerSwipe();
+  applyHomeTrackSizing();
+
+  on(window, 'resize', () => {
+    applyHomeTrackSizing();
+  }, { passive: true });
+
   on(ui.themeToggleButton, 'click', () => {
     toggleTheme();
     renderProfile();
+  });
+
+  document.querySelectorAll('[data-carousel-arrow]').forEach((btn) => {
+    on(btn, 'click', () => {
+      const targetId = btn.dataset.carouselTarget;
+      const dir = btn.dataset.carouselArrow === 'left' ? -1 : 1;
+      if (!targetId) return;
+      const track = document.getElementById(targetId);
+      scrollHomeTrackBy(track, dir);
+    });
   });
 
 
@@ -5807,7 +6035,7 @@ async function init() {
     renderPromos();
     renderHomePopular();
   }
-  if (state.admin.enabled && adminRestoreDraft()) {
+  if (state.admin.enabled && !state.saas.datasetLoaded && adminRestoreDraft()) {
     renderHomeBanners();
     renderHomeArticles();
     renderHeaderStore();
