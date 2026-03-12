@@ -27,6 +27,7 @@ const state = {
   promoKind: '',
   recentlyViewed: [],
   theme: 'dark',
+  accent: 'rose',
   stores: [],
   selectedStoreId: null,
   searchHistory: [],
@@ -39,9 +40,17 @@ const state = {
     popular: 0,
     articles: 0,
   },
-  phoneAutofillAttempted: false,
-  phoneAutofillSucceeded: false,
   pendingPayment: null,
+  paymentIntegration: {
+    provider: 'yookassa',
+    accountId: '',
+    secretConfigured: false,
+    apiUrl: '',
+    returnUrl: '',
+    webhookUrl: '',
+    extra: {},
+    configured: false,
+  },
   admin: {
     enabled: false,
     holdMs: 4000,
@@ -78,33 +87,30 @@ const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
 const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
 const SAAS_DEFAULT_REMOTE_API = 'https://api.saaskatalog.ru/api';
 
-// Базовый контент главной страницы.
-// Если в config.json нет своих значений — используем эти.
+// Базовые баннеры главной страницы.
 const DEFAULT_HOME_BANNERS = [
   {
-    id: 'promo-first',
-    style: 'promo',
-    kicker: 'Спецпредложение',
-    title: 'Промокод ПЕРВЫЙ',
-    text: 'Скидка 10% на первый заказ для новых клиентов. Применяется в корзине после активации.',
-    cta: 'Активировать в корзине',
-  },
-  {
-    id: 'sales-offer',
-    style: 'sales',
-    kicker: 'Продающий оффер',
-    title: 'Каталог, корзина и оплата в Telegram',
-    text: 'Запусти продажи в mini app без сайта: клиент выбирает товар, оформляет заказ и оплачивает в одном окне.',
+    id: 'home-ad-1',
+    image: '/assets/banners/home-ad-v2.svg',
+    kicker: 'Реклама',
+    title: 'Запусти продажи в Telegram Mini App',
+    text: 'Каталог, корзина и оплата в одном окне. Готовое решение для магазина.',
     cta: 'Запустить под ключ',
   },
+  {
+    id: 'home-promo-1',
+    image: '/assets/banners/home-promo-v2.svg',
+    kicker: 'Промокод',
+    title: 'ПЕРВЫЙ -10% на первый заказ',
+    text: 'Скидка для новых клиентов. Промокод применяется в корзине автоматически.',
+    cta: 'Активировать',
+  },
 ];
-
-const DEFAULT_HOME_ARTICLES = [
-  { id: 'about', kicker: 'О продукте', title: 'Что такое DEMOKATALOG', text: 'Готовый mini app для запуска продаж в Telegram за короткий срок.', screen: 'about' },
-  { id: 'production', kicker: 'Механика', title: 'Как работает воронка', text: 'Каталог, карточка, корзина, оформление, оплата и уведомления в боте.', screen: 'production' },
-  { id: 'payment', kicker: 'Оплата', title: 'Кассы и интеграции', text: 'Telegram Payments, провайдеры, промокоды, сбор контактов и Telegram ID.', screen: 'payment' },
-  { id: 'contacts', kicker: 'Запуск', title: 'Внедрение под ключ', text: 'Настраиваем структуру, визуал и логику под нишу и бренд.', screen: 'contacts' },
-];
+const DEFAULT_HOME_ARTICLES = [];
+const DEFAULT_PROMO_CATALOG = {
+  title: 'Акции',
+  image: '',
+};
 
 const menuCatalogTree = [
   { title: 'Женская одежда' },
@@ -128,6 +134,7 @@ const ui = {
   menuButton: document.getElementById('menuButton'),
   menuCatalogToggle: document.getElementById('menuCatalogToggle'),
   menuCatalogList: document.getElementById('menuCatalogList'),
+  menuPromoButton: document.getElementById('menuPromoButton'),
   favoritesButton: document.getElementById('favoritesButton'),
   cartButton: document.getElementById('cartButton'),
   ordersButton: document.getElementById('ordersButton'),
@@ -163,7 +170,6 @@ const ui = {
   inputDeliveryType: document.getElementById('inputDeliveryType'),
   inputDeliveryAddress: document.getElementById('inputDeliveryAddress'),
   deliveryAddressWrap: document.getElementById('deliveryAddressWrap'),
-  sharePhoneButton: document.getElementById('sharePhoneButton'),
   inputComment: document.getElementById('inputComment'),
   policyCheck: document.getElementById('policyCheck'),
   policyLink: document.getElementById('policyLink'),
@@ -187,6 +193,7 @@ const ui = {
   homeBannerTrack: document.getElementById('homeBannerTrack'),
   homeBannerDots: document.getElementById('homeBannerDots'),
   promoTrack: document.getElementById('promoTrack'),
+  homePromoTitleButton: document.getElementById('homePromoTitleButton'),
   promoList: document.getElementById('promoList'),
   productsSort: document.getElementById('productsSort'),
   productsSearch: document.getElementById('productsSearch'),
@@ -228,6 +235,13 @@ const ui = {
   adminCreateStoreButton: document.getElementById('adminCreateStoreButton'),
   adminConnectBotButton: document.getElementById('adminConnectBotButton'),
   adminLogoutButton: document.getElementById('adminLogoutButton'),
+  profileBotConnectSection: document.getElementById('profileBotConnectSection'),
+  profileBotStoreIdValue: document.getElementById('profileBotStoreIdValue'),
+  profileBotUsernameValue: document.getElementById('profileBotUsernameValue'),
+  profileBotConnectForm: document.getElementById('profileBotConnectForm'),
+  profileBotTokenInput: document.getElementById('profileBotTokenInput'),
+  profileBotConnectStatus: document.getElementById('profileBotConnectStatus'),
+  profileBotConnectSaveButton: document.getElementById('profileBotConnectSaveButton'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   profileHistorySection: document.getElementById('profileHistorySection'),
   statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
@@ -240,12 +254,26 @@ const ui = {
   subscriptionTariffs: document.getElementById('subscriptionTariffs'),
   subscriptionStatus: document.getElementById('subscriptionStatus'),
   subscriptionPayButton: document.getElementById('subscriptionPayButton'),
-  profilePaymentLinkSection: document.getElementById('profilePaymentLinkSection'),
-  paymentLinkForm: document.getElementById('paymentLinkForm'),
-  paymentProviderInput: document.getElementById('paymentProviderInput'),
-  paymentLinkInput: document.getElementById('paymentLinkInput'),
-  paymentLinkStatus: document.getElementById('paymentLinkStatus'),
-  paymentLinkSaveButton: document.getElementById('paymentLinkSaveButton'),
+  profileOrderChatSection: document.getElementById('profileOrderChatSection'),
+  orderChatSettingsForm: document.getElementById('orderChatSettingsForm'),
+  orderChatModeInput: document.getElementById('orderChatModeInput'),
+  orderRequestChannelInput: document.getElementById('orderRequestChannelInput'),
+  orderRequestTargetLabel: document.getElementById('orderRequestTargetLabel'),
+  orderRequestTargetInput: document.getElementById('orderRequestTargetInput'),
+  orderRequestHint: document.getElementById('orderRequestHint'),
+  orderChatStatus: document.getElementById('orderChatStatus'),
+  orderChatSaveButton: document.getElementById('orderChatSaveButton'),
+  profilePaymentIntegrationSection: document.getElementById('profilePaymentIntegrationSection'),
+  paymentIntegrationForm: document.getElementById('paymentIntegrationForm'),
+  paymentIntegrationProviderInput: document.getElementById('paymentIntegrationProviderInput'),
+  paymentIntegrationAccountLabel: document.getElementById('paymentIntegrationAccountLabel'),
+  paymentIntegrationAccountInput: document.getElementById('paymentIntegrationAccountInput'),
+  paymentIntegrationSecretLabel: document.getElementById('paymentIntegrationSecretLabel'),
+  paymentIntegrationSecretKeyInput: document.getElementById('paymentIntegrationSecretKeyInput'),
+  paymentIntegrationHint: document.getElementById('paymentIntegrationHint'),
+  paymentIntegrationWebhookUrl: document.getElementById('paymentIntegrationWebhookUrl'),
+  paymentIntegrationStatus: document.getElementById('paymentIntegrationStatus'),
+  paymentIntegrationSaveButton: document.getElementById('paymentIntegrationSaveButton'),
   profilePromoSection: document.getElementById('profilePromoSection'),
   promoSettingsForm: document.getElementById('promoSettingsForm'),
   promoSettingsCodeInput: document.getElementById('promoSettingsCodeInput'),
@@ -265,9 +293,9 @@ const ui = {
   botSettingsStatus: document.getElementById('botSettingsStatus'),
   botSettingsSaveButton: document.getElementById('botSettingsSaveButton'),
   homeArticleTrack: document.getElementById('homeArticleTrack'),
-  themeLabel: document.getElementById('themeLabel'),
-  themeToggleButton: document.getElementById('themeToggleButton'),
-  themeToggleValue: document.getElementById('themeToggleValue'),
+  profileAppearancePanel: document.getElementById('profileAppearancePanel'),
+  themeSelect: document.getElementById('themeSelect'),
+  accentSelect: document.getElementById('accentSelect'),
   promoCodeInput: document.getElementById('promoCodeInput'),
   promoApplyButton: document.getElementById('promoApplyButton'),
   promoStatus: document.getElementById('promoStatus'),
@@ -278,6 +306,74 @@ const SUBSCRIPTION_TARIFFS = {
   '30': { days: 30, amount: 4000, label: '30 дней' },
   '180': { days: 180, amount: 20000, label: '180 дней' },
   '365': { days: 365, amount: 30000, label: '365 дней' },
+};
+
+const THEME_OPTIONS = {
+  white: { value: 'white', domTheme: 'light', mode: 'light' },
+  dark: { value: 'dark', domTheme: 'dark', mode: 'dark' },
+  blue: { value: 'blue', domTheme: 'blue', mode: 'dark' },
+  lime: { value: 'lime', domTheme: 'lime', mode: 'dark' },
+  terracotta: { value: 'terracotta', domTheme: 'terracotta', mode: 'dark' },
+};
+
+const ACCENT_OPTIONS = {
+  rose: true,
+  blue: true,
+  lime: true,
+  amber: true,
+  terracotta: true,
+};
+
+const DEFAULT_APPEARANCE = {
+  theme: 'dark',
+  accent: 'rose',
+};
+
+const PAYMENT_PROVIDER_META = {
+  yookassa: {
+    label: 'ЮKassa',
+    accountLabel: 'Shop ID',
+    accountPlaceholder: 'Например: 123456',
+    secretLabel: 'Secret Key',
+    secretPlaceholder: 'live_xxxxx или test_xxxxx',
+    hint: 'ЮKassa: используется API платежей и webhook. Return URL подставляется автоматически по Bot ID.',
+    defaultApiUrl: 'https://api.yookassa.ru/v3/payments',
+    needsSecret: true,
+    needsAccount: true,
+  },
+  tbank: {
+    label: 'Т-Банк',
+    accountLabel: 'TerminalKey',
+    accountPlaceholder: 'Например: 1700000000000',
+    secretLabel: 'Password',
+    secretPlaceholder: 'Пароль терминала Т-Банк',
+    hint: 'Т-Банк: создаёт платёж через метод Init. Сумма передаётся динамически, Return URL — автоматически.',
+    defaultApiUrl: 'https://securepay.tinkoff.ru/v2/Init',
+    needsSecret: true,
+    needsAccount: true,
+  },
+  robokassa: {
+    label: 'Robokassa',
+    accountLabel: 'MerchantLogin',
+    accountPlaceholder: 'Логин магазина Robokassa',
+    secretLabel: 'Пароль #1',
+    secretPlaceholder: 'Пароль #1 Robokassa',
+    hint: 'Robokassa: формирует ссылку оплаты по настройкам кассы. Return URL — автоматически.',
+    defaultApiUrl: 'https://auth.robokassa.ru/Merchant/Index.aspx',
+    needsSecret: true,
+    needsAccount: true,
+  },
+  alfabank: {
+    label: 'Альфа-Банк',
+    accountLabel: 'userName',
+    accountPlaceholder: 'Логин API интернет-эквайринга',
+    secretLabel: 'password',
+    secretPlaceholder: 'Пароль API',
+    hint: 'Альфа-Банк: регистрация заказа через register.do, сумма передаётся динамически, Return URL — автоматически.',
+    defaultApiUrl: 'https://pay.alfabank.ru/payment/rest/register.do',
+    needsSecret: true,
+    needsAccount: true,
+  },
 };
 
 function reportStatus(message) {
@@ -413,7 +509,8 @@ function reconcileActivePromoState() {
 const ADMIN_MARGIN_RATE = 0.3;
 const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
 const PUBLISHED_STATE_TS_KEY = 'demo_catalog_published_state_ts_v1';
-const HOME_BLOCK_DEFAULT_ORDER = ['banners', 'articles', 'promo', 'popular'];
+const HOME_BLOCK_DEFAULT_ORDER = ['banners', 'promo', 'popular'];
+const HOME_REBUILD_STAMP = 'home-v2-20260310';
 
 function getAdminDraftKey() {
   const storePart = (state.saas.storeId || '').trim().toUpperCase();
@@ -717,11 +814,8 @@ function setScreen(name) {
   updateBottomNav(name);
   scrollToTop();
   adminRefreshBindings();
-  if (name === 'checkout' && !state.phoneAutofillSucceeded) {
+  if (name === 'checkout') {
     saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
-    window.setTimeout(() => {
-      tryAutofillPhoneFromTelegram().catch((error) => console.error('Phone autofill failed', error));
-    }, 60);
   }
 }
 
@@ -756,6 +850,81 @@ function closeDrawer() {
   if (ui.overlay) ui.overlay.classList.remove('show');
 }
 
+function ensureProfileAdminSections() {
+  const profileScreen = document.getElementById('screen-profile');
+  if (!profileScreen) return;
+
+  if (!ui.profileBotConnectSection) {
+    const section = document.createElement('div');
+    section.id = 'profileBotConnectSection';
+    section.className = 'profile-subscription-card hidden';
+    section.innerHTML = `
+      <div class="section-title">Подключение Telegram-бота</div>
+      <p class="feedback-note">Bot ID магазина используется для входа в админку и привязки уведомлений.</p>
+      <div class="profile-admin-store">Bot ID: <strong id="profileBotStoreIdValue">—</strong></div>
+      <div class="profile-admin-store">Статус бота: <strong id="profileBotUsernameValue">не подключен</strong></div>
+      <form id="profileBotConnectForm" class="order-form flat">
+        <label>Bot Token
+          <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
+        </label>
+        <div id="profileBotConnectStatus" class="status"></div>
+        <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Подключить бота</button>
+      </form>
+    `;
+    const anchor = ui.profilePromoSection || ui.profilePaymentIntegrationSection || ui.profileSubscriptionSection || ui.profileHistorySection;
+    if (anchor && anchor.parentNode === profileScreen) {
+      profileScreen.insertBefore(section, anchor);
+    } else {
+      profileScreen.appendChild(section);
+    }
+  }
+
+  if (!ui.profileOrderChatSection) {
+    const section = document.createElement('div');
+    section.id = 'profileOrderChatSection';
+    section.className = 'profile-subscription-card hidden';
+    section.innerHTML = `
+      <div class="section-title">Уведомления о заказах в чат</div>
+      <p class="feedback-note">1) Добавьте admin-бота в нужный Telegram-чат. 2) Бот отправит в чат его Chat ID. 3) Вставьте Chat ID ниже и сохраните.</p>
+      <form id="orderChatSettingsForm" class="order-form flat">
+        <input id="orderChatModeInput" type="hidden" value="chat" />
+        <input id="orderRequestChannelInput" type="hidden" value="telegram_chat" />
+        <label id="orderRequestTargetLabel">Chat ID Telegram
+          <input id="orderRequestTargetInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Например: -1001234567890" />
+        </label>
+        <p id="orderRequestHint" class="feedback-note">После сохранения новые заявки будут отправляться в этот чат.</p>
+        <div id="orderChatStatus" class="status"></div>
+        <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить Chat ID</button>
+      </form>
+    `;
+    const anchor = ui.profilePaymentIntegrationSection || ui.profileSubscriptionSection || ui.profileHistorySection;
+    if (anchor && anchor.parentNode === profileScreen) {
+      profileScreen.insertBefore(section, anchor);
+    } else {
+      profileScreen.appendChild(section);
+    }
+  }
+
+  // Refresh UI references in case sections were injected dynamically.
+  ui.profileBotConnectSection = document.getElementById('profileBotConnectSection');
+  ui.profileBotStoreIdValue = document.getElementById('profileBotStoreIdValue');
+  ui.profileBotUsernameValue = document.getElementById('profileBotUsernameValue');
+  ui.profileBotConnectForm = document.getElementById('profileBotConnectForm');
+  ui.profileBotTokenInput = document.getElementById('profileBotTokenInput');
+  ui.profileBotConnectStatus = document.getElementById('profileBotConnectStatus');
+  ui.profileBotConnectSaveButton = document.getElementById('profileBotConnectSaveButton');
+
+  ui.profileOrderChatSection = document.getElementById('profileOrderChatSection');
+  ui.orderChatSettingsForm = document.getElementById('orderChatSettingsForm');
+  ui.orderChatModeInput = document.getElementById('orderChatModeInput');
+  ui.orderRequestChannelInput = document.getElementById('orderRequestChannelInput');
+  ui.orderRequestTargetLabel = document.getElementById('orderRequestTargetLabel');
+  ui.orderRequestTargetInput = document.getElementById('orderRequestTargetInput');
+  ui.orderRequestHint = document.getElementById('orderRequestHint');
+  ui.orderChatStatus = document.getElementById('orderChatStatus');
+  ui.orderChatSaveButton = document.getElementById('orderChatSaveButton');
+}
+
 function updateBottomNav(screen) {
   const map = {
     home: ui.homeButton,
@@ -783,11 +952,89 @@ function updateBottomNav(screen) {
 
 function formatPrice(v) { return Number(v || 0).toLocaleString('ru-RU'); }
 function hasPrice(p) { return Number(p && p.price) > 0; }
-function priceLabel(p) { return hasPrice(p) ? `${formatPrice(p.price)} ₽` : 'Цена по запросу'; }
+function priceLabel(p) {
+  const view = getProductPriceView(p, { withOldPrice: false });
+  return view.hasPrice ? `${formatPrice(view.finalPrice)} ₽` : 'Цена по запросу';
+}
 function discountedPrice(p, percent) {
   if (!hasPrice(p)) return null;
   const factor = 1 - (percent || 0) / 100;
   return Math.round(Number(p.price) * factor);
+}
+
+function normalizeProductDiscountPercent(value) {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.max(1, Math.min(95, Math.round(raw)));
+}
+
+function getProductPromoPercent(product) {
+  return normalizeProductDiscountPercent(product?.discountPercent);
+}
+
+function getProductPromoPrice(product, percent = getProductPromoPercent(product)) {
+  if (!hasPrice(product)) return null;
+  const normalized = normalizeProductDiscountPercent(percent);
+  if (normalized <= 0) return Number(product.price || 0);
+  return Math.max(0, Math.round(Number(product.price || 0) * (1 - normalized / 100)));
+}
+
+function getProductPriceView(product, { withOldPrice = true } = {}) {
+  if (!hasPrice(product)) {
+    return {
+      hasPrice: false,
+      hasPromo: false,
+      promoPercent: 0,
+      finalPrice: null,
+      oldPrice: null,
+      html: 'Цена по запросу',
+      badgeHtml: '',
+    };
+  }
+  const oldPrice = Number(product.price || 0);
+  const promoPercent = getProductPromoPercent(product);
+  const hasPromo = promoPercent > 0;
+  const finalPrice = hasPromo ? getProductPromoPrice(product, promoPercent) : oldPrice;
+  const html = hasPromo && withOldPrice
+    ? `<span class="promo-new">${formatPrice(finalPrice)} ₽</span><span class="promo-old">${formatPrice(oldPrice)} ₽</span>`
+    : `${formatPrice(finalPrice)} ₽`;
+  return {
+    hasPrice: true,
+    hasPromo,
+    promoPercent,
+    finalPrice,
+    oldPrice,
+    html,
+    badgeHtml: hasPromo ? `<div class="promo-badge promo-badge-inline">-${promoPercent}%</div>` : '',
+  };
+}
+
+function normalizePromoCatalogConfig(raw) {
+  const title = String(raw?.title || '').trim() || DEFAULT_PROMO_CATALOG.title;
+  const image = String(raw?.image || '').trim();
+  return { title, image };
+}
+
+function ensurePromoCatalogConfig() {
+  if (!state.config || typeof state.config !== 'object') state.config = {};
+  state.config.promoCatalog = normalizePromoCatalogConfig(state.config.promoCatalog || {});
+  return state.config.promoCatalog;
+}
+
+function renderPromoCatalogLabels() {
+  const promoCatalog = ensurePromoCatalogConfig();
+  if (ui.menuPromoButton) ui.menuPromoButton.textContent = promoCatalog.title;
+  if (ui.homePromoTitleButton) ui.homePromoTitleButton.textContent = promoCatalog.title;
+}
+
+function setProductPromoPercent(product, percent) {
+  if (!product || typeof product !== 'object') return;
+  const normalized = normalizeProductDiscountPercent(percent);
+  if (normalized > 0) {
+    product.discountPercent = normalized;
+  } else {
+    product.discountPercent = 0;
+  }
 }
 function safeSrc(src) {
   try {
@@ -810,35 +1057,22 @@ function normalizeHomeBanners(list) {
   const source = Array.isArray(list) && list.length ? list : DEFAULT_HOME_BANNERS;
   return source
     .map((item, index) => {
-      const style = item?.style === 'sales' ? 'sales' : 'promo';
-      const fallback = DEFAULT_HOME_BANNERS[index % DEFAULT_HOME_BANNERS.length];
+      const fallback = DEFAULT_HOME_BANNERS[index % DEFAULT_HOME_BANNERS.length] || DEFAULT_HOME_BANNERS[0];
       return {
         id: String(item?.id || `banner-${index + 1}`),
-        style,
-        image: String(item?.image || ''),
-        kicker: String(item?.kicker || fallback.kicker),
-        title: String(item?.title || fallback.title),
-        text: String(item?.text || fallback.text),
-        cta: String(item?.cta || fallback.cta),
+        image: String(item?.image || fallback?.image || ''),
+        kicker: String(item?.kicker || fallback?.kicker || ''),
+        title: String(item?.title || fallback?.title || ''),
+        text: String(item?.text || fallback?.text || ''),
+        cta: String(item?.cta || fallback?.cta || ''),
       };
     })
     .filter((item) => item.title && item.text);
 }
 
 function normalizeHomeArticles(list) {
-  const source = Array.isArray(list) && list.length ? list : DEFAULT_HOME_ARTICLES;
-  return source
-    .map((item, index) => {
-      const fallback = DEFAULT_HOME_ARTICLES[index % DEFAULT_HOME_ARTICLES.length];
-      return {
-        id: String(item?.id || `article-${index + 1}`),
-        kicker: String(item?.kicker || fallback.kicker),
-        title: String(item?.title || fallback.title),
-        text: String(item?.text || fallback.text),
-        screen: String(item?.screen || fallback.screen || 'about'),
-      };
-    })
-    .filter((item) => item.title && item.text && item.screen);
+  if (!Array.isArray(list)) return [];
+  return [];
 }
 
 function normalizeHomeBlockOrder(list) {
@@ -851,6 +1085,19 @@ function normalizeHomeBlockOrder(list) {
     if (!unique.includes(item)) unique.push(item);
   });
   return unique;
+}
+
+function enforceHomeBlueprint() {
+  if (!state.config || typeof state.config !== 'object') state.config = {};
+  if (!Array.isArray(state.config.homeBanners) || !state.config.homeBanners.length) {
+    state.config.homeBanners = DEFAULT_HOME_BANNERS.map((item) => ({ ...item }));
+  }
+  if (!Array.isArray(state.config.homeArticles)) {
+    state.config.homeArticles = [];
+  }
+  ensurePromoCatalogConfig();
+  state.config.homeBlockOrder = normalizeHomeBlockOrder(state.config.homeBlockOrder);
+  state.config.homeRebuildStamp = HOME_REBUILD_STAMP;
 }
 
 function applyHomeBlockOrder() {
@@ -876,46 +1123,59 @@ function adminMoveHomeBlock(blockId, direction) {
   adminSaveDraft(true);
 }
 
+function adminMoveBannerByOffset(bannerId, offset) {
+  const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
+  const from = list.findIndex((item, idx) => String(item?.id || `banner-${idx + 1}`) === String(bannerId || ''));
+  if (from < 0) return false;
+  const to = from + Number(offset || 0);
+  if (to < 0 || to >= list.length) return false;
+  const [item] = list.splice(from, 1);
+  list.splice(to, 0, item);
+  state.config.homeBanners = list;
+  renderHomeBanners();
+  adminSaveDraft(true);
+  return true;
+}
+
 // Рендерим главный слайдер полностью из config.json.
 function renderHomeBanners() {
+  enforceHomeBlueprint();
+  renderPromoCatalogLabels();
   if (!ui.homeBannerTrack || !ui.homeBannerDots) return;
   const banners = normalizeHomeBanners(state.config.homeBanners);
   ui.homeBannerTrack.innerHTML = banners.map((banner) => `
-    <div class="featured-promo banner-slide banner-slide-clean banner-slide-${banner.style}" data-banner-id="${escapeHtml(banner.id)}" ${banner.image ? `style="background-image:url('${safeSrc(banner.image)}')"` : ''}>
+    <article class="home-v2-banner-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'banner' && state.admin.selectedId === banner.id ? ' admin-selected-target' : ''}" data-banner-id="${escapeHtml(banner.id)}" style="background-image:url('${safeSrc(banner.image)}')">
       <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
       <div class="featured-title">${escapeHtml(banner.title)}</div>
       <div class="featured-text">${escapeHtml(banner.text)}</div>
-      <div class="featured-cta">${escapeHtml(banner.cta)}</div>
-    </div>
+    </article>
   `).join('');
   ui.homeBannerDots.innerHTML = banners.map((_, index) => `
     <button class="dot ${index === 0 ? 'active' : ''}" data-home-banner-dot="${index}" type="button" aria-label="Баннер ${index + 1}"></button>
   `).join('');
-  setHomeBanner(0);
+
+  ui.homeBannerTrack.classList.toggle('is-admin-scroll', Boolean(state.admin.enabled));
+  ui.homeBannerDots.classList.toggle('is-hidden', banners.length <= 1 || state.admin.enabled);
+  state.homeBannerIndex = 0;
+  if (state.admin.enabled) {
+    if (state.homeBannerTimer) {
+      window.clearInterval(state.homeBannerTimer);
+      state.homeBannerTimer = null;
+    }
+    ui.homeBannerTrack.style.transform = '';
+    ui.homeBannerTrack.scrollLeft = 0;
+  } else {
+    setHomeBanner(0);
+    startHomeBannerAutoplay();
+  }
+  applyHomeBlockOrder();
   if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
 }
 
 // Статьи главной также приходят из конфига и готовы к редактированию через админку.
 function renderHomeArticles() {
-  if (!ui.homeArticleTrack) return;
-  const articles = normalizeHomeArticles(state.config.homeArticles);
-  ui.homeArticleTrack.innerHTML = `
-    <div class="home-carousel-inner" data-carousel-inner="articles">
-      ${articles.map((article) => `
-    <button class="home-article-slide" data-screen="${escapeHtml(article.screen)}" type="button" data-article-id="${escapeHtml(article.id)}">
-      <span class="home-article-kicker">${escapeHtml(article.kicker)}</span>
-      <strong>${escapeHtml(article.title)}</strong>
-      <span>${escapeHtml(article.text)}</span>
-    </button>
-      `).join('')}
-    </div>
-  `;
-  applyHomeBlockOrder();
-  applyHomeTrackSizing();
-  bindHorizontalTrackSwipe(ui.homeArticleTrack);
-  if (state.admin.enabled) adminSaveDraft(true);
-  adminRefreshBindings();
+  if (ui.homeArticleTrack) ui.homeArticleTrack.innerHTML = '';
 }
 
 function formatMultiline(text) {
@@ -953,11 +1213,12 @@ function getImageUploadEndpoint() {
   return endpoint;
 }
 
-function adminPickImageFile() {
+function adminPickImageFile({ source = 'gallery' } = {}) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
+    if (source === 'camera') input.setAttribute('capture', 'environment');
     input.style.position = 'fixed';
     input.style.left = '-9999px';
     input.style.top = '-9999px';
@@ -1094,14 +1355,58 @@ async function adminUploadImageFile(file) {
   }
 }
 
-async function adminPickAndUploadImage() {
-  const file = await adminPickImageFile();
+async function adminPickAndUploadImage({ allowCameraChoice = false, source = '' } = {}) {
+  let sourceMode = source === 'camera' ? 'camera' : source === 'gallery' ? 'gallery' : '';
+  if (!sourceMode && allowCameraChoice) {
+    const action = await adminOpenActionSheet('Добавить фото', [
+      { id: 'gallery', label: 'Выбрать из галереи' },
+      { id: 'camera', label: 'Сфоткать камерой' },
+    ]);
+    if (!action) return null;
+    sourceMode = action === 'camera' ? 'camera' : 'gallery';
+  }
+  if (!sourceMode) sourceMode = 'gallery';
+  const file = await adminPickImageFile({ source: sourceMode });
   if (!file) return null;
   if (!String(file.type || '').startsWith('image/')) {
     reportStatus('Выбранный файл не является изображением');
     return null;
   }
   return adminUploadImageFile(file);
+}
+
+function isPlaceholderImage(src) {
+  return /assets\/placeholder\.svg$/i.test(String(src || '').trim());
+}
+
+function buildProductImageSelectionId(productId, index) {
+  return `${String(productId || '')}::${Math.max(0, Number(index || 0))}`;
+}
+
+function parseProductImageSelectionId(selectionId, productId) {
+  const text = String(selectionId || '');
+  const marker = '::';
+  const markerIndex = text.lastIndexOf(marker);
+  if (markerIndex <= 0) return -1;
+  const selectedProductId = text.slice(0, markerIndex);
+  const indexPart = text.slice(markerIndex + marker.length);
+  if (selectedProductId !== String(productId || '')) return -1;
+  const idx = Number(indexPart);
+  if (!Number.isInteger(idx) || idx < 0) return -1;
+  return idx;
+}
+
+function moveProductImageByOffset(product, fromIndex, offset) {
+  if (!product || !Array.isArray(product.images)) return -1;
+  const from = Number(fromIndex);
+  const step = Number(offset);
+  if (!Number.isInteger(from) || from < 0 || from >= product.images.length) return -1;
+  if (!Number.isInteger(step) || step === 0) return from;
+  const to = Math.max(0, Math.min(product.images.length - 1, from + step));
+  if (to === from) return from;
+  const [item] = product.images.splice(from, 1);
+  product.images.splice(to, 0, item);
+  return to;
 }
 
 function adminBuildPayload() {
@@ -1362,8 +1667,7 @@ function adminAddBannerTemplate() {
   if (!Array.isArray(state.config.homeBanners)) state.config.homeBanners = [];
   state.config.homeBanners.unshift({
     id: `banner-${Date.now()}`,
-    style: 'promo',
-    image: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=1400&q=70',
+    image: '/assets/banners/home-ad-v2.svg',
     kicker: 'Новый баннер',
     title: 'Заголовок баннера',
     text: 'Описание предложения',
@@ -1426,10 +1730,16 @@ function adminAddProductTemplate() {
 function adminAddProductImage() {
   const p = getProduct(state.currentProduct);
   if (!p) return;
-  if (!Array.isArray(p.images)) p.images = [];
-  p.images.push('https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=70');
-  adminSaveDraft(true);
-  renderProductView();
+  adminPickAndUploadImage({ allowCameraChoice: true }).then((imageUrl) => {
+    if (!imageUrl) return;
+    if (!Array.isArray(p.images)) p.images = [];
+    const hasOnlyPlaceholder = p.images.length === 1 && isPlaceholderImage(p.images[0]);
+    if (!p.images.length || hasOnlyPlaceholder) p.images = [imageUrl];
+    else p.images.push(imageUrl);
+    adminSaveDraft(true);
+    renderProductView();
+    reportStatus('Фото добавлено');
+  });
 }
 
 function adminAddProductSpec() {
@@ -1439,6 +1749,66 @@ function adminAddProductSpec() {
   p.specs.push('Новая характеристика');
   adminSaveDraft(true);
   renderProductView();
+}
+
+function adminDeleteSelectedImage() {
+  if (!state.admin.enabled || !state.admin.selectionMode || state.admin.selectedType !== 'image' || !state.admin.selectedId) {
+    reportStatus('Сначала включите "Выделить" и выберите фото');
+    return;
+  }
+  const p = getProduct(state.currentProduct);
+  if (!p) return;
+  if (!Array.isArray(p.images) || !p.images.length) return;
+  const selectedIndex = parseProductImageSelectionId(state.admin.selectedId, p.id);
+  if (selectedIndex < 0 || selectedIndex >= p.images.length) {
+    reportStatus('Выберите фото для удаления');
+    return;
+  }
+  p.images.splice(selectedIndex, 1);
+  if (!p.images.length) p.images = ['assets/placeholder.svg'];
+  const nextIndex = Math.min(selectedIndex, p.images.length - 1);
+  state.admin.selectedId = buildProductImageSelectionId(p.id, Math.max(0, nextIndex));
+  adminSaveDraft(true);
+  renderProductView();
+  reportStatus('Фото удалено');
+}
+
+function adminConfigureProductPromo(product) {
+  if (!product) return;
+  const currentPercent = getProductPromoPercent(product);
+  adminOpenActionSheet(`Акции: ${product.title || product.id}`, [
+    { id: 'set', label: currentPercent > 0 ? `Изменить скидку (${currentPercent}%)` : 'Добавить в акции' },
+    ...(currentPercent > 0 ? [{ id: 'remove', label: 'Убрать из акций', danger: true }] : []),
+  ]).then((action) => {
+    if (!action) return;
+    if (action === 'remove') {
+      setProductPromoPercent(product, 0);
+      adminSaveDraft(true);
+      renderPromos();
+      if (state.currentScreen === 'products') renderProducts();
+      if (state.currentScreen === 'product') renderProductView();
+      if (state.currentScreen === 'categories') renderCategories();
+      reportStatus('Товар убран из акций');
+      return;
+    }
+    if (action !== 'set') return;
+    const suggestion = currentPercent > 0 ? currentPercent : 10;
+    adminEditValue('Скидка на товар, %', suggestion, { numeric: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      const normalized = normalizeProductDiscountPercent(value);
+      if (normalized <= 0) {
+        reportStatus('Введите скидку больше 0%');
+        return;
+      }
+      setProductPromoPercent(product, normalized);
+      adminSaveDraft(true);
+      renderPromos();
+      if (state.currentScreen === 'products') renderProducts();
+      if (state.currentScreen === 'product') renderProductView();
+      if (state.currentScreen === 'categories') renderCategories();
+      reportStatus(`Товар добавлен в акции: -${normalized}%`);
+    });
+  });
 }
 
 function adminAddStoreTemplate() {
@@ -1504,6 +1874,7 @@ function adminRestoreDraft() {
   const parsed = safeParse(raw, null);
   if (!parsed || typeof parsed !== 'object') return false;
   if (parsed.config && typeof parsed.config === 'object') state.config = parsed.config;
+  applyAppearanceFromConfig({ fallbackToState: true });
   if (Array.isArray(parsed.categories)) state.categories = parsed.categories;
   if (Array.isArray(parsed.products)) state.products = parsed.products;
   return true;
@@ -1516,6 +1887,7 @@ function restorePublishedState() {
   const parsed = safeParse(raw, null);
   if (!parsed || typeof parsed !== 'object') return false;
   if (parsed.config && typeof parsed.config === 'object') state.config = parsed.config;
+  applyAppearanceFromConfig();
   if (Array.isArray(parsed.categories)) state.categories = parsed.categories;
   if (Array.isArray(parsed.products)) state.products = parsed.products;
   return true;
@@ -1531,10 +1903,11 @@ function adminBindHome() {
     const title = card.querySelector('.featured-title');
     const text = card.querySelector('.featured-text');
     const kicker = card.querySelector('.featured-chip');
-    const cta = card.querySelector('.featured-cta');
     adminBindLongPress(card, () => {
       adminOpenActionSheet('Баннер', [
         { id: 'open', label: 'Открыть страницу' },
+        { id: 'move-prev', label: 'Сдвинуть влево' },
+        { id: 'move-next', label: 'Сдвинуть вправо' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
@@ -1543,6 +1916,14 @@ function adminBindHome() {
         if (!action) return;
         if (action === 'open') {
           setScreen('home');
+          return;
+        }
+        if (action === 'move-prev') {
+          adminMoveBannerByOffset(itemId, -1);
+          return;
+        }
+        if (action === 'move-next') {
+          adminMoveBannerByOffset(itemId, 1);
           return;
         }
         const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
@@ -1597,13 +1978,6 @@ function adminBindHome() {
       adminEditValue('Кикер баннера', item.kicker || '').then((value) => {
         if (value == null || value.__delete) return;
         item.kicker = value;
-        renderHomeBanners();
-      });
-    });
-    adminBindHold(cta, () => {
-      adminEditValue('CTA баннера', item.cta || '').then((value) => {
-        if (value == null || value.__delete) return;
-        item.cta = value;
         renderHomeBanners();
       });
     });
@@ -1770,6 +2144,92 @@ function adminBindCategories() {
     });
   });
 
+  const promoCard = ui.categoriesGrid.querySelector('[data-open-screen="promo"]');
+  if (promoCard) {
+    adminBindLongPress(promoCard, () => {
+      const promoCatalog = ensurePromoCatalogConfig();
+      adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
+        { id: 'open', label: 'Открыть страницу' },
+        { id: 'edit-title', label: 'Редактировать заголовок' },
+        { id: 'edit-image', label: 'Изменить фото' },
+      ]).then((action) => {
+        if (!action) return;
+        if (action === 'open') {
+          setScreen('promo');
+          return;
+        }
+        if (action === 'edit-title') {
+          adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
+            if (value == null || value.__delete) return;
+            const cfg = ensurePromoCatalogConfig();
+            cfg.title = String(value || '').trim() || DEFAULT_PROMO_CATALOG.title;
+            renderCategories();
+            adminSaveDraft(true);
+          });
+          return;
+        }
+        if (action === 'edit-image') {
+          adminPickAndUploadImage().then((imageUrl) => {
+            if (!imageUrl) return;
+            const cfg = ensurePromoCatalogConfig();
+            cfg.image = imageUrl;
+            renderCategories();
+            adminSaveDraft(true);
+          });
+        }
+      });
+    });
+    const promoTitle = promoCard.querySelector('span');
+    adminBindHold(promoTitle, () => {
+      const promoCatalog = ensurePromoCatalogConfig();
+      adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
+        if (value == null || value.__delete) return;
+        const cfg = ensurePromoCatalogConfig();
+        cfg.title = String(value || '').trim() || DEFAULT_PROMO_CATALOG.title;
+        renderCategories();
+        adminSaveDraft(true);
+      });
+    });
+  }
+
+}
+
+function adminBindMenuPromo() {
+  if (!state.admin.enabled || !ui.menuPromoButton) return;
+  adminBindLongPress(ui.menuPromoButton, () => {
+    const promoCatalog = ensurePromoCatalogConfig();
+    adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
+      { id: 'open', label: 'Открыть страницу' },
+      { id: 'edit-title', label: 'Редактировать заголовок' },
+      { id: 'edit-image', label: 'Изменить обложку в каталоге' },
+    ]).then((action) => {
+      if (!action) return;
+      if (action === 'open') {
+        setScreen('promo');
+        return;
+      }
+      if (action === 'edit-title') {
+        adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
+          if (value == null || value.__delete) return;
+          const cfg = ensurePromoCatalogConfig();
+          cfg.title = String(value || '').trim() || DEFAULT_PROMO_CATALOG.title;
+          renderPromoCatalogLabels();
+          renderCategories();
+          adminSaveDraft(true);
+        });
+        return;
+      }
+      if (action === 'edit-image') {
+        adminPickAndUploadImage().then((imageUrl) => {
+          if (!imageUrl) return;
+          const cfg = ensurePromoCatalogConfig();
+          cfg.image = imageUrl;
+          renderCategories();
+          adminSaveDraft(true);
+        });
+      }
+    });
+  });
 }
 
 function adminBindProducts() {
@@ -1781,6 +2241,7 @@ function adminBindProducts() {
     adminBindLongPress(card, () => {
       adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
         { id: 'open', label: 'Открыть страницу' },
+        { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-description', label: 'Редактировать описание' },
@@ -1792,6 +2253,10 @@ function adminBindProducts() {
           state.currentProduct = p.id;
           renderProductView();
           setScreen('product');
+          return;
+        }
+        if (action === 'set-promo') {
+          adminConfigureProductPromo(p);
           return;
         }
         if (action === 'edit-title') {
@@ -1856,10 +2321,15 @@ function adminBindProductView() {
   const desc = ui.productView.querySelector('.section-body');
   adminBindHold(title, () => {
     adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
+      { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
       { id: 'edit', label: 'Редактировать заголовок' },
       { id: 'delete', label: 'Удалить товар', danger: true },
     ]).then((action) => {
       if (!action) return;
+      if (action === 'set-promo') {
+        adminConfigureProductPromo(p);
+        return;
+      }
       if (action === 'edit') {
         adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
           if (value == null || value.__delete) return;
@@ -1887,13 +2357,27 @@ function adminBindProductView() {
   ui.productView.querySelectorAll('.product-gallery img').forEach((img, index) => {
     adminBindHold(img, () => {
       adminOpenActionSheet(`Фото #${index + 1}`, [
+        { id: 'move-left', label: 'Сдвинуть влево' },
+        { id: 'move-right', label: 'Сдвинуть вправо' },
         { id: 'edit', label: 'Изменить фото' },
         { id: 'delete', label: 'Удалить фото', danger: true },
       ]).then((action) => {
         if (!action) return;
         if (!Array.isArray(p.images)) p.images = [];
+        if (action === 'move-left') {
+          moveProductImageByOffset(p, index, -1);
+          renderProductView();
+          adminSaveDraft(true);
+          return;
+        }
+        if (action === 'move-right') {
+          moveProductImageByOffset(p, index, 1);
+          renderProductView();
+          adminSaveDraft(true);
+          return;
+        }
         if (action === 'edit') {
-          adminPickAndUploadImage().then((imageUrl) => {
+          adminPickAndUploadImage({ allowCameraChoice: true }).then((imageUrl) => {
             if (!imageUrl) return;
             p.images[index] = imageUrl;
             renderProductView();
@@ -1905,6 +2389,7 @@ function adminBindProductView() {
           p.images.splice(index, 1);
           if (!p.images.length) p.images.push('assets/placeholder.svg');
           renderProductView();
+          adminSaveDraft(true);
         }
       });
     });
@@ -1940,6 +2425,7 @@ function adminBindProductView() {
 function adminRefreshBindings() {
   if (!state.admin.enabled) return;
   adminBindHome();
+  adminBindMenuPromo();
   adminBindCategories();
   adminBindProducts();
   adminBindProductView();
@@ -2007,11 +2493,36 @@ function applyAdminModeUi() {
       return;
     }
     const scope = String(btn.dataset.adminMoveScope || '');
-    btn.disabled = !(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType);
+    if (!(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType)) {
+      btn.disabled = true;
+      return;
+    }
+    if (scope === 'image') {
+      const product = getProduct(state.currentProduct);
+      const selectedIndex = product ? parseProductImageSelectionId(state.admin.selectedId, product.id) : -1;
+      btn.disabled = selectedIndex < 0;
+      return;
+    }
+    btn.disabled = false;
   });
   const addButtons = Array.from(document.querySelectorAll('[data-admin-add]'));
   addButtons.forEach((btn) => {
     btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
+  });
+  const imageActionButtons = Array.from(document.querySelectorAll('[data-admin-image-action]'));
+  imageActionButtons.forEach((btn) => {
+    if (state.admin.enabled && !subscriptionAllowsAdminFeatures()) {
+      btn.disabled = true;
+      return;
+    }
+    const action = String(btn.dataset.adminImageAction || '');
+    if (action === 'delete') {
+      const product = getProduct(state.currentProduct);
+      const selectedIndex = product ? parseProductImageSelectionId(state.admin.selectedId, product.id) : -1;
+      btn.disabled = !(state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'image' && selectedIndex >= 0);
+      return;
+    }
+    btn.disabled = false;
   });
   if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (ui.statsButton) ui.statsButton.classList.toggle('nav-hidden', !state.admin.enabled);
@@ -2131,6 +2642,7 @@ async function saasSwitchStore(nextStoreId) {
   renderProfile();
   renderOrders();
   applyAdminModeUi();
+  await loadPaymentIntegrationSettings();
   reportStatus(`Переключено на магазин ${normalized}`);
   return true;
 }
@@ -2518,6 +3030,7 @@ async function saasRequestWithForm(path, formData, { auth = false } = {}) {
 function applyStoreDataset(dataset) {
   if (!dataset || typeof dataset !== 'object') return;
   if (dataset.config && typeof dataset.config === 'object') state.config = dataset.config;
+  applyAppearanceFromConfig();
   if (dataset.settings && typeof dataset.settings === 'object') state.saas.settings = dataset.settings;
   if (Array.isArray(dataset.categories)) state.categories = dataset.categories;
   if (Array.isArray(dataset.products)) state.products = dataset.products;
@@ -2587,6 +3100,74 @@ async function saveBotSettings() {
     if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Сохранено. Новое приветствие работает в /start.';
   } catch (error) {
     if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+  }
+}
+
+function renderProfileBotConnectSection() {
+  if (!ui.profileBotConnectSection) return;
+  const show = Boolean(state.admin.enabled);
+  ui.profileBotConnectSection.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  if (ui.profileBotStoreIdValue) {
+    ui.profileBotStoreIdValue.textContent = state.saas.storeId || '—';
+  }
+  const botUsername = String(getCurrentStoreMeta()?.botUsername || '').trim();
+  if (ui.profileBotUsernameValue) {
+    ui.profileBotUsernameValue.textContent = botUsername || 'не подключен';
+  }
+  if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
+    if (!state.saas.storeId) {
+      ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID), затем подключите бота.';
+    } else {
+      ui.profileBotConnectStatus.textContent = botUsername
+        ? `Бот подключен: ${botUsername}`
+        : 'Бот пока не подключен. Вставьте Bot Token и сохраните.';
+    }
+  }
+}
+
+async function saveProfileBotConnection() {
+  if (!state.admin.enabled) return;
+  if (!state.saas.storeId) {
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID).';
+    return;
+  }
+  if (!requireAdminFeatureAccess()) return;
+  const botToken = String(ui.profileBotTokenInput?.value || '').trim();
+  if (!botToken || !botToken.includes(':')) {
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Введите корректный Bot Token (формат 123456:ABC...).';
+    return;
+  }
+  if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Подключаем бота...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { botToken },
+    });
+    const botUsername = String(payload?.botUsername || '').trim();
+    if (Array.isArray(state.saas.stores)) {
+      state.saas.stores = state.saas.stores.map((store) => {
+        if (String(store?.storeId || '').trim().toUpperCase() !== String(state.saas.storeId || '').trim().toUpperCase()) return store;
+        return {
+          ...store,
+          botUsername: botUsername || store.botUsername || '',
+        };
+      });
+    }
+    if (ui.profileBotTokenInput) ui.profileBotTokenInput.value = '';
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = botUsername
+        ? `Бот подключен: ${botUsername}`
+        : 'Бот подключен.';
+    }
+    await saasLoadStoresList();
+    renderProfileBotConnectSection();
+  } catch (error) {
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = `Ошибка подключения: ${String(error?.message || 'unknown')}`;
+    }
   }
 }
 
@@ -2798,7 +3379,8 @@ function loadStorage() {
   state.promoAmount = Number(readScopedStorage('demo_catalog_promo_amount', '0') || 0) || 0;
   state.promoKind = String(readScopedStorage('demo_catalog_promo_kind', '') || '').trim();
   state.recentlyViewed = safeParse(readScopedStorage('demo_catalog_recent', '[]'), []).filter(Boolean).slice(0, 12);
-  state.theme = String(readScopedStorage('demo_catalog_theme', 'dark')) === 'light' ? 'light' : 'dark';
+  state.theme = normalizeThemeCode(readScopedStorage('demo_catalog_theme', 'dark'));
+  state.accent = normalizeAccentCode(readScopedStorage('demo_catalog_accent', 'rose'));
   state.selectedStoreId = readScopedStorage('demo_catalog_selected_store', '') || null;
   state.promoUsage = safeParse(readScopedStorage('demo_catalog_promo_usage', '{}'), {});
   const productStats = safeParse(readScopedStorage('demo_catalog_product_stats', '{}'), {});
@@ -2822,6 +3404,7 @@ function saveStorage() {
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_kind'), state.promoKind || '');
     localStorage.setItem(scopedStorageKey('demo_catalog_recent'), JSON.stringify(state.recentlyViewed || []));
     localStorage.setItem(scopedStorageKey('demo_catalog_theme'), state.theme || 'dark');
+    localStorage.setItem(scopedStorageKey('demo_catalog_accent'), state.accent || 'rose');
     localStorage.setItem(scopedStorageKey('demo_catalog_selected_store'), state.selectedStoreId || '');
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_usage'), JSON.stringify(state.promoUsage || {}));
     localStorage.setItem(scopedStorageKey('demo_catalog_product_stats'), JSON.stringify(state.productStats || {}));
@@ -2849,17 +3432,89 @@ async function saasTrackEvent(eventType, { productId = '', payload = {} } = {}) 
   }
 }
 
-function applyTheme(theme) {
-  const nextTheme = theme === 'light' ? 'light' : 'dark';
-  state.theme = nextTheme;
-  document.documentElement.setAttribute('data-theme', nextTheme);
-  if (ui.themeToggleValue) ui.themeToggleValue.textContent = nextTheme === 'light' ? 'Светлая' : 'Тёмная';
-  if (ui.themeLabel) ui.themeLabel.textContent = nextTheme === 'light' ? '☀️ Тема оформления' : '🌙 Тема оформления';
+function normalizeThemeCode(rawTheme) {
+  const value = String(rawTheme || '').trim().toLowerCase();
+  if (value === 'light') return 'white';
+  if (THEME_OPTIONS[value]) return value;
+  return 'dark';
 }
 
-function toggleTheme() {
-  applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+function normalizeAccentCode(rawAccent) {
+  const value = String(rawAccent || '').trim().toLowerCase();
+  if (value === 'pink') return 'rose';
+  if (ACCENT_OPTIONS[value]) return value;
+  return 'rose';
+}
+
+function normalizeAppearanceConfig(rawAppearance, fallbackAppearance = DEFAULT_APPEARANCE) {
+  const fallbackTheme = normalizeThemeCode(fallbackAppearance?.theme || DEFAULT_APPEARANCE.theme);
+  const fallbackAccent = normalizeAccentCode(fallbackAppearance?.accent || DEFAULT_APPEARANCE.accent);
+  const source = rawAppearance && typeof rawAppearance === 'object' ? rawAppearance : {};
+  return {
+    theme: normalizeThemeCode(source.theme || fallbackTheme),
+    accent: normalizeAccentCode(source.accent || fallbackAccent),
+  };
+}
+
+function ensureConfigAppearance({ fallbackToState = false } = {}) {
+  if (!state.config || typeof state.config !== 'object') state.config = {};
+  const source = state.config.appearance && typeof state.config.appearance === 'object'
+    ? state.config.appearance
+    : { theme: state.config.theme, accent: state.config.accent };
+  const fallback = fallbackToState
+    ? { theme: state.theme, accent: state.accent }
+    : DEFAULT_APPEARANCE;
+  const normalized = normalizeAppearanceConfig(source, fallback);
+  state.config.appearance = normalized;
+  // Оставляем дублирующие ключи для обратной совместимости со старыми датасетами.
+  state.config.theme = normalized.theme;
+  state.config.accent = normalized.accent;
+  return normalized;
+}
+
+function applyAppearanceFromConfig(options = {}) {
+  const appearance = ensureConfigAppearance(options);
+  applyAppearance(appearance.theme, appearance.accent);
+  return appearance;
+}
+
+function updateAdminAppearanceDraft(patch = {}) {
+  if (!state.admin.enabled) return;
+  const current = ensureConfigAppearance({ fallbackToState: true });
+  const next = normalizeAppearanceConfig(
+    {
+      theme: Object.prototype.hasOwnProperty.call(patch, 'theme') ? patch.theme : current.theme,
+      accent: Object.prototype.hasOwnProperty.call(patch, 'accent') ? patch.accent : current.accent,
+    },
+    current,
+  );
+  state.config.appearance = next;
+  state.config.theme = next.theme;
+  state.config.accent = next.accent;
+  applyAppearance(next.theme, next.accent);
   saveStorage();
+  adminSaveDraft(true);
+}
+
+function applyTheme(theme) {
+  const nextTheme = normalizeThemeCode(theme);
+  const config = THEME_OPTIONS[nextTheme] || THEME_OPTIONS.dark;
+  state.theme = nextTheme;
+  document.documentElement.setAttribute('data-theme', config.domTheme);
+  document.documentElement.setAttribute('data-theme-mode', config.mode);
+  if (ui.themeSelect) ui.themeSelect.value = nextTheme;
+}
+
+function applyAccent(accent) {
+  const nextAccent = normalizeAccentCode(accent);
+  state.accent = nextAccent;
+  document.documentElement.setAttribute('data-accent', nextAccent);
+  if (ui.accentSelect) ui.accentSelect.value = nextAccent;
+}
+
+function applyAppearance(theme = state.theme, accent = state.accent) {
+  applyTheme(theme);
+  applyAccent(accent);
 }
 
 function dismissKeyboardIfNeeded(eventTarget) {
@@ -2898,57 +3553,6 @@ function normalizePhone(value) {
   return `+${digits}`;
 }
 
-function getTelegramPhoneCandidate() {
-  const source = window.HORECA_TG?.initDataUnsafe || {};
-  return normalizePhone(String(
-    source?.user?.phone_number ||
-    source?.user?.contact?.phone_number ||
-    source?.phone_number ||
-    source?.contact?.phone_number ||
-    source?.receiver?.phone_number ||
-    ''
-  ).trim());
-}
-
-async function tryAutofillPhoneFromTelegram({ forceRequest = false } = {}) {
-  if (!ui.inputPhone) return false;
-
-  const currentNormalized = normalizePhone(ui.inputPhone.value);
-  if (validatePhone(currentNormalized)) {
-    if (currentNormalized !== ui.inputPhone.value) ui.inputPhone.value = currentNormalized;
-    state.phoneAutofillSucceeded = true;
-    saveProfileDraft();
-    return true;
-  }
-
-  const immediatePhone = getTelegramPhoneCandidate();
-  if (immediatePhone) {
-    ui.inputPhone.value = immediatePhone;
-    state.phoneAutofillSucceeded = true;
-    saveProfileDraft();
-    if (ui.orderStatus) ui.orderStatus.textContent = 'Номер автоматически подставлен из Telegram.';
-    return true;
-  }
-
-  if (!window.HORECA_TG?.isTelegram) return false;
-  if (!forceRequest && state.phoneAutofillAttempted) return false;
-  state.phoneAutofillAttempted = true;
-  if (ui.orderStatus) ui.orderStatus.textContent = 'Запрашиваем номер телефона...';
-
-  const result = await window.HORECA_TG.requestContact();
-  const resultPhone = normalizePhone(result?.phone || '');
-  if (result?.ok && resultPhone) {
-    ui.inputPhone.value = resultPhone;
-    state.phoneAutofillSucceeded = true;
-    saveProfileDraft();
-    if (ui.orderStatus) ui.orderStatus.textContent = 'Номер получен из Telegram.';
-    return true;
-  }
-
-  if (ui.orderStatus) ui.orderStatus.textContent = 'Не удалось получить номер. Укажите его вручную.';
-  return false;
-}
-
 function getProduct(id) { return state.products.find((p) => p.id === id); }
 
 function cartItems() {
@@ -2966,13 +3570,14 @@ function cartSummary() {
   let count = 0;
   let requestCount = 0;
   selected.forEach((item) => {
+    const priceView = getProductPriceView(item, { withOldPrice: false });
     count += item.qty || 0;
-    if (!hasPrice(item)) {
+    if (!priceView.hasPrice) {
       missing = true;
       requestCount += item.qty || 0;
       return;
     }
-    const lineSum = item.price * item.qty;
+    const lineSum = Number(priceView.finalPrice || 0) * (item.qty || 0);
     sum += lineSum;
     if (state.promoKind === 'first_order' && isEligibleFirstOrderPromoItem(item)) {
       eligibleSum += lineSum;
@@ -3056,6 +3661,8 @@ function adminToggleSelectionMode(scope = '') {
   applyAdminModeUi();
   if (state.currentScreen === 'categories') renderCategories();
   if (state.currentScreen === 'products') renderProducts();
+  if (state.currentScreen === 'home') renderHomeBanners();
+  if (state.currentScreen === 'product') renderProductView();
   reportStatus(state.admin.selectionMode ? 'Режим выделения включен' : 'Режим выделения выключен');
 }
 
@@ -3066,6 +3673,8 @@ function adminSelectItem(type, id) {
   applyAdminModeUi();
   if (type === 'category') renderCategories();
   if (type === 'product') renderProducts();
+  if (type === 'banner') renderHomeBanners();
+  if (type === 'image') renderProductView();
 }
 
 function adminMoveSelected(direction) {
@@ -3113,10 +3722,47 @@ function adminMoveSelected(direction) {
     adminSaveDraft(true);
     renderProducts();
     reportStatus('Порядок товаров обновлен');
+    return;
+  }
+
+  if (state.admin.selectedType === 'banner') {
+    if (!['left', 'right', 'up', 'down'].includes(direction)) return;
+    const list = Array.isArray(state.config.homeBanners) ? state.config.homeBanners : [];
+    const fromIdx = list.findIndex((item, idx) => String(item?.id || `banner-${idx + 1}`) === state.admin.selectedId);
+    if (fromIdx < 0) return;
+    const step = (direction === 'left' || direction === 'up') ? -1 : 1;
+    const toIdx = Math.max(0, Math.min(list.length - 1, fromIdx + step));
+    if (toIdx === fromIdx) return;
+    const [item] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, item);
+    state.config.homeBanners = list;
+    adminSaveDraft(true);
+    renderHomeBanners();
+    reportStatus('Порядок баннеров обновлен');
+    return;
+  }
+
+  if (state.admin.selectedType === 'image') {
+    const p = getProduct(state.currentProduct);
+    if (!p || !Array.isArray(p.images) || !p.images.length) return;
+    const fromIdx = parseProductImageSelectionId(state.admin.selectedId, p.id);
+    if (fromIdx < 0 || fromIdx >= p.images.length) {
+      reportStatus('Выберите фото для перемещения');
+      return;
+    }
+    const step = (direction === 'left' || direction === 'up') ? -1 : 1;
+    const toIdx = moveProductImageByOffset(p, fromIdx, step);
+    if (toIdx < 0 || toIdx === fromIdx) return;
+    state.admin.selectedId = buildProductImageSelectionId(p.id, toIdx);
+    adminSaveDraft(true);
+    renderProductView();
+    reportStatus('Порядок фото обновлен');
   }
 }
 
 function renderCategories() {
+  const promoCatalog = ensurePromoCatalogConfig();
+  renderPromoCatalogLabels();
   const list = getVisibleCategories();
   if (!list.length) {
     ui.categoriesGrid.innerHTML = `
@@ -3142,12 +3788,12 @@ function renderCategories() {
   `;
   }).join('');
   const promoPreview = getPromoProducts()[0];
-  const promoImage = promoPreview?.images?.[0] || state.products[0]?.images?.[0] || 'assets/placeholder.svg';
+  const promoImage = promoCatalog.image || promoPreview?.images?.[0] || state.products[0]?.images?.[0] || 'assets/placeholder.svg';
   ui.categoriesGrid.innerHTML = `
     ${categoryCards}
     <button class="category-card promo-category-card" data-open-screen="promo" type="button">
       <img src="${safeSrc(promoImage)}" alt="Акции" loading="lazy" decoding="async" />
-      <span>Акции</span>
+      <span>${escapeHtml(promoCatalog.title)}</span>
     </button>
   `;
   if (state.admin.enabled) adminSaveDraft(true);
@@ -3155,14 +3801,11 @@ function renderCategories() {
 }
 
 function buildProductCards(list, options = {}) {
-  const promoMode = options.promo === true;
   return list.map((p) => {
-    const hasValidPrice = hasPrice(p);
-    const promoNew = promoMode ? discountedPrice(p, 10) : null;
-    const showPromo = promoMode && hasValidPrice;
+    const priceView = getProductPriceView(p);
     return `
     <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && state.admin.selectedId === p.id ? ' admin-selected-target' : ''}" data-open="${p.id}">
-      ${showPromo ? `<div class="promo-badge promo-badge-inline">-10%</div>` : ''}
+      ${priceView.badgeHtml}
       <button class="card-icon favorite ${state.favorites.has(p.id) ? 'active' : ''}" data-favorite="${p.id}" aria-label="В избранное">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
@@ -3174,9 +3817,7 @@ function buildProductCards(list, options = {}) {
         <div class="product-meta">${p.shortDescription || ''}</div>
         <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
         <div class="product-price">
-          ${promoMode && hasValidPrice
-            ? `<span class="promo-new">${formatPrice(promoNew)} ₽</span><span class="promo-old">${formatPrice(p.price)} ₽</span>`
-            : priceLabel(p)}
+          ${priceView.html}
         </div>
         ${state.cart[p.id]
           ? `
@@ -3186,7 +3827,7 @@ function buildProductCards(list, options = {}) {
               <button class="qty-btn" data-qty-inc="${p.id}" type="button">+</button>
             </div>
           `
-          : hasValidPrice ? `
+          : priceView.hasPrice ? `
             <button class="card-icon cart" data-cart="${p.id}" aria-label="В корзину">
               <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m15 11-1 9" />
@@ -3235,7 +3876,7 @@ function renderProducts() {
 }
 
 function getPromoProducts() {
-  return state.products.filter((p) => hasPrice(p));
+  return state.products.filter((p) => hasPrice(p) && getProductPromoPercent(p) > 0);
 }
 
 function getRecommendedProducts(product, limit = 8) {
@@ -3250,19 +3891,21 @@ function getRecommendedProducts(product, limit = 8) {
 function renderPromos() {
   const list = getPromoProducts();
   const filtered = applyFilters(list, state.filters.promo);
+  const homePromoList = list.slice(0, 10);
   if (ui.promoTrack) {
     ui.promoTrack.innerHTML = `
-      <div class="home-carousel-inner" data-carousel-inner="promo">
-      ${list.map((p) => {
-      const newPrice = Math.round((p.price || 0) * 0.9);
+      <div class="home-v2-rail-inner" data-carousel-inner="promo">
+      ${homePromoList.map((p) => {
+      const promoPercent = getProductPromoPercent(p);
+      const newPrice = getProductPromoPrice(p, promoPercent);
       return `
-    <article class="promo-card" data-open="${p.id}">
-      <div class="promo-badge">-10%</div>
+    <article class="home-v2-product-card" data-open="${p.id}">
+      <div class="home-v2-discount-badge">-${promoPercent}%</div>
       <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
-      <div class="promo-title">${p.title}</div>
-      <div class="promo-price">
-        <span class="promo-new">${formatPrice(newPrice)} ₽</span>
-        <span class="promo-old">${formatPrice(p.price)} ₽</span>
+      <div class="home-v2-product-title">${p.title}</div>
+      <div class="home-v2-product-price">
+        <span class="home-v2-price-new">${formatPrice(newPrice)} ₽</span>
+        <span class="home-v2-price-old">${formatPrice(p.price)} ₽</span>
       </div>
     </article>
       `;
@@ -3270,6 +3913,7 @@ function renderPromos() {
       </div>
     `;
     applyHomeTrackSizing();
+    ensureHomeTrackScroll(ui.promoTrack, { promo: true });
     bindHorizontalTrackSwipe(ui.promoTrack);
   }
   if (ui.promoList) {
@@ -3287,7 +3931,10 @@ function renderPromos() {
 }
 
 function setHomeBanner(index) {
-  if (!ui.homeBannerTrack) return;
+  if (!ui.homeBannerTrack || state.admin.enabled || ui.homeBannerTrack.classList.contains('is-admin-scroll')) {
+    state.homeBannerIndex = 0;
+    return;
+  }
   const slidesCount = ui.homeBannerTrack.children.length || 1;
   const nextIndex = Math.max(0, Math.min(slidesCount - 1, Number(index || 0)));
   state.homeBannerIndex = nextIndex;
@@ -3305,10 +3952,12 @@ function startHomeBannerAutoplay() {
     state.homeBannerTimer = null;
   }
   if (state.admin.enabled) return;
-  if (!ui.homeBannerTrack) return;
+  if (!ui.homeBannerTrack || ui.homeBannerTrack.classList.contains('is-admin-scroll')) return;
+  if (state.currentScreen !== 'home') return;
   const slidesCount = ui.homeBannerTrack.children.length || 1;
   if (slidesCount <= 1) return;
   state.homeBannerTimer = window.setInterval(() => {
+    if (state.currentScreen !== 'home') return;
     const next = (state.homeBannerIndex + 1) % slidesCount;
     setHomeBanner(next);
   }, 5000);
@@ -3336,12 +3985,12 @@ function getPopularityStats(productId) {
   };
 }
 
-function getPopularProducts(limit = 8) {
+function getPopularProducts(limit = 10) {
   const source = state.products.filter((p) => hasPrice(p));
   if (!source.length) return [];
   const scored = source.map((product) => {
     const stats = getPopularityStats(product.id);
-    const score = (stats.orderedQty * 12) + (stats.orderCount * 20) + stats.views;
+    const score = (stats.views * 1000) + (stats.orderCount * 25) + (stats.orderedQty * 10);
     return { product, score, stats };
   });
   const hasSignals = scored.some((item) => item.score > 0);
@@ -3358,28 +4007,34 @@ function getPopularProducts(limit = 8) {
 
 function renderHomePopular() {
   if (!ui.homePopularTrack) return;
-  const popular = getPopularProducts(8);
+  const popular = getPopularProducts(10);
   if (!popular.length) {
     ui.homePopularTrack.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-title">Популярные товары появятся после первых просмотров и заказов</div>
-      </div>
+      <div class="home-v2-empty">Популярные товары появятся после просмотров карточек</div>
     `;
-    applyHomeTrackSizing();
     return;
   }
   ui.homePopularTrack.innerHTML = `
-    <div class="home-carousel-inner" data-carousel-inner="popular">
-    ${popular.map((p) => `
-    <article class="promo-card" data-open="${p.id}">
-      <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
-      <div class="promo-title">${p.title}</div>
-      <div class="promo-price">${priceLabel(p)}</div>
-    </article>
-    `).join('')}
+    <div class="home-v2-rail-inner" data-carousel-inner="popular">
+      ${popular.map((p) => {
+      const priceView = getProductPriceView(p);
+      return `
+      <article class="home-v2-product-card" data-open="${p.id}">
+        ${priceView.hasPromo ? `<div class="home-v2-discount-badge">-${priceView.promoPercent}%</div>` : ''}
+        <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
+        <div class="home-v2-product-title">${p.title}</div>
+        <div class="home-v2-product-price">
+          ${priceView.hasPromo
+            ? `<span class="home-v2-price-new">${formatPrice(priceView.finalPrice)} ₽</span><span class="home-v2-price-old">${formatPrice(priceView.oldPrice)} ₽</span>`
+            : `<span class="home-v2-price-new">${priceLabel(p)}</span>`}
+        </div>
+      </article>
+      `;
+    }).join('')}
     </div>
   `;
   applyHomeTrackSizing();
+  ensureHomeTrackScroll(ui.homePopularTrack, { promo: true });
   bindHorizontalTrackSwipe(ui.homePopularTrack);
 }
 
@@ -3509,15 +4164,43 @@ function renderProductView() {
     })
     .join('');
   const recommended = getRecommendedProducts(p, 10);
+  const productPromoPercent = getProductPromoPercent(p);
+  const productPromoPrice = getProductPromoPrice(p, productPromoPercent);
+  const hasProductPromo = hasPrice(p) && productPromoPercent > 0;
+  const selectedImageIndex = (state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'image')
+    ? parseProductImageSelectionId(state.admin.selectedId, p.id)
+    : -1;
   ui.productView.innerHTML = `
     <div class="product-hero">
-      ${state.admin.enabled ? '<button class="admin-inline-plus admin-inline-plus-hero" data-admin-add="image" type="button" aria-label="Добавить фото">+</button>' : ''}
-      <div class="product-gallery">${p.images.map((src) => `<img src="${safeSrc(src)}" alt="${p.title}" loading="lazy" decoding="async" />`).join('')}</div>
+      ${state.admin.enabled ? `
+      <div class="product-image-controls">
+        <button class="admin-catalog-select" data-admin-select-toggle="image" type="button">Выделить фото</button>
+        <button class="admin-inline-move" data-admin-move="left" data-admin-move-scope="image" type="button" aria-label="Сдвинуть фото влево">←</button>
+        <button class="admin-inline-move" data-admin-move="right" data-admin-move-scope="image" type="button" aria-label="Сдвинуть фото вправо">→</button>
+        <button class="admin-inline-plus admin-inline-delete" data-admin-image-action="delete" type="button" aria-label="Удалить выделенное фото">×</button>
+        <button class="admin-inline-plus" data-admin-add="image" type="button" aria-label="Добавить фото">+</button>
+      </div>
+      ` : ''}
+      <div class="product-gallery">${p.images.map((src, index) => `
+        <img
+          class="${selectedImageIndex === index ? 'admin-selected-target' : ''}"
+          src="${safeSrc(src)}"
+          alt="${p.title}"
+          loading="lazy"
+          decoding="async"
+          data-product-image-id="${escapeHtml(buildProductImageSelectionId(p.id, index))}"
+          data-product-image-index="${index}"
+        />
+      `).join('')}</div>
     </div>
     <div class="product-title">${p.title}</div>
     <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
     <div class="product-price-row">
-      <div class="product-price">${priceLabel(p)}</div>
+      <div class="product-price">
+        ${hasProductPromo
+          ? `<span class="promo-new">${formatPrice(productPromoPrice)} ₽</span><span class="promo-old">${formatPrice(p.price)} ₽</span><span class="promo-badge promo-badge-inline">-${productPromoPercent}%</span>`
+          : priceLabel(p)}
+      </div>
       ${state.cart[p.id]
         ? `
           <div class="product-qty" data-qty="${p.id}">
@@ -3529,6 +4212,7 @@ function renderProductView() {
         : hasPrice(p)
           ? `<button class="primary-button" data-cart="${p.id}">В корзину</button>`
           : `<button class="primary-button" data-request="${p.id}">Запросить</button>`}
+      ${state.admin.enabled ? `<button class="secondary-button admin-promo-button" data-admin-promo="${p.id}" type="button">${productPromoPercent > 0 ? `Скидка: ${productPromoPercent}%` : 'Добавить в акции'}</button>` : ''}
     </div>
     <div class="detail-section">
       <div class="section-title section-title-admin">
@@ -3571,8 +4255,11 @@ function renderFavorites() {
   if (ui.favoritesSelectAll) {
     ui.favoritesSelectAll.checked = list.length && list.every((p) => state.selectedFavorites.has(p.id));
   }
-  ui.favoritesList.innerHTML = list.map((p) => `
+  ui.favoritesList.innerHTML = list.map((p) => {
+    const priceView = getProductPriceView(p);
+    return `
     <article class="product-card">
+      ${priceView.badgeHtml}
       <label class="select-dot">
         <input type="checkbox" data-fav-select="${p.id}" ${state.selectedFavorites.has(p.id) ? 'checked' : ''} />
         <span></span>
@@ -3581,7 +4268,7 @@ function renderFavorites() {
       <div>
         <div class="product-title">${p.title}</div>
         <div class="product-meta">${p.shortDescription || ''}</div>
-        <div class="product-price">${priceLabel(p)}</div>
+        <div class="product-price">${priceView.html}</div>
         <div class="product-actions icon-actions favorites-controls">
           <button class="icon-btn" data-cart="${p.id}" aria-label="В корзину" ${p.missing ? 'disabled' : ''}>
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3603,7 +4290,8 @@ function renderFavorites() {
         </div>
       </div>
     </article>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderCart() {
@@ -3613,7 +4301,9 @@ function renderCart() {
     saveStorage();
   }
   const summary = cartSummary();
-  ui.cartList.innerHTML = items.map((p) => `
+  ui.cartList.innerHTML = items.map((p) => {
+    const priceView = getProductPriceView(p);
+    return `
     <div class="cart-item">
       <label class="select-dot">
         <input type="checkbox" data-cart-select="${p.id}" ${state.selectedCart.has(p.id) ? 'checked' : ''} />
@@ -3623,7 +4313,7 @@ function renderCart() {
       <div class="cart-info">
         <button class="cart-title-link" data-open="${p.id}">${p.title}</button>
         <div class="cart-sku">Артикул: ${getSku(p) || '—'}</div>
-        <div class="cart-price">${priceLabel(p)}</div>
+        <div class="cart-price">${priceView.html}</div>
       </div>
       <div class="cart-controls">
         <button class="qty-btn" data-qty="${p.id}" data-action="dec">−</button>
@@ -3645,7 +4335,8 @@ function renderCart() {
         </button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
   ui.cartTotal.textContent = formatSummaryTotal(summary);
   if (ui.cartItemsCount) {
     ui.cartItemsCount.textContent = items.reduce((s, i) => s + i.qty, 0);
@@ -4055,6 +4746,200 @@ async function renderAdminStatsOrders() {
   });
 }
 
+function normalizeOrderProcessingMode(raw) {
+  return String(raw || '').trim().toLowerCase() === 'chat' ? 'chat' : 'payment';
+}
+
+function isValidTelegramChatId(value) {
+  return /^-?[0-9]{5,20}$/.test(String(value || '').trim());
+}
+
+function isValidHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeOrderRequestChannel(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram_chat' || value === 'telegram' || value === 'admin_bot') return 'telegram_chat';
+  if (value === 'webhook' || value === 'http_webhook') return 'webhook';
+  if (value === 'external') return 'messenger_link';
+  if (value === 'messenger_link' || value === 'messenger' || value === 'link') return 'messenger_link';
+  return 'telegram_chat';
+}
+
+function getOrderRequestChannelMeta(channel) {
+  const code = normalizeOrderRequestChannel(channel);
+  if (code === 'telegram_chat') {
+    return {
+      label: 'Chat ID Telegram',
+      placeholder: 'Например: -1001234567890',
+      hint: 'Добавьте admin-бота в Telegram-чат: он отправит Chat ID автоматически.',
+    };
+  }
+  if (code === 'webhook') {
+    return {
+      label: 'Webhook URL',
+      placeholder: 'https://example.com/order-webhook',
+      hint: 'Система отправит JSON заказа по HTTP POST. Подходит для любых мессенджеров через интеграторы.',
+    };
+  }
+  return {
+    label: 'Ссылка/шаблон мессенджера',
+    placeholder: 'https://wa.me/7900...?text={message}',
+    hint: 'Можно указать ссылку VK/WhatsApp/MAX и шаблон с параметрами: {message}, {order_id}, {store_id}, {total}, {customer_name}, {customer_phone}.',
+  };
+}
+
+function validateOrderRequestTarget(channel, target) {
+  const code = normalizeOrderRequestChannel(channel);
+  const raw = String(target || '').trim();
+  if (!raw) return false;
+  if (code === 'telegram_chat') return isValidTelegramChatId(raw);
+  return isValidHttpUrl(raw);
+}
+
+function getOrderChatSettingsDraft(sourceSettings = null) {
+  const settings = sourceSettings && typeof sourceSettings === 'object'
+    ? sourceSettings
+    : (state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {});
+  const mode = normalizeOrderProcessingMode(settings.orderProcessingMode || '');
+  const hasRequestUrl = Boolean(String(settings.orderRequestTarget || settings.orderRequestUrl || settings.orderRequestWebhookUrl || '').trim());
+  const inferredChannel = settings.orderRequestChannelType
+    || settings.orderRequestSender
+    || (hasRequestUrl ? (String(settings.orderRequestWebhookUrl || '').trim() ? 'webhook' : 'messenger_link') : '');
+  const channel = normalizeOrderRequestChannel(
+    inferredChannel,
+  );
+  const target = channel === 'telegram_chat'
+    ? String(settings.orderRequestChatId || settings.orderChatId || settings.chatId || settings.telegramChatId || '').trim()
+    : String(settings.orderRequestTarget || settings.orderRequestUrl || settings.orderRequestWebhookUrl || '').trim();
+  return {
+    mode,
+    channel,
+    target,
+    targetValid: validateOrderRequestTarget(channel, target),
+  };
+}
+
+function renderOrderChatSettings({ fromInputs = false } = {}) {
+  const draft = fromInputs
+    ? {
+      mode: normalizeOrderProcessingMode(ui.orderChatModeInput?.value || 'chat'),
+      channel: normalizeOrderRequestChannel(ui.orderRequestChannelInput?.value || 'telegram_chat'),
+      target: String(ui.orderRequestTargetInput?.value || '').trim(),
+      targetValid: validateOrderRequestTarget(
+        ui.orderRequestChannelInput?.value || 'telegram_chat',
+        ui.orderRequestTargetInput?.value || '',
+      ),
+    }
+    : getOrderChatSettingsDraft();
+
+  const channelMeta = getOrderRequestChannelMeta(draft.channel);
+
+  if (!fromInputs) {
+    if (ui.orderChatModeInput) ui.orderChatModeInput.value = draft.mode;
+    if (ui.orderRequestChannelInput) ui.orderRequestChannelInput.value = draft.channel;
+    if (ui.orderRequestTargetInput) ui.orderRequestTargetInput.value = draft.target;
+  }
+
+  if (ui.orderRequestTargetLabel) {
+    if (ui.orderRequestTargetLabel.firstChild && ui.orderRequestTargetLabel.firstChild.nodeType === 3) {
+      ui.orderRequestTargetLabel.firstChild.textContent = `${channelMeta.label} `;
+    }
+  }
+  if (ui.orderRequestTargetInput) {
+    ui.orderRequestTargetInput.placeholder = channelMeta.placeholder;
+  }
+  if (ui.orderRequestHint) {
+    ui.orderRequestHint.textContent = channelMeta.hint;
+  }
+
+  if (ui.orderChatStatus) {
+    if (draft.mode === 'chat') {
+      if (draft.targetValid) {
+        if (draft.channel === 'telegram_chat') {
+          ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в Telegram Chat ID.';
+        } else if (draft.channel === 'webhook') {
+          ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в webhook.';
+        } else {
+          ui.orderChatStatus.textContent = 'Режим заявок активен: заказ будет открыт через ссылку мессенджера.';
+        }
+      } else {
+        ui.orderChatStatus.textContent = draft.channel === 'telegram_chat'
+          ? 'Для режима заявок укажите корректный Chat ID Telegram.'
+          : 'Для режима заявок укажите корректную ссылку (http/https).';
+      }
+    } else {
+      ui.orderChatStatus.textContent = draft.targetValid
+        ? 'Режим онлайн-оплаты активен. Канал заявок сохранён как резервный.'
+        : 'Режим онлайн-оплаты активен.';
+    }
+  }
+}
+
+async function saveOrderChatSettings() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const mode = normalizeOrderProcessingMode(ui.orderChatModeInput?.value || 'chat');
+  const channel = normalizeOrderRequestChannel(ui.orderRequestChannelInput?.value || 'telegram_chat');
+  const target = String(ui.orderRequestTargetInput?.value || '').trim();
+  if (mode === 'chat' && !validateOrderRequestTarget(channel, target)) {
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = channel === 'telegram_chat'
+        ? 'Введите корректный Chat ID Telegram (например: -1001234567890).'
+        : 'Введите корректную ссылку (http/https).';
+    }
+    return;
+  }
+  if (target && !validateOrderRequestTarget(channel, target)) {
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = channel === 'telegram_chat'
+        ? 'Chat ID должен содержать только цифры и опциональный знак "-".'
+        : 'Ссылка должна начинаться с http:// или https://';
+    }
+    return;
+  }
+  if (ui.orderChatStatus) ui.orderChatStatus.textContent = 'Сохраняем настройки заявок...';
+  try {
+    const telegramChatId = channel === 'telegram_chat' ? target : '';
+    const requestTarget = channel === 'telegram_chat' ? '' : target;
+    const patch = {
+      ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+      orderProcessingMode: mode,
+      orderRequestSender: channel === 'telegram_chat' ? 'admin_bot' : 'external',
+      orderRequestChannelType: channel,
+      orderRequestTarget: requestTarget,
+      orderRequestChatId: telegramChatId,
+      orderChatId: telegramChatId,
+      chatId: telegramChatId,
+      telegramChatId: telegramChatId,
+    };
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    renderOrderChatSettings();
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = mode === 'chat'
+        ? 'Режим заявок сохранён.'
+        : 'Режим онлайн-оплаты сохранён.';
+    }
+  } catch (error) {
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    }
+  }
+}
+
 function renderProfile() {
   const user = getTelegramUser();
   const saasUser = state.saas.userProfile && typeof state.saas.userProfile === 'object' ? state.saas.userProfile : {};
@@ -4082,6 +4967,11 @@ function renderProfile() {
       ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
     }
   }
+  if (ui.profileAppearancePanel) {
+    ui.profileAppearancePanel.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (ui.themeSelect) ui.themeSelect.value = normalizeThemeCode(state.theme);
+  if (ui.accentSelect) ui.accentSelect.value = normalizeAccentCode(state.accent);
   if (ui.adminProfilePanel) {
     const showAdminPanel = Boolean(state.admin.enabled && state.saas.storeId);
     ui.adminProfilePanel.classList.toggle('hidden', !showAdminPanel);
@@ -4089,13 +4979,18 @@ function renderProfile() {
       ui.adminStoreIdValue.textContent = state.saas.storeId;
     }
   }
+  renderProfileBotConnectSection();
   if (ui.profileSubscriptionSection) {
     ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
   }
-  if (ui.profilePaymentLinkSection) {
-    ui.profilePaymentLinkSection.classList.toggle('hidden', !state.admin.enabled);
+  if (ui.profileOrderChatSection) {
+    ui.profileOrderChatSection.classList.toggle('hidden', !state.admin.enabled);
   }
-  if (state.admin.enabled) renderPaymentLinkSettings();
+  if (ui.profilePaymentIntegrationSection) {
+    ui.profilePaymentIntegrationSection.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (state.admin.enabled) renderOrderChatSettings();
+  if (state.admin.enabled) renderPaymentIntegrationSettings();
   renderAdminPromoSettings();
   if (state.admin.enabled && ui.subscriptionStatus) {
     const t = getSelectedSubscriptionTariff();
@@ -4117,62 +5012,146 @@ function renderProfile() {
   }
 }
 
-function getPaymentLinkSettingsDraft() {
-  const settings = state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {};
-  const provider = String(
-    settings.paymentProvider
-    || settings.paymentGatewayProvider
-    || 'yookassa'
-  ).trim().toLowerCase();
-  const urlTemplate = String(
-    settings.paymentUrlTemplate
-    || settings.paymentLinkUrl
-    || settings.paymentUrl
-    || settings.yookassaUrl
+function normalizePaymentProviderCode(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'yookassa') return 'yookassa';
+  if (value === 'tbank' || value === 'tinkoff') return 'tbank';
+  if (value === 'robokassa') return 'robokassa';
+  if (value === 'alfabank' || value === 'alfa') return 'alfabank';
+  return 'yookassa';
+}
+
+function getPaymentProviderMeta(providerCode) {
+  return PAYMENT_PROVIDER_META[normalizePaymentProviderCode(providerCode)] || PAYMENT_PROVIDER_META.yookassa;
+}
+
+function normalizePaymentIntegrationSettings(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const provider = normalizePaymentProviderCode(source.provider);
+  const accountId = String(
+    source.accountId
+    || source.yookassaShopId
+    || source.shopId
+    || source.terminalKey
+    || source.merchantLogin
+    || source.userName
     || ''
   ).trim();
+  const secretConfigured = Boolean(source.secretConfigured || source.yookassaSecretConfigured);
+  const apiUrl = String(source.apiUrl || source.endpoint || '').trim();
+  const returnUrl = String(source.returnUrl || source.yookassaReturnUrl || '').trim();
+  const webhookUrl = String(source.webhookUrl || '').trim();
+  const meta = getPaymentProviderMeta(provider);
+  const configured = Boolean(source.configured)
+    || Boolean(
+      provider
+      && (!meta.needsAccount || accountId)
+      && (!meta.needsSecret || secretConfigured)
+    );
   return {
-    provider: provider || 'yookassa',
-    urlTemplate,
+    provider,
+    accountId,
+    secretConfigured,
+    apiUrl,
+    returnUrl,
+    webhookUrl,
+    configured,
   };
 }
 
-function renderPaymentLinkSettings() {
-  const draft = getPaymentLinkSettingsDraft();
-  if (ui.paymentProviderInput) ui.paymentProviderInput.value = draft.provider;
-  if (ui.paymentLinkInput) ui.paymentLinkInput.value = draft.urlTemplate;
-  if (ui.paymentLinkStatus) {
-    ui.paymentLinkStatus.textContent = draft.urlTemplate
-      ? `Текущая ссылка оплаты подключена (${draft.provider}).`
-      : 'Ссылка оплаты пока не задана.';
+function renderPaymentIntegrationSettings() {
+  const draft = normalizePaymentIntegrationSettings(state.paymentIntegration);
+  const meta = getPaymentProviderMeta(draft.provider);
+  if (ui.paymentIntegrationProviderInput) ui.paymentIntegrationProviderInput.value = draft.provider;
+  if (ui.paymentIntegrationAccountInput) ui.paymentIntegrationAccountInput.value = draft.accountId;
+  if (ui.paymentIntegrationAccountLabel) {
+    if (ui.paymentIntegrationAccountLabel.firstChild && ui.paymentIntegrationAccountLabel.firstChild.nodeType === 3) {
+      ui.paymentIntegrationAccountLabel.firstChild.textContent = `${meta.accountLabel} `;
+    }
+  }
+  if (ui.paymentIntegrationAccountInput) {
+    ui.paymentIntegrationAccountInput.placeholder = meta.accountPlaceholder;
+  }
+  if (ui.paymentIntegrationSecretLabel) {
+    if (ui.paymentIntegrationSecretLabel.firstChild && ui.paymentIntegrationSecretLabel.firstChild.nodeType === 3) {
+      ui.paymentIntegrationSecretLabel.firstChild.textContent = `${meta.secretLabel} `;
+    }
+  }
+  if (ui.paymentIntegrationSecretKeyInput) {
+    ui.paymentIntegrationSecretKeyInput.placeholder = meta.secretPlaceholder;
+  }
+  if (ui.paymentIntegrationSecretKeyInput) ui.paymentIntegrationSecretKeyInput.value = '';
+  if (ui.paymentIntegrationHint) {
+    ui.paymentIntegrationHint.textContent = meta.hint;
+  }
+  if (ui.paymentIntegrationWebhookUrl) {
+    ui.paymentIntegrationWebhookUrl.textContent = draft.webhookUrl || '—';
+  }
+  if (ui.paymentIntegrationStatus) {
+    if (draft.configured) {
+      ui.paymentIntegrationStatus.textContent = `Касса подключена (${meta.label}).`;
+    } else {
+      ui.paymentIntegrationStatus.textContent = `Касса не подключена (${meta.label}). Заполните обязательные поля.`;
+    }
   }
 }
 
-async function savePaymentLinkSettings() {
+async function loadPaymentIntegrationSettings() {
+  if (!state.admin.enabled || !state.saas.storeId || !state.saas.token) return;
+  try {
+    const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/payment-settings`, { auth: true });
+    const next = normalizePaymentIntegrationSettings(payload?.settings || {});
+    state.paymentIntegration = next;
+    renderPaymentIntegrationSettings();
+  } catch (error) {
+    if (ui.paymentIntegrationStatus) {
+      ui.paymentIntegrationStatus.textContent = `Ошибка загрузки настроек кассы: ${String(error?.message || 'unknown')}`;
+    }
+  }
+}
+
+async function savePaymentIntegrationSettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
   if (!requireAdminFeatureAccess()) return;
-  const provider = String(ui.paymentProviderInput?.value || 'custom').trim().toLowerCase();
-  const urlTemplate = String(ui.paymentLinkInput?.value || '').trim();
-  if (!urlTemplate) {
-    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = 'Введите ссылку оплаты.';
+  const provider = normalizePaymentProviderCode(ui.paymentIntegrationProviderInput?.value || 'yookassa');
+  const meta = getPaymentProviderMeta(provider);
+  const accountId = String(ui.paymentIntegrationAccountInput?.value || '').trim();
+  const secretKey = String(ui.paymentIntegrationSecretKeyInput?.value || '').trim();
+
+  if (!PAYMENT_PROVIDER_META[provider]) {
+    if (ui.paymentIntegrationStatus) ui.paymentIntegrationStatus.textContent = 'Выбран неподдерживаемый провайдер.';
     return;
   }
-  const patch = {
-    ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
-    paymentProvider: provider,
-    paymentUrlTemplate: urlTemplate,
-  };
-  if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = 'Сохраняем ссылку оплаты...';
+  if (meta.needsAccount && !accountId) {
+    if (ui.paymentIntegrationStatus) ui.paymentIntegrationStatus.textContent = `Введите поле "${meta.accountLabel}".`;
+    return;
+  }
+  // Return URL и API endpoint управляются системой, клиент задает только реквизиты кассы.
+  if (meta.needsSecret && !secretKey && !state.paymentIntegration?.secretConfigured) {
+    if (ui.paymentIntegrationStatus) ui.paymentIntegrationStatus.textContent = `Введите поле "${meta.secretLabel}".`;
+    return;
+  }
+
+  if (ui.paymentIntegrationStatus) ui.paymentIntegrationStatus.textContent = 'Сохраняем настройки кассы...';
   try {
-    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
-      method: 'POST',
+    const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/payment-settings`, {
+      method: 'PUT',
       auth: true,
-      body: { settings: patch },
+      body: {
+        provider,
+        accountId,
+        secretKey,
+      },
     });
-    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
-    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = `Сохранено. Провайдер: ${provider}.`;
+    state.paymentIntegration = normalizePaymentIntegrationSettings(payload?.settings || {});
+    renderPaymentIntegrationSettings();
+    if (ui.paymentIntegrationStatus) {
+      ui.paymentIntegrationStatus.textContent = 'Касса подключена. Оплата по заказам будет создаваться автоматически.';
+    }
   } catch (error) {
-    if (ui.paymentLinkStatus) ui.paymentLinkStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    if (ui.paymentIntegrationStatus) {
+      ui.paymentIntegrationStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    }
   }
 }
 
@@ -4277,22 +5256,20 @@ async function removeAdminPromoCode(codeRaw) {
   }
 }
 
-function resolveOrderPaymentLink(order, amountValue) {
-  const draft = getPaymentLinkSettingsDraft();
-  const template = String(draft.urlTemplate || '').trim();
-  if (!template) return { url: '', provider: draft.provider || 'custom' };
-  const data = {
-    store_id: String(state.saas.storeId || '').trim().toUpperCase(),
-    order_id: String(order?.id || '').trim(),
-    amount: String(Math.max(0, Number(amountValue || 0))),
-    currency: String(order?.currency || 'RUB'),
-    telegram_user_id: String(order?.telegramUserId || getTelegramId() || ''),
+function resolveOrderPaymentResult(serverOrderResult) {
+  const source = serverOrderResult?.payment && typeof serverOrderResult.payment === 'object'
+    ? serverOrderResult.payment
+    : {};
+  const url = String(source.url || source.paymentUrl || '').trim();
+  const provider = String(source.provider || '').trim().toLowerCase() || 'custom';
+  const paymentId = String(source.paymentId || '').trim();
+  return {
+    url,
+    provider,
+    paymentId,
+    ok: Boolean(url),
+    error: String(source.error || source.reason || '').trim(),
   };
-  let built = template;
-  Object.entries(data).forEach(([key, value]) => {
-    built = built.replace(new RegExp(`\\{${key}\\}`, 'g'), encodeURIComponent(String(value || '')));
-  });
-  return { url: built, provider: draft.provider || 'custom' };
 }
 
 function openExternalPaymentLink(url) {
@@ -4310,6 +5287,9 @@ function renderPayScreen() {
   const providerLabelMap = {
     yookassa: 'ЮKassa',
     tbank: 'Т-Банк',
+    robokassa: 'Robokassa',
+    alfabank: 'Альфа-Банк',
+    custom_link: 'Касса магазина',
     custom: 'Платёжный провайдер',
   };
   const providerLabel = providerLabelMap[provider] || 'Платёжный провайдер';
@@ -4472,11 +5452,7 @@ function refreshFavoriteViews() {
   if (state.currentScreen === 'products' || state.currentScreen === 'categories' || state.currentScreen === 'home') {
     renderProducts();
   }
-  if (state.currentScreen === 'favorites') {
-    renderFavorites();
-  } else {
-    renderFavorites();
-  }
+  renderFavorites();
   if (state.currentScreen === 'product') {
     renderProductView();
   }
@@ -4492,7 +5468,16 @@ function addToCart(id) {
 function bindHorizontalTrackSwipe(track) {
   if (!track || track.dataset.swipeBound === '1') return;
   track.dataset.swipeBound = '1';
-  track.style.setProperty('touch-action', 'pan-x pan-y');
+  track.style.setProperty('touch-action', 'pan-x');
+
+  // Для новых home-v2 лент оставляем нативный инерционный скролл WebView,
+  // чтобы не ломать плавность ручным touchmove-перехватом.
+  if (track.classList.contains('home-v2-rail')) {
+    track.style.setProperty('touch-action', 'pan-x pan-y');
+    track.style.setProperty('scroll-behavior', 'smooth');
+    track.style.setProperty('overscroll-behavior-x', 'contain');
+    return;
+  }
 
   let startX = 0;
   let startY = 0;
@@ -4554,6 +5539,21 @@ function bindHorizontalTrackSwipe(track) {
   }, { passive: false });
 }
 
+function ensureHomeTrackScroll(track, { promo = false, article = false } = {}) {
+  if (!track) return;
+  track.style.overflowX = 'auto';
+  track.style.overflowY = 'hidden';
+  track.style.webkitOverflowScrolling = 'touch';
+  track.style.setProperty('touch-action', track.classList.contains('home-v2-rail') ? 'pan-x pan-y' : 'pan-x');
+  track.classList.add('home-v2-scroll-ready');
+  const inner = track.querySelector('.home-v2-rail-inner') || track.querySelector('.home-carousel-inner');
+  if (!inner) return;
+  inner.style.display = 'grid';
+  inner.style.gridAutoFlow = 'column';
+  if (promo) inner.classList.add('is-promo');
+  if (article) inner.classList.add('is-article');
+}
+
 function bindBannerSwipe() {
   const track = ui.homeBannerTrack;
   if (!track || track.dataset.bannerSwipeBound === '1') return;
@@ -4564,6 +5564,7 @@ function bindBannerSwipe() {
   let dragging = false;
 
   track.addEventListener('touchstart', (event) => {
+    if (state.admin.enabled || track.classList.contains('is-admin-scroll')) return;
     if (!event.touches || !event.touches.length) return;
     const t = event.touches[0];
     startX = t.clientX;
@@ -4572,6 +5573,7 @@ function bindBannerSwipe() {
   }, { passive: true });
 
   track.addEventListener('touchmove', (event) => {
+    if (state.admin.enabled || track.classList.contains('is-admin-scroll')) return;
     if (!event.touches || !event.touches.length) return;
     const t = event.touches[0];
     const dx = t.clientX - startX;
@@ -4582,6 +5584,7 @@ function bindBannerSwipe() {
   }, { passive: false });
 
   track.addEventListener('touchend', (event) => {
+    if (state.admin.enabled || track.classList.contains('is-admin-scroll')) return;
     if (!event.changedTouches || !event.changedTouches.length) return;
     const t = event.changedTouches[0];
     const dx = t.clientX - startX;
@@ -4592,39 +5595,20 @@ function bindBannerSwipe() {
     const next = Math.max(0, Math.min(slidesCount - 1, state.homeBannerIndex + dir));
     if (next !== state.homeBannerIndex) {
       setHomeBanner(next);
-      if (!state.admin.enabled) startHomeBannerAutoplay();
+      startHomeBannerAutoplay();
     }
   }, { passive: true });
 }
 
 function applyHomeTrackSizing() {
-  const setPromoWidth = (track) => {
-    if (!track) return;
-    const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
-    if (!hostWidth) return;
-    const gap = hostWidth <= 430 ? 8 : 10;
-    const perView = hostWidth <= 900 ? 4 : 4.2;
-    const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
-    const minWidth = hostWidth <= 900 ? 82 : 78;
-    const maxWidth = hostWidth <= 900 ? 108 : 112;
-    const cardWidth = Math.max(minWidth, Math.min(maxWidth, raw));
-    track.style.setProperty('--home-track-card-w', `${cardWidth}px`);
-  };
-
-  const setArticleWidth = (track) => {
-    if (!track) return;
-    const hostWidth = track.clientWidth || track.parentElement?.clientWidth || 0;
-    if (!hostWidth) return;
-    const gap = hostWidth <= 900 ? 10 : 12;
-    const perView = hostWidth <= 430 ? 1.25 : hostWidth <= 900 ? 1.55 : 2;
-    const raw = Math.floor((hostWidth - gap * (perView - 1)) / perView);
-    const cardWidth = Math.max(220, Math.min(360, raw));
-    track.style.setProperty('--article-card-w', `${cardWidth}px`);
-  };
-
-  setPromoWidth(ui.promoTrack);
-  setPromoWidth(ui.homePopularTrack);
-  setArticleWidth(ui.homeArticleTrack);
+  if (!ui.promoTrack || !ui.homePopularTrack) return;
+  [ui.promoTrack, ui.homePopularTrack].forEach((track) => {
+    const width = track.clientWidth || track.parentElement?.clientWidth || 0;
+    if (!width) return;
+    const gap = 8;
+    const cardWidth = Math.max(102, Math.floor((width - gap * 2) / 3));
+    track.style.setProperty('--home-v2-card-width', `${cardWidth}px`);
+  });
 }
 
 function scrollHomeTrackBy(track, direction) {
@@ -4641,6 +5625,69 @@ function scrollHomeTrackBy(track, direction) {
 
 // Центральная регистрация всех обработчиков интерфейса.
 function bindEvents() {
+  const isNearPageTop = (offset = 6) => {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    return scrollTop <= offset;
+  };
+  const isTopRefreshBlockedTarget = (target) => {
+    if (!target || !target.closest) return false;
+    return Boolean(target.closest(
+      'input, textarea, select, [contenteditable="true"], .product-gallery, .recommended-track, .home-v2-rail, .promo-track, .home-article-track, .catalog-chips, .admin-edit-modal, .admin-actions-modal',
+    ));
+  };
+  let topRefreshStartX = 0;
+  let topRefreshStartY = 0;
+  let topRefreshArmed = false;
+  let topRefreshTriggered = false;
+  let topRefreshCooldownUntil = 0;
+  const triggerTopSwipeRefresh = () => {
+    if (topRefreshTriggered) return;
+    if (Date.now() < topRefreshCooldownUntil) return;
+    topRefreshTriggered = true;
+    topRefreshCooldownUntil = Date.now() + 1600;
+    reportStatus('Обновляем страницу...');
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 80);
+  };
+
+  on(document, 'touchstart', (e) => {
+    const touch = e.touches && e.touches[0];
+    if (!touch) return;
+    topRefreshStartX = touch.clientX;
+    topRefreshStartY = touch.clientY;
+    topRefreshTriggered = false;
+    topRefreshArmed = isNearPageTop(4) && !isTopRefreshBlockedTarget(e.target);
+  }, { passive: true });
+  on(document, 'touchmove', (e) => {
+    if (!topRefreshArmed || topRefreshTriggered) return;
+    if (Date.now() < topRefreshCooldownUntil) return;
+    const touch = e.touches && e.touches[0];
+    if (!touch) return;
+    if (!isNearPageTop(18)) {
+      topRefreshArmed = false;
+      return;
+    }
+    const dx = touch.clientX - topRefreshStartX;
+    const dy = touch.clientY - topRefreshStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 18) {
+      topRefreshArmed = false;
+      return;
+    }
+    // Вверху страницы свайп вниз (палец уходит вниз => dy положительный) обновляет экран.
+    if (dy >= 96 && Math.abs(dy) > Math.abs(dx)) {
+      triggerTopSwipeRefresh();
+    }
+  }, { passive: true });
+  on(document, 'touchend', () => {
+    topRefreshArmed = false;
+    topRefreshTriggered = false;
+  }, { passive: true });
+  on(document, 'touchcancel', () => {
+    topRefreshArmed = false;
+    topRefreshTriggered = false;
+  }, { passive: true });
+
   on(document, 'touchstart', (e) => {
     dismissKeyboardIfNeeded(e.target);
   }, { passive: true });
@@ -4792,6 +5839,14 @@ function bindEvents() {
   });
   on(ui.adminConnectBotButton, 'click', () => {
     if (!state.admin.enabled) return;
+    if (ui.profileBotConnectSection && !ui.profileBotConnectSection.classList.contains('hidden')) {
+      ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (ui.profileBotTokenInput) ui.profileBotTokenInput.focus();
+      if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
+        ui.profileBotConnectStatus.textContent = 'Введите Bot Token и нажмите «Подключить бота».';
+      }
+      return;
+    }
     void saasConnectBotFlow();
   });
   on(ui.adminLogoutButton, 'click', () => {
@@ -4807,9 +5862,37 @@ function bindEvents() {
   on(ui.subscriptionPayButton, 'click', () => {
     openSubscriptionPayment();
   });
-  on(ui.paymentLinkForm, 'submit', async (e) => {
+  on(ui.orderChatModeInput, 'change', () => {
+    renderOrderChatSettings({ fromInputs: true });
+  });
+  on(ui.orderRequestChannelInput, 'change', () => {
+    renderOrderChatSettings({ fromInputs: true });
+  });
+  on(ui.orderRequestTargetInput, 'input', () => {
+    renderOrderChatSettings({ fromInputs: true });
+  });
+  on(ui.orderChatSettingsForm, 'submit', async (e) => {
     e.preventDefault();
-    await savePaymentLinkSettings();
+    await saveOrderChatSettings();
+  });
+  on(ui.profileBotConnectForm, 'submit', async (e) => {
+    e.preventDefault();
+    await saveProfileBotConnection();
+  });
+  on(ui.paymentIntegrationProviderInput, 'change', () => {
+    const nextProvider = normalizePaymentProviderCode(ui.paymentIntegrationProviderInput?.value || 'yookassa');
+    const prevProvider = normalizePaymentProviderCode(state.paymentIntegration?.provider || 'yookassa');
+    const providerChanged = nextProvider !== prevProvider;
+    state.paymentIntegration = normalizePaymentIntegrationSettings({
+      ...state.paymentIntegration,
+      provider: nextProvider,
+      secretConfigured: providerChanged ? false : state.paymentIntegration?.secretConfigured,
+    });
+    renderPaymentIntegrationSettings();
+  });
+  on(ui.paymentIntegrationForm, 'submit', async (e) => {
+    e.preventDefault();
+    await savePaymentIntegrationSettings();
   });
   on(ui.promoSettingsForm, 'submit', async (e) => {
     e.preventDefault();
@@ -4883,6 +5966,8 @@ function bindEvents() {
       applyAdminModeUi();
       if (state.currentScreen === 'categories') renderCategories();
       if (state.currentScreen === 'products') renderProducts();
+      if (state.currentScreen === 'home') renderHomeBanners();
+      if (state.currentScreen === 'product') renderProductView();
       reportStatus('Режим выделения выключен');
       return;
     }
@@ -4893,6 +5978,8 @@ function bindEvents() {
       applyAdminModeUi();
       if (state.currentScreen === 'categories') renderCategories();
       if (state.currentScreen === 'products') renderProducts();
+      if (state.currentScreen === 'home') renderHomeBanners();
+      if (state.currentScreen === 'product') renderProductView();
       reportStatus('Выберите элемент для перемещения');
     }
   });
@@ -4905,6 +5992,15 @@ function bindEvents() {
     const direction = String(moveBtn.dataset.adminMove || '');
     if (!direction) return;
     adminMoveSelected(direction);
+  });
+
+  on(document, 'click', (e) => {
+    const actionBtn = e.target.closest('[data-admin-image-action]');
+    if (!actionBtn || !state.admin.enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const action = String(actionBtn.dataset.adminImageAction || '');
+    if (action === 'delete') adminDeleteSelectedImage();
   });
 
   on(document, 'click', (e) => {
@@ -5170,6 +6266,15 @@ function bindEvents() {
     setScreen('product');
   });
 
+  on(ui.homeBannerTrack, 'click', (e) => {
+    const card = e.target.closest('[data-banner-id]');
+    if (!card) return;
+    if (!(state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'banner')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    adminSelectItem('banner', card.dataset.bannerId || '');
+  });
+
   on(ui.homePopularTrack, 'click', (e) => {
     if (state.admin.enabled) return;
     const card = e.target.closest('[data-open]');
@@ -5183,15 +6288,33 @@ function bindEvents() {
   bindHorizontalTrackSwipe(ui.promoTrack);
   bindHorizontalTrackSwipe(ui.homePopularTrack);
   bindHorizontalTrackSwipe(ui.homeArticleTrack);
+  ensureHomeTrackScroll(ui.promoTrack, { promo: true });
+  ensureHomeTrackScroll(ui.homePopularTrack, { promo: true });
+  ensureHomeTrackScroll(ui.homeArticleTrack, { article: true });
   bindBannerSwipe();
   applyHomeTrackSizing();
 
   on(window, 'resize', () => {
     applyHomeTrackSizing();
+    ensureHomeTrackScroll(ui.promoTrack, { promo: true });
+    ensureHomeTrackScroll(ui.homePopularTrack, { promo: true });
+    ensureHomeTrackScroll(ui.homeArticleTrack, { article: true });
   }, { passive: true });
 
-  on(ui.themeToggleButton, 'click', () => {
-    toggleTheme();
+  on(ui.themeSelect, 'change', () => {
+    if (!state.admin.enabled) {
+      applyAppearanceFromConfig();
+      return;
+    }
+    updateAdminAppearanceDraft({ theme: ui.themeSelect?.value || DEFAULT_APPEARANCE.theme });
+    renderProfile();
+  });
+  on(ui.accentSelect, 'change', () => {
+    if (!state.admin.enabled) {
+      applyAppearanceFromConfig();
+      return;
+    }
+    updateAdminAppearanceDraft({ accent: ui.accentSelect?.value || DEFAULT_APPEARANCE.accent });
     renderProfile();
   });
 
@@ -5212,9 +6335,24 @@ function bindEvents() {
   });
 
   on(ui.productView, 'click', (e) => {
-    if (state.admin.enabled) return;
+    if (state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'image') {
+      const image = e.target.closest('[data-product-image-id]');
+      if (image) {
+        e.preventDefault();
+        e.stopPropagation();
+        adminSelectItem('image', image.dataset.productImageId || '');
+        return;
+      }
+    }
     const btn = e.target.closest('button');
     if (!btn) return;
+    if (state.admin.enabled) {
+      if (btn.dataset.adminPromo) {
+        const product = getProduct(btn.dataset.adminPromo);
+        if (product) adminConfigureProductPromo(product);
+      }
+      return;
+    }
     if (btn.dataset.open) {
       state.currentProduct = btn.dataset.open;
       touchRecentlyViewed(state.currentProduct);
@@ -5428,14 +6566,6 @@ function bindEvents() {
   on(ui.inputPhone, 'input', saveProfileDraft);
   on(ui.inputEmail, 'input', saveProfileDraft);
 
-  on(ui.sharePhoneButton, 'click', async () => {
-    if (!window.HORECA_TG?.isTelegram) {
-      ui.orderStatus.textContent = 'Поделиться номером можно только внутри Telegram.';
-      return;
-    }
-    await tryAutofillPhoneFromTelegram({ forceRequest: true });
-  });
-
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
     if (!ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой.'; return; }
@@ -5467,13 +6597,14 @@ function bindEvents() {
       let count = 0;
       let requestCount = 0;
       items.forEach((item) => {
+        const priceView = getProductPriceView(item, { withOldPrice: false });
         count += item.qty || 0;
-        if (!hasPrice(item)) {
+        if (!priceView.hasPrice) {
           missing = true;
           requestCount += item.qty || 0;
           return;
         }
-        const lineSum = Number(item.price || 0) * (item.qty || 0);
+        const lineSum = Number(priceView.finalPrice || 0) * (item.qty || 0);
         sum += lineSum;
         if (state.promoKind === 'first_order' && isEligibleFirstOrderPromoItem(item)) {
           eligibleSum += lineSum;
@@ -5491,14 +6622,20 @@ function bindEvents() {
       const finalSum = Math.max(0, sum - discountAmount);
       return { sum: finalSum, baseSum: sum, discountAmount, discountPercent, discountFixed, missing, count, requestCount };
     })();
-    const mappedItems = items.map((i) => ({
-      id: i.id,
-      title: i.title,
-      sku: i.sku,
-      price: i.price,
-      qty: i.qty,
-      isRequestPrice: !hasPrice(i),
-    }));
+    const mappedItems = items.map((i) => {
+      const priceView = getProductPriceView(i, { withOldPrice: false });
+      return {
+        id: i.id,
+        title: i.title,
+        sku: i.sku,
+        price: priceView.hasPrice ? Number(priceView.finalPrice || 0) : null,
+        basePrice: hasPrice(i) ? Number(i.price || 0) : null,
+        discountPercent: priceView.promoPercent || 0,
+        qty: i.qty,
+        isPromo: priceView.hasPromo,
+        isRequestPrice: !priceView.hasPrice,
+      };
+    });
     const pricedItems = mappedItems.filter((i) => !i.isRequestPrice);
     const requestPriceItems = mappedItems.filter((i) => i.isRequestPrice);
 
@@ -5598,24 +6735,44 @@ function bindEvents() {
       state.profile = profile;
       saveStorage();
       saasTrackEvent('create_order', { payload: { orderId: order.id, total: summary.sum } });
-      const payment = resolveOrderPaymentLink(order, summary.sum);
+      const payment = resolveOrderPaymentResult(serverOrderResult);
       const subscriptionLocked = String(serverOrderResult?.notification?.reason || '') === 'SUBSCRIPTION_INACTIVE';
+      const orderMode = normalizeOrderProcessingMode(serverOrderResult?.orderMode || '');
+      const notification = serverOrderResult?.notification && typeof serverOrderResult.notification === 'object'
+        ? serverOrderResult.notification
+        : {};
+      const chatDelivered = Boolean(notification?.ok);
+      const requestRedirectUrl = String(notification?.redirectUrl || '').trim();
       if (subscriptionLocked) {
         ui.orderStatus.textContent = 'Заказ принят. Онлайн-оплата и уведомления временно отключены до продления подписки магазина.';
         setScreen('confirmation');
-      } else if (payment.url) {
+      } else if (orderMode === 'chat') {
+        state.pendingPayment = null;
+        if (requestRedirectUrl) {
+          ui.orderStatus.textContent = 'Заказ принят. Открываем канал связи для отправки заявки.';
+          openExternalPaymentLink(requestRedirectUrl);
+        } else {
+          ui.orderStatus.textContent = chatDelivered
+            ? 'Заявка отправлена в канал связи.'
+            : 'Заказ принят, но канал заявок не подтвердил доставку. Проверьте настройки в профиле админки.';
+        }
+        setScreen('confirmation');
+      } else if (payment.ok) {
         state.pendingPayment = payment;
         ui.orderStatus.textContent = 'Заказ отправлен. Переходим к оплате...';
         openExternalPaymentLink(payment.url);
         setScreen('pay');
       } else {
+        if (payment.error && !(payment.error === 'PAYMENT_NOT_CONFIGURED' && chatDelivered)) {
+          reportStatus(`Онлайн-оплата недоступна: ${payment.error}`);
+        }
         saasTrackEvent('payment_success', { payload: { orderId: order.id, total: summary.sum } });
-        ui.orderStatus.textContent = 'Заказ отправлен.';
+        ui.orderStatus.textContent = chatDelivered ? 'Заказ отправлен в канал связи.' : 'Заказ отправлен.';
         setScreen('confirmation');
       }
     } catch (err) {
       saasTrackEvent('payment_fail', { payload: { reason: String(err?.message || 'unknown') } });
-      ui.orderStatus.textContent = 'Ошибка отправки в бот. Попробуйте ещё раз.';
+      ui.orderStatus.textContent = 'Ошибка отправки заявки. Попробуйте ещё раз.';
       if (ui.orderRetry) ui.orderRetry.classList.remove('hidden');
     } finally {
       if (ui.orderSubmit) ui.orderSubmit.disabled = false;
@@ -5792,6 +6949,7 @@ async function loadConfig() {
     const res = await fetch('config.json', { cache: 'no-store' });
     state.config = await res.json();
   }
+  applyAppearanceFromConfig({ fallbackToState: state.admin.enabled });
   state.stores = normalizeStores(state.config.storeLocations);
   if (!state.selectedStoreId || !state.stores.some((s) => s.id === state.selectedStoreId)) {
     state.selectedStoreId = state.stores[0]?.id || null;
@@ -5845,7 +7003,6 @@ async function loadConfig() {
   ui.inputPhone.value = normalizePhone(state.profile.phone || '');
   ui.inputEmail.value = state.profile.email || '';
   if (!ui.inputName.value) ui.inputName.value = getTelegramFirstName();
-  if (!ui.inputPhone.value) ui.inputPhone.value = getTelegramPhoneCandidate();
   if (ui.inputTelegramId) ui.inputTelegramId.value = getTelegramId();
   saveProfileDraft();
   updateDeliveryAddressVisibility();
@@ -5937,8 +7094,12 @@ async function loadData() {
 
 // Главная точка входа приложения.
 async function init() {
-  loadStorage();
   state.admin.enabled = isAdminModeRequested();
+  loadStorage();
+  if (!state.admin.enabled) {
+    state.theme = DEFAULT_APPEARANCE.theme;
+    state.accent = DEFAULT_APPEARANCE.accent;
+  }
   applyAdminModeUi();
   if (state.admin.enabled) {
     reportStatus('Админ-режим активен');
@@ -5949,11 +7110,12 @@ async function init() {
     state.promoAmount = 0;
     state.promoKind = '';
   }
-  applyTheme(state.theme);
+  applyAppearance(state.theme, state.accent);
   state.stores = getFallbackStores();
   if (!state.selectedStoreId) state.selectedStoreId = state.stores[0]?.id || null;
   state.screenStack = ['home'];
   state.currentScreen = 'home';
+  ensureProfileAdminSections();
   // Рисуем стартовый контент главной, даже если конфиг ещё не загрузился.
   renderHomeBanners();
   renderHomeArticles();
@@ -6011,6 +7173,9 @@ async function init() {
   } catch (err) {
     console.error('loadData failed', err);
     reportStatus('Ошибка загрузки каталога. Обновите страницу.');
+  }
+  if (state.admin.enabled && state.saas.storeId) {
+    await loadPaymentIntegrationSettings();
   }
   if (!state.admin.enabled && !state.saas.datasetLoaded && restorePublishedState()) {
     renderHomeBanners();

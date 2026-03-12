@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260306-51" />
+    <link rel="stylesheet" href="/style.css?v=20260312-207" />
   </head>
   <body>
     <header class="header">
@@ -49,53 +49,28 @@
       <div id="dataStatus" class="data-status hidden"></div>
 
       <section id="screen-home" class="screen active">
-        <div id="homeBlocks" class="home-blocks">
-          <section class="home-admin-block" data-home-block="banners">
-            <section class="home-feature-wrap">
-              <div class="home-banner-slider">
-                <div id="homeBannerTrack" class="home-banner-track"></div>
-                <div id="homeBannerDots" class="home-banner-dots"></div>
-              </div>
-            </section>
+        <div id="homeBlocks" class="home-v2">
+          <section class="home-v2-block home-v2-banners" data-home-block="banners">
+            <div class="home-v2-banner-shell">
+              <div id="homeBannerTrack" class="home-v2-banner-track"></div>
+            </div>
+            <div id="homeBannerDots" class="home-v2-banner-dots"></div>
             <div class="admin-add-row">
+              <button class="admin-catalog-select" data-admin-select-toggle="banner" type="button">Выделить</button>
+              <button class="admin-inline-move" data-admin-move="left" data-admin-move-scope="banner" type="button" aria-label="Сдвинуть баннер влево">←</button>
+              <button class="admin-inline-move" data-admin-move="right" data-admin-move-scope="banner" type="button" aria-label="Сдвинуть баннер вправо">→</button>
               <button class="admin-inline-plus" data-admin-add="banner" type="button" aria-label="Добавить баннер">+</button>
-              <button class="admin-inline-move" data-home-move="up" data-home-block-id="banners" type="button" aria-label="Поднять блок">↑</button>
-              <button class="admin-inline-move" data-home-move="down" data-home-block-id="banners" type="button" aria-label="Опустить блок">↓</button>
             </div>
           </section>
 
-          <section class="home-admin-block" data-home-block="articles">
-            <div class="home-section-title"><span>Статьи и разделы</span></div>
-            <section class="home-article-slider">
-              <div id="homeArticleTrack" class="home-article-track"></div>
-            </section>
-            <div class="admin-add-row">
-              <button class="admin-inline-plus" data-admin-add="article" type="button" aria-label="Добавить статью">+</button>
-              <button class="admin-inline-move" data-home-move="up" data-home-block-id="articles" type="button" aria-label="Поднять блок">↑</button>
-              <button class="admin-inline-move" data-home-move="down" data-home-block-id="articles" type="button" aria-label="Опустить блок">↓</button>
-            </div>
+          <section class="home-v2-block" data-home-block="promo">
+            <button id="homePromoTitleButton" class="home-section-title home-v2-heading-button" data-screen="promo" type="button" aria-label="Перейти в акции">Акции</button>
+            <div id="promoTrack" class="home-v2-rail"></div>
           </section>
 
-          <section class="home-admin-block" data-home-block="promo">
-            <div class="home-section-title">Акции</div>
-            <section class="promo-row promo-row-home">
-              <div id="promoTrack" class="promo-track"></div>
-            </section>
-            <div class="admin-add-row">
-              <button class="admin-inline-move" data-home-move="up" data-home-block-id="promo" type="button" aria-label="Поднять блок">↑</button>
-              <button class="admin-inline-move" data-home-move="down" data-home-block-id="promo" type="button" aria-label="Опустить блок">↓</button>
-            </div>
-          </section>
-
-          <section class="home-admin-block" data-home-block="popular">
+          <section class="home-v2-block" data-home-block="popular">
             <div class="home-section-title">Популярные товары</div>
-            <section class="promo-row promo-row-home">
-              <div id="homePopularTrack" class="promo-track"></div>
-            </section>
-            <div class="admin-add-row">
-              <button class="admin-inline-move" data-home-move="up" data-home-block-id="popular" type="button" aria-label="Поднять блок">↑</button>
-              <button class="admin-inline-move" data-home-move="down" data-home-block-id="popular" type="button" aria-label="Опустить блок">↓</button>
-            </div>
+            <div id="homePopularTrack" class="home-v2-rail"></div>
           </section>
         </div>
       </section>
@@ -138,7 +113,7 @@
               <button class="menu-catalog-item" data-menu-index="5" data-category="catalog-6" data-has-children="0"><span>Сезонные подборки</span></button>
             </div>
           </div>
-          <button data-screen="promo" class="menu-item">Акции</button>
+          <button id="menuPromoButton" data-screen="promo" class="menu-item">Акции</button>
           <button data-screen="about" class="menu-item">О демо</button>
           <button data-screen="production" class="menu-item">Возможности</button>
           <button data-screen="payment" class="menu-item">Оплата и условия</button>
@@ -157,8 +132,6 @@
             <button class="admin-catalog-select" data-admin-select-toggle="product" type="button">Выделить</button>
             <button class="admin-inline-move" data-admin-move="up" data-admin-move-scope="product" type="button" aria-label="Вверх">↑</button>
             <button class="admin-inline-move" data-admin-move="down" data-admin-move-scope="product" type="button" aria-label="Вниз">↓</button>
-            <button class="admin-inline-move" data-admin-move="left" data-admin-move-scope="product" type="button" aria-label="Влево">←</button>
-            <button class="admin-inline-move" data-admin-move="right" data-admin-move-scope="product" type="button" aria-label="Вправо">→</button>
             <button class="admin-inline-plus" data-admin-add="product" type="button" aria-label="Добавить товар">+</button>
           </div>
         </div>
@@ -261,7 +234,6 @@
           <form id="orderForm" class="order-form flat">
             <label>ФИО *<input id="inputName" type="text" required placeholder="Имя" /></label>
             <label>Телефон *<input id="inputPhone" type="tel" required placeholder="+7" inputmode="tel" autocomplete="tel" /></label>
-            <button id="sharePhoneButton" class="secondary-button" type="button">Поделиться номером из Telegram</button>
             <label>Email *<input id="inputEmail" type="email" required placeholder="name@mail.ru" inputmode="email" autocomplete="email" /></label>
             <label>Telegram ID<input id="inputTelegramId" type="text" readonly placeholder="Определится автоматически" /></label>
             <label>Получение заказа *
@@ -333,11 +305,27 @@
               <div id="profileHandle" class="profile-handle">@telegram</div>
             </div>
           </div>
-          <div class="profile-theme-row">
-            <span id="themeLabel">🌙 Тема оформления</span>
-            <button id="themeToggleButton" class="ghost-button theme-toggle-button" type="button">
-              <span id="themeToggleValue">Тёмная</span>
-            </button>
+          <div id="profileAppearancePanel" class="profile-theme-panel">
+            <div class="profile-theme-row">
+              <label class="profile-theme-label" for="themeSelect">Тема оформления</label>
+              <select id="themeSelect" class="profile-theme-select">
+                <option value="white">Белый</option>
+                <option value="dark">Тёмный</option>
+                <option value="blue">Синий</option>
+                <option value="lime">Салатовый</option>
+                <option value="terracotta">Терракотовый</option>
+              </select>
+            </div>
+            <div class="profile-theme-row">
+              <label class="profile-theme-label" for="accentSelect">Цвет кнопок</label>
+              <select id="accentSelect" class="profile-theme-select">
+                <option value="rose">Розовый</option>
+                <option value="blue">Синий</option>
+                <option value="lime">Салатовый</option>
+                <option value="amber">Янтарный</option>
+                <option value="terracotta">Терракотовый</option>
+              </select>
+            </div>
           </div>
         </div>
         <button id="profileManagerButton" class="profile-manager-button" type="button">
@@ -351,10 +339,23 @@
           <div class="profile-admin-store">Bot ID: <strong id="adminStoreIdValue">—</strong></div>
           <div class="profile-admin-actions">
             <button id="adminReloadStoresButton" class="secondary-button profile-admin-logout" type="button">Мои магазины</button>
-            <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел Бот</button>
             <button id="adminConnectBotButton" class="secondary-button profile-admin-logout" type="button">Подключить бота</button>
+            <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел Бот</button>
           </div>
           <button id="adminLogoutButton" class="secondary-button profile-admin-logout" type="button">Выйти из админки</button>
+        </div>
+        <div id="profileBotConnectSection" class="profile-subscription-card hidden">
+          <div class="section-title">Подключение Telegram-бота</div>
+          <p class="feedback-note">Bot ID магазина используется для входа в админку и привязки уведомлений.</p>
+          <div class="profile-admin-store">Bot ID: <strong id="profileBotStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Статус бота: <strong id="profileBotUsernameValue">не подключен</strong></div>
+          <form id="profileBotConnectForm" class="order-form flat">
+            <label>Bot Token
+              <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
+            </label>
+            <div id="profileBotConnectStatus" class="status"></div>
+            <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Подключить бота</button>
+          </form>
         </div>
         <div id="profilePromoSection" class="profile-subscription-card hidden">
           <div class="section-title">Промокоды</div>
@@ -377,23 +378,42 @@
           </form>
           <div id="promoSettingsList" class="promo-admin-list"></div>
         </div>
-        <div id="profilePaymentLinkSection" class="profile-subscription-card hidden">
-          <div class="section-title">Ссылка на оплату</div>
-          <p class="feedback-note">Универсальная настройка оплаты каталога (ЮKassa, Т-Банк и др.).</p>
-          <form id="paymentLinkForm" class="order-form flat">
+        <div id="profileOrderChatSection" class="profile-subscription-card hidden">
+          <div class="section-title">Уведомления о заказах в чат</div>
+          <p class="feedback-note">1) Добавьте admin-бота в нужный Telegram-чат. 2) Бот отправит в чат его Chat ID. 3) Вставьте Chat ID ниже и сохраните.</p>
+          <form id="orderChatSettingsForm" class="order-form flat">
+            <input id="orderChatModeInput" type="hidden" value="chat" />
+            <input id="orderRequestChannelInput" type="hidden" value="telegram_chat" />
+            <label id="orderRequestTargetLabel">Chat ID Telegram
+              <input id="orderRequestTargetInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Например: -1001234567890" />
+            </label>
+            <p id="orderRequestHint" class="feedback-note">После сохранения новые заявки будут отправляться в этот чат.</p>
+            <div id="orderChatStatus" class="status"></div>
+            <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить Chat ID</button>
+          </form>
+        </div>
+        <div id="profilePaymentIntegrationSection" class="profile-subscription-card hidden">
+          <div class="section-title">Подключение кассы (универсальное)</div>
+          <p class="feedback-note">Клиент подключает кассу самостоятельно. Ссылка оплаты создаётся автоматически на сумму заказа.</p>
+          <form id="paymentIntegrationForm" class="order-form flat">
             <label>Провайдер оплаты
-              <select id="paymentProviderInput">
+              <select id="paymentIntegrationProviderInput">
                 <option value="yookassa">ЮKassa</option>
-                <option value="tbank">Т-Банк</option>
-                <option value="custom">Другое</option>
+                <option value="tbank">Т-Банк (Tinkoff)</option>
+                <option value="robokassa">Robokassa</option>
+                <option value="alfabank">Альфа-Банк</option>
               </select>
             </label>
-            <label>Ссылка / шаблон ссылки
-              <input id="paymentLinkInput" type="url" placeholder="https://..." />
+            <label id="paymentIntegrationAccountLabel">Идентификатор магазина/терминала
+              <input id="paymentIntegrationAccountInput" type="text" autocomplete="off" placeholder="Shop ID / TerminalKey / MerchantLogin" />
             </label>
-            <p class="feedback-note">Можно использовать шаблон с параметрами: <code>{store_id}</code>, <code>{order_id}</code>, <code>{amount}</code>, <code>{currency}</code>, <code>{telegram_user_id}</code>.</p>
-            <div id="paymentLinkStatus" class="status"></div>
-            <button id="paymentLinkSaveButton" class="primary-button" type="submit">Сохранить ссылку оплаты</button>
+            <label id="paymentIntegrationSecretLabel">Секретный ключ / пароль API
+              <input id="paymentIntegrationSecretKeyInput" type="password" autocomplete="off" placeholder="Секрет провайдера" />
+            </label>
+            <p id="paymentIntegrationHint" class="feedback-note">Выберите кассу и заполните обязательные поля. Return URL формируется автоматически по Bot ID магазина.</p>
+            <p class="feedback-note">Webhook URL (если поддерживается): <code id="paymentIntegrationWebhookUrl">—</code></p>
+            <div id="paymentIntegrationStatus" class="status"></div>
+            <button id="paymentIntegrationSaveButton" class="primary-button" type="submit">Сохранить подключение</button>
           </form>
         </div>
         <div id="profileSubscriptionSection" class="profile-subscription-card hidden">
@@ -653,7 +673,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260224-4"></script>
-    <script src="/app.js?v=20260306-51"></script>
+    <script src="/telegram.js?v=20260312-207"></script>
+    <script src="/app.js?v=20260312-207"></script>
   </body>
 </html>

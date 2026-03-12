@@ -241,6 +241,26 @@ CREATE TABLE IF NOT EXISTS subscription_reminders (
 );
 CREATE INDEX IF NOT EXISTS idx_subscription_reminders_lookup
   ON subscription_reminders(store_id, reminder_date, reminder_type);
+
+CREATE TABLE IF NOT EXISTS order_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  order_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'yookassa',
+  payment_id TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'RUB',
+  status TEXT NOT NULL DEFAULT 'pending',
+  confirmation_url TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(provider, payment_id),
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE,
+  FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_order_payments_store_order_created
+  ON order_payments(store_id, order_id, created_at DESC);
 `);
 
 function ensureStoresColumn(columnName, ddl) {
@@ -262,6 +282,14 @@ ensureStoresColumn('bot_webhook_secret', "bot_webhook_secret TEXT NOT NULL DEFAU
 ensureStoresColumn('settings_json', "settings_json TEXT NOT NULL DEFAULT '{}'");
 ensureStoresColumn('categories_json', "categories_json TEXT NOT NULL DEFAULT '[]'");
 ensureStoresColumn('products_json', "products_json TEXT NOT NULL DEFAULT '[]'");
+ensureStoresColumn('payment_provider', "payment_provider TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('payment_account_id', "payment_account_id TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('payment_secret_enc', "payment_secret_enc TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('payment_api_url', "payment_api_url TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('payment_extra_json', "payment_extra_json TEXT NOT NULL DEFAULT '{}'");
+ensureStoresColumn('yookassa_shop_id', "yookassa_shop_id TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('yookassa_secret_enc', "yookassa_secret_enc TEXT NOT NULL DEFAULT ''");
+ensureStoresColumn('payment_return_url', "payment_return_url TEXT NOT NULL DEFAULT ''");
 ensureSessionsColumn('user_id', "user_id TEXT NOT NULL DEFAULT ''");
 
 function readJsonFallback(filePath, fallback) {
@@ -355,6 +383,16 @@ function upsertAdminTelegramUser(userId, chatId, username = '', firstName = '') 
       first_name = excluded.first_name,
       last_seen_at = excluded.last_seen_at
   `).run(uid, cid, String(username || '').trim(), String(firstName || '').trim(), nowIso());
+}
+
+function getAdminTelegramUserById(userId) {
+  const uid = String(userId || '').trim();
+  if (!/^[0-9]{5,20}$/.test(uid)) return null;
+  return db.prepare(`
+    SELECT user_id, username, first_name, chat_id, last_seen_at
+    FROM admin_telegram_users
+    WHERE user_id = ?
+  `).get(uid) || null;
 }
 
 function resolveRecentAdminTelegramId(maxAgeMinutes = 120) {
@@ -498,10 +536,23 @@ function resolveCatalogBase(req) {
   return apiBase.replace(/\/api$/i, '');
 }
 
+function appendWebAppVersion(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+  try {
+    const u = new URL(value);
+    if (WEBAPP_VERSION) u.searchParams.set('v', WEBAPP_VERSION);
+    return u.toString();
+  } catch {
+    return value;
+  }
+}
+
 function getStoreCatalogUrl(storeId, req) {
   const base = resolveCatalogBase(req);
   if (!base) return '';
-  return `${base}/store/${encodeURIComponent(String(storeId || '').trim().toUpperCase())}`;
+  const sid = encodeURIComponent(String(storeId || '').trim().toUpperCase());
+  return appendWebAppVersion(`${base}/store/${sid}`);
 }
 
 const SUBSCRIPTION_TARIFFS = {
@@ -620,6 +671,627 @@ function getStoreSettings(row) {
   return safeJsonParse(row?.settings_json || '{}', {});
 }
 
+function normalizeOrderProcessingMode(raw) {
+  return String(raw || '').trim().toLowerCase() === 'chat' ? 'chat' : 'payment';
+}
+
+function normalizeOrderRequestChannelType(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram_chat' || value === 'telegram' || value === 'admin_bot') return 'telegram_chat';
+  if (value === 'webhook' || value === 'http_webhook') return 'webhook';
+  if (value === 'external') return 'messenger_link';
+  if (value === 'messenger_link' || value === 'messenger' || value === 'link') return 'messenger_link';
+  return 'telegram_chat';
+}
+
+function normalizeTelegramChatId(raw) {
+  const value = String(raw || '').trim();
+  return /^-?[0-9]{5,20}$/.test(value) ? value : '';
+}
+
+function resolveOrderRequestChatIdFromSettings(settings) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const candidates = [
+    source.orderRequestChatId,
+    source.orderChatId,
+    source.chatId,
+    source.telegramChatId,
+  ];
+  for (const candidate of candidates) {
+    const chatId = normalizeTelegramChatId(candidate);
+    if (chatId) return chatId;
+  }
+  return '';
+}
+
+function resolveOrderRequestTargetFromSettings(settings) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  return String(
+    source.orderRequestTarget
+    || source.orderRequestUrl
+    || source.orderRequestWebhookUrl
+    || source.orderRequestLink
+    || '',
+  ).trim();
+}
+
+function resolveOrderRequestChannelConfig(settings) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const hasRequestUrl = Boolean(String(
+    source.orderRequestTarget
+    || source.orderRequestUrl
+    || source.orderRequestWebhookUrl
+    || source.orderRequestLink
+    || '',
+  ).trim());
+  const channelType = normalizeOrderRequestChannelType(
+    source.orderRequestChannelType
+    || source.orderRequestSender
+    || (hasRequestUrl ? (String(source.orderRequestWebhookUrl || '').trim() ? 'webhook' : 'messenger_link') : '')
+    || '',
+  );
+  if (channelType === 'telegram_chat') {
+    return {
+      channelType,
+      target: resolveOrderRequestChatIdFromSettings(source),
+    };
+  }
+  return {
+    channelType,
+    target: resolveOrderRequestTargetFromSettings(source),
+  };
+}
+
+function normalizePaymentProvider(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'yookassa') return 'yookassa';
+  if (value === 'tbank' || value === 'tinkoff') return 'tbank';
+  if (value === 'robokassa') return 'robokassa';
+  if (value === 'alfabank' || value === 'alfa') return 'alfabank';
+  if (value === 'custom_link' || value === 'custom' || value === 'link') return 'custom_link';
+  return '';
+}
+
+const PAYMENT_PROVIDER_DEFAULT_API = {
+  yookassa: 'https://api.yookassa.ru/v3/payments',
+  tbank: 'https://securepay.tinkoff.ru/v2/Init',
+  robokassa: 'https://auth.robokassa.ru/Merchant/Index.aspx',
+  alfabank: 'https://pay.alfabank.ru/payment/rest/register.do',
+  custom_link: '',
+};
+
+function providerNeedsSecret(provider) {
+  const normalized = normalizePaymentProvider(provider);
+  return normalized !== 'custom_link';
+}
+
+function providerNeedsAccount(provider) {
+  const normalized = normalizePaymentProvider(provider);
+  return normalized !== 'custom_link';
+}
+
+function normalizePaymentExtra(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { ...raw };
+  if (typeof raw === 'string' && raw.trim()) return safeJsonParse(raw, {});
+  return {};
+}
+
+function resolvePaymentWebhookUrl(storeId, provider, req = null) {
+  const normalized = normalizePaymentProvider(provider);
+  if (!normalized || normalized === 'custom_link') return '';
+  const publicApi = resolvePublicApiBase(req);
+  if (!publicApi) return '';
+  return `${publicApi}/api/stores/${encodeURIComponent(String(storeId || '').trim().toUpperCase())}/payments/${normalized}/webhook`;
+}
+
+function getStorePaymentIntegration(row, { includeSecret = false, req = null } = {}) {
+  const settings = getStoreSettings(row);
+  const provider = normalizePaymentProvider(
+    row?.payment_provider
+    || settings?.paymentProvider
+    || settings?.paymentGatewayProvider
+    || '',
+  );
+  const accountId = String(
+    row?.payment_account_id
+    || row?.yookassa_shop_id
+    || settings?.paymentAccountId
+    || settings?.paymentShopId
+    || settings?.yookassaShopId
+    || settings?.terminalKey
+    || settings?.merchantLogin
+    || settings?.userName
+    || '',
+  ).trim();
+  const secretEnc = String(row?.payment_secret_enc || row?.yookassa_secret_enc || '').trim();
+  const secretKey = includeSecret ? decryptBotToken(secretEnc) : '';
+  const apiUrl = String(
+    row?.payment_api_url
+    || settings?.paymentApiUrl
+    || settings?.apiUrl
+    || PAYMENT_PROVIDER_DEFAULT_API[provider]
+    || ''
+  ).trim();
+  const fallbackCatalogUrl = getStoreCatalogUrl(row?.store_id || '', req);
+  const returnUrl = String(fallbackCatalogUrl || row?.payment_return_url || '').trim();
+  const extra = normalizePaymentExtra(row?.payment_extra_json || settings?.paymentExtra || settings?.paymentExtraJson || '{}');
+  const webhookUrl = resolvePaymentWebhookUrl(row?.store_id || '', provider, req);
+  const needsSecret = providerNeedsSecret(provider);
+  const needsAccount = providerNeedsAccount(provider);
+  const customTemplate = String(extra?.templateUrl || '').trim();
+  const secretConfigured = Boolean(secretEnc);
+  const configured = Boolean(
+    provider
+    && (!needsAccount || accountId)
+    && (!needsSecret || (includeSecret ? secretKey : secretEnc))
+    && (provider !== 'custom_link' || customTemplate)
+  );
+  return {
+    provider,
+    accountId,
+    secretKey,
+    secretConfigured,
+    apiUrl,
+    returnUrl,
+    extra,
+    webhookUrl,
+    configured,
+  };
+}
+
+function getCachedOrderPayment(storeId, orderId, provider) {
+  return db.prepare(`
+    SELECT payment_id, confirmation_url, status
+    FROM order_payments
+    WHERE store_id = ? AND order_id = ? AND provider = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(storeId, orderId, provider);
+}
+
+function saveOrderPaymentRecord({
+  storeId,
+  orderId,
+  provider,
+  paymentId,
+  amount,
+  currency,
+  status = 'pending',
+  confirmationUrl = '',
+  payload = {},
+}) {
+  const ts = nowIso();
+  db.prepare(`
+    INSERT INTO order_payments (
+      store_id, order_id, provider, payment_id, amount, currency, status, confirmation_url, payload_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, payment_id) DO UPDATE SET
+      amount = excluded.amount,
+      currency = excluded.currency,
+      status = excluded.status,
+      confirmation_url = excluded.confirmation_url,
+      payload_json = excluded.payload_json,
+      updated_at = excluded.updated_at
+  `).run(
+    storeId,
+    orderId,
+    provider,
+    paymentId,
+    Number(amount || 0),
+    String(currency || 'RUB').trim().toUpperCase() || 'RUB',
+    String(status || 'pending').trim().toLowerCase() || 'pending',
+    String(confirmationUrl || '').trim(),
+    JSON.stringify(payload && typeof payload === 'object' ? payload : {}),
+    ts,
+    ts,
+  );
+  db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
+    .run('payment_pending', ts, orderId, storeId);
+}
+
+function fillPaymentTemplate(template, values) {
+  return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => encodeURIComponent(String(values?.[key] ?? '')));
+}
+
+function isValidHttpUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function buildTbankToken(params, password) {
+  const source = {
+    ...params,
+    Password: String(password || ''),
+  };
+  const serialized = Object.keys(source)
+    .sort((a, b) => a.localeCompare(b))
+    .map((key) => String(source[key] == null ? '' : source[key]))
+    .join('');
+  return crypto.createHash('sha256').update(serialized).digest('hex');
+}
+
+function hashString(source, algorithm = 'md5') {
+  const normalized = String(algorithm || 'md5').trim().toLowerCase();
+  const allowed = new Set(['md5', 'sha1', 'sha256', 'sha384', 'sha512']);
+  const resolved = allowed.has(normalized) ? normalized : 'md5';
+  return crypto.createHash(resolved).update(String(source || '')).digest('hex');
+}
+
+function mapPaymentResultError(error, fallback = 'PAYMENT_CREATE_FAILED') {
+  const value = String(error || '').trim();
+  return value || fallback;
+}
+
+async function createYookassaOrderPayment({
+  integration,
+  storeId,
+  orderId,
+  amount,
+  currency,
+  telegramUserId = '',
+  req = null,
+}) {
+  if (!integration.accountId || !integration.secretKey) {
+    return { ok: false, error: 'PAYMENT_NOT_CONFIGURED' };
+  }
+  const fallbackReturnUrl = getStoreCatalogUrl(storeId, req) || `${resolveCatalogBase(req)}/store/${encodeURIComponent(storeId)}`;
+  const returnUrl = integration.returnUrl || fallbackReturnUrl || 'https://yookassa.ru';
+  const idempotenceKey = crypto.randomUUID();
+  const auth = Buffer.from(`${integration.accountId}:${integration.secretKey}`).toString('base64');
+  const body = {
+    amount: {
+      value: amount.toFixed(2),
+      currency,
+    },
+    capture: true,
+    confirmation: {
+      type: 'redirect',
+      return_url: returnUrl,
+    },
+    description: `Оплата заказа ${orderId} (${storeId})`,
+    metadata: {
+      kind: 'order',
+      store_id: storeId,
+      order_id: orderId,
+      telegram_user_id: String(telegramUserId || '').trim(),
+    },
+  };
+  try {
+    const endpoint = integration.apiUrl || PAYMENT_PROVIDER_DEFAULT_API.yookassa;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Idempotence-Key': idempotenceKey,
+      },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { ok: false, error: mapPaymentResultError(payload?.description || payload?.type || payload?.error || `HTTP ${response.status}`) };
+    }
+    const paymentId = String(payload?.id || '').trim();
+    const confirmationUrl = String(payload?.confirmation?.confirmation_url || '').trim();
+    const status = String(payload?.status || 'pending').trim().toLowerCase() || 'pending';
+    if (!paymentId || !confirmationUrl) {
+      return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+    }
+    saveOrderPaymentRecord({
+      storeId,
+      orderId,
+      provider: 'yookassa',
+      paymentId,
+      amount,
+      currency,
+      status,
+      confirmationUrl,
+      payload,
+    });
+    return {
+      ok: true,
+      provider: 'yookassa',
+      paymentId,
+      url: confirmationUrl,
+    };
+  } catch {
+    return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+  }
+}
+
+async function createTbankOrderPayment({
+  integration,
+  storeId,
+  orderId,
+  amount,
+  currency,
+  telegramUserId = '',
+  req = null,
+}) {
+  if (!integration.accountId || !integration.secretKey) {
+    return { ok: false, error: 'PAYMENT_NOT_CONFIGURED' };
+  }
+  const amountMinor = Math.max(1, Math.round(amount * 100));
+  const endpoint = integration.apiUrl || PAYMENT_PROVIDER_DEFAULT_API.tbank;
+  const returnUrl = integration.returnUrl || getStoreCatalogUrl(storeId, req) || `${resolveCatalogBase(req)}/store/${encodeURIComponent(storeId)}`;
+  const webhookUrl = integration.webhookUrl || resolvePaymentWebhookUrl(storeId, 'tbank', req);
+  const apiToken = String(integration.extra?.apiToken || '').trim();
+  const requestBody = {
+    TerminalKey: integration.accountId,
+    Amount: amountMinor,
+    OrderId: orderId,
+    Description: `Оплата заказа ${orderId}`,
+    NotificationURL: webhookUrl,
+    SuccessURL: returnUrl,
+    FailURL: returnUrl,
+  };
+  requestBody.Token = buildTbankToken(requestBody, integration.secretKey);
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.Success === false) {
+      return { ok: false, error: mapPaymentResultError(payload?.Details || payload?.Message || `HTTP ${response.status}`) };
+    }
+    const paymentId = String(payload?.PaymentId || payload?.paymentId || `TB-${Date.now()}`).trim();
+    const paymentUrl = String(payload?.PaymentURL || payload?.paymentUrl || '').trim();
+    if (!paymentUrl) return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+    saveOrderPaymentRecord({
+      storeId,
+      orderId,
+      provider: 'tbank',
+      paymentId,
+      amount,
+      currency,
+      status: 'pending',
+      confirmationUrl: paymentUrl,
+      payload: {
+        response: payload,
+        telegram_user_id: String(telegramUserId || '').trim(),
+      },
+    });
+    return {
+      ok: true,
+      provider: 'tbank',
+      paymentId,
+      url: paymentUrl,
+    };
+  } catch {
+    return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+  }
+}
+
+async function createRobokassaOrderPayment({
+  integration,
+  storeId,
+  orderId,
+  amount,
+  currency,
+}) {
+  if (!integration.accountId || !integration.secretKey) {
+    return { ok: false, error: 'PAYMENT_NOT_CONFIGURED' };
+  }
+  const endpoint = integration.apiUrl || PAYMENT_PROVIDER_DEFAULT_API.robokassa;
+  const extra = normalizePaymentExtra(integration.extra);
+  const invId = Number(extra?.invoiceOffset || 0) + Date.now();
+  const outSum = amount.toFixed(2);
+  const description = `Оплата заказа ${orderId}`;
+  const hashAlgorithm = String(extra?.hashAlgorithm || 'md5').trim().toLowerCase() || 'md5';
+  const signatureBase = `${integration.accountId}:${outSum}:${invId}:${integration.secretKey}`;
+  const signature = hashString(signatureBase, hashAlgorithm);
+  const params = new URLSearchParams({
+    MerchantLogin: integration.accountId,
+    OutSum: outSum,
+    InvId: String(invId),
+    Description: description,
+    SignatureValue: signature,
+    Culture: 'ru',
+    Encoding: 'utf-8',
+    SuccessUrl: integration.returnUrl || '',
+    FailUrl: integration.returnUrl || '',
+  });
+  if (Number(extra?.isTest || 0) === 1) params.set('IsTest', '1');
+  const paymentUrl = `${endpoint}?${params.toString()}`;
+  saveOrderPaymentRecord({
+    storeId,
+    orderId,
+    provider: 'robokassa',
+    paymentId: String(invId),
+    amount,
+    currency,
+    status: 'pending',
+    confirmationUrl: paymentUrl,
+    payload: {
+      description,
+      request: Object.fromEntries(params.entries()),
+    },
+  });
+  return {
+    ok: true,
+    provider: 'robokassa',
+    paymentId: String(invId),
+    url: paymentUrl,
+  };
+}
+
+async function createAlfabankOrderPayment({
+  integration,
+  storeId,
+  orderId,
+  amount,
+  currency,
+  req = null,
+}) {
+  if (!integration.accountId || !integration.secretKey) {
+    return { ok: false, error: 'PAYMENT_NOT_CONFIGURED' };
+  }
+  const endpoint = integration.apiUrl || PAYMENT_PROVIDER_DEFAULT_API.alfabank;
+  const amountMinor = Math.max(1, Math.round(amount * 100));
+  const returnUrl = integration.returnUrl || getStoreCatalogUrl(storeId, req) || `${resolveCatalogBase(req)}/store/${encodeURIComponent(storeId)}`;
+  const orderNumber = `${storeId}-${orderId}`.slice(0, 32);
+  const form = new URLSearchParams({
+    userName: integration.accountId,
+    password: integration.secretKey,
+    orderNumber,
+    amount: String(amountMinor),
+    returnUrl,
+    currency: '643',
+    description: `Оплата заказа ${orderId}`,
+  });
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    const payload = await response.json().catch(() => ({}));
+    const errorCode = String(payload?.errorCode ?? '').trim();
+    if (!response.ok || (errorCode && errorCode !== '0')) {
+      return { ok: false, error: mapPaymentResultError(payload?.errorMessage || `HTTP ${response.status}`) };
+    }
+    const paymentId = String(payload?.orderId || `ALFA-${Date.now()}`).trim();
+    const paymentUrl = String(payload?.formUrl || '').trim();
+    if (!paymentUrl) return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+    saveOrderPaymentRecord({
+      storeId,
+      orderId,
+      provider: 'alfabank',
+      paymentId,
+      amount,
+      currency,
+      status: 'pending',
+      confirmationUrl: paymentUrl,
+      payload,
+    });
+    return {
+      ok: true,
+      provider: 'alfabank',
+      paymentId,
+      url: paymentUrl,
+    };
+  } catch {
+    return { ok: false, error: 'PAYMENT_CREATE_FAILED' };
+  }
+}
+
+async function createCustomLinkOrderPayment({
+  integration,
+  storeId,
+  orderId,
+  amount,
+  currency,
+  telegramUserId = '',
+}) {
+  const extra = normalizePaymentExtra(integration.extra);
+  const templateUrl = String(extra?.templateUrl || '').trim();
+  if (!templateUrl) return { ok: false, error: 'CUSTOM_TEMPLATE_REQUIRED' };
+  let parsedTemplate = null;
+  try {
+    parsedTemplate = new URL(templateUrl);
+    if (!/^https?:$/i.test(parsedTemplate.protocol)) throw new Error('INVALID_TEMPLATE');
+  } catch {
+    return { ok: false, error: 'INVALID_CUSTOM_TEMPLATE' };
+  }
+  const values = {
+    storeId,
+    orderId,
+    amount: amount.toFixed(2),
+    amountMinor: String(Math.max(1, Math.round(amount * 100))),
+    currency,
+    returnUrl: integration.returnUrl || '',
+    telegramUserId: String(telegramUserId || '').trim(),
+    accountId: String(integration.accountId || '').trim(),
+  };
+  const paymentUrl = fillPaymentTemplate(parsedTemplate.toString(), values);
+  const paymentId = `custom-${crypto.randomBytes(6).toString('hex')}`;
+  saveOrderPaymentRecord({
+    storeId,
+    orderId,
+    provider: 'custom_link',
+    paymentId,
+    amount,
+    currency,
+    status: 'pending',
+    confirmationUrl: paymentUrl,
+    payload: { templateUrl, values },
+  });
+  return {
+    ok: true,
+    provider: 'custom_link',
+    paymentId,
+    url: paymentUrl,
+  };
+}
+
+async function createOrderPayment({ storeRow, orderRow, telegramUserId = '', req = null }) {
+  const integration = getStorePaymentIntegration(storeRow, { includeSecret: true, req });
+  const provider = normalizePaymentProvider(integration.provider);
+  if (!provider) return { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_NOT_CONFIGURED' };
+  const amount = Number(orderRow?.total_amount || 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, provider, url: '', paymentId: '', error: 'INVALID_ORDER_AMOUNT' };
+  }
+  const currency = String(orderRow?.currency || 'RUB').trim().toUpperCase() || 'RUB';
+  const storeId = String(storeRow?.store_id || '').trim().toUpperCase();
+  const orderId = String(orderRow?.id || '').trim();
+  if (!storeId || !orderId) return { ok: false, provider, url: '', paymentId: '', error: 'ORDER_NOT_FOUND' };
+
+  const existing = getCachedOrderPayment(storeId, orderId, provider);
+  if (
+    existing
+    && String(existing.status || '').toLowerCase() !== 'succeeded'
+    && String(existing.confirmation_url || '').trim()
+  ) {
+    return {
+      ok: true,
+      provider,
+      paymentId: String(existing.payment_id || '').trim(),
+      url: String(existing.confirmation_url || '').trim(),
+      cached: true,
+    };
+  }
+
+  if (providerNeedsAccount(provider) && !integration.accountId) {
+    return { ok: false, provider, url: '', paymentId: '', error: 'PAYMENT_ACCOUNT_ID_REQUIRED' };
+  }
+  if (providerNeedsSecret(provider) && !integration.secretKey) {
+    return { ok: false, provider, url: '', paymentId: '', error: 'PAYMENT_SECRET_REQUIRED' };
+  }
+  if (!integration.returnUrl) {
+    return { ok: false, provider, url: '', paymentId: '', error: 'PAYMENT_RETURN_URL_REQUIRED' };
+  }
+
+  try {
+    if (provider === 'yookassa') {
+      return await createYookassaOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, req });
+    }
+    if (provider === 'tbank') {
+      return await createTbankOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, req });
+    }
+    if (provider === 'robokassa') {
+      return await createRobokassaOrderPayment({ integration, storeId, orderId, amount, currency });
+    }
+    if (provider === 'alfabank') {
+      return await createAlfabankOrderPayment({ integration, storeId, orderId, amount, currency, req });
+    }
+    if (provider === 'custom_link') {
+      return await createCustomLinkOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId });
+    }
+  } catch {}
+  return { ok: false, provider, url: '', paymentId: '', error: 'PAYMENT_CREATE_FAILED' };
+}
+
 function normalizePromoCode(raw) {
   return String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
 }
@@ -646,6 +1318,77 @@ function sanitizeSettingsPatch(settingsPatch) {
   const out = { ...settingsPatch };
   if (Object.prototype.hasOwnProperty.call(out, 'promoCodes')) {
     out.promoCodes = normalizePromoCodes(out.promoCodes);
+  }
+  if (Object.prototype.hasOwnProperty.call(out, 'orderProcessingMode')) {
+    out.orderProcessingMode = normalizeOrderProcessingMode(out.orderProcessingMode);
+  }
+  if (Object.prototype.hasOwnProperty.call(out, 'orderRequestChannelType')) {
+    out.orderRequestChannelType = normalizeOrderRequestChannelType(out.orderRequestChannelType);
+  }
+
+  const rawProvidedTarget = [
+    out.orderRequestTarget,
+    out.orderRequestUrl,
+    out.orderRequestWebhookUrl,
+    out.orderRequestLink,
+    out.orderRequestChatId,
+    out.orderChatId,
+    out.chatId,
+    out.telegramChatId,
+  ].find((value) => value !== undefined);
+  const hasProvidedTarget = rawProvidedTarget !== undefined;
+  const resolvedChannel = normalizeOrderRequestChannelType(
+    out.orderRequestChannelType
+    || out.orderRequestSender
+    || (hasProvidedTarget ? (isValidHttpUrl(rawProvidedTarget) ? 'messenger_link' : 'telegram_chat') : 'telegram_chat'),
+  );
+
+  if (hasProvidedTarget) {
+    if (resolvedChannel === 'telegram_chat') {
+      const chatId = normalizeTelegramChatId(rawProvidedTarget);
+      out.orderRequestTarget = '';
+      out.orderRequestUrl = '';
+      out.orderRequestWebhookUrl = '';
+      out.orderRequestLink = '';
+      out.orderRequestChatId = chatId;
+      out.orderChatId = chatId;
+      out.chatId = chatId;
+      out.telegramChatId = chatId;
+    } else {
+      const target = String(rawProvidedTarget || '').trim();
+      out.orderRequestTarget = target;
+      out.orderRequestUrl = target;
+      out.orderRequestLink = target;
+      if (resolvedChannel === 'webhook') {
+        out.orderRequestWebhookUrl = target;
+      }
+      out.orderRequestChatId = '';
+      out.orderChatId = '';
+      out.chatId = '';
+      out.telegramChatId = '';
+    }
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(out, 'orderRequestChatId')
+    || Object.prototype.hasOwnProperty.call(out, 'orderChatId')
+    || Object.prototype.hasOwnProperty.call(out, 'chatId')
+    || Object.prototype.hasOwnProperty.call(out, 'telegramChatId')
+  ) {
+    const isTelegramChannel = normalizeOrderRequestChannelType(out.orderRequestChannelType || '') === 'telegram_chat';
+    if (isTelegramChannel) {
+      const provided = [
+        out.orderRequestChatId,
+        out.orderChatId,
+        out.chatId,
+        out.telegramChatId,
+      ].find((value) => value !== undefined);
+      const chatId = normalizeTelegramChatId(provided);
+      out.orderRequestChatId = chatId;
+      out.orderChatId = chatId;
+      out.chatId = chatId;
+      out.telegramChatId = chatId;
+    }
   }
   return out;
 }
@@ -1004,6 +1747,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: false }));
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
 
 const upload = multer({
@@ -1152,7 +1896,7 @@ async function validateTelegramBotToken(token) {
 async function configureTelegramBotMenu(botToken, storeId) {
   const base = resolveCatalogBaseFromEnv();
   if (!base) return { ok: false, skipped: true, reason: 'WEBAPP_URL_NOT_CONFIGURED' };
-  const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
+  const webAppUrl = appendWebAppVersion(`${base}/store/${encodeURIComponent(storeId)}`);
   try {
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setChatMenuButton`, {
       method: 'POST',
@@ -1216,11 +1960,26 @@ async function configureAdminBotWebhook(apiBase) {
       body: JSON.stringify({
         url: hookUrl,
         secret_token: ADMIN_BOT_WEBHOOK_SECRET || undefined,
-        allowed_updates: ['message'],
+        allowed_updates: ['message', 'my_chat_member'],
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.ok) return { ok: false, error: 'SET_ADMIN_WEBHOOK_FAILED' };
+
+    const adminUrl = getAdminMiniAppUrl();
+    if (adminUrl) {
+      await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/setChatMenuButton`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          menu_button: {
+            type: 'web_app',
+            text: 'Открыть админку',
+            web_app: { url: adminUrl },
+          },
+        }),
+      }).catch(() => null);
+    }
 
     await fetch(`https://api.telegram.org/bot${encodeURIComponent(ADMIN_BOT_TOKEN)}/setMyCommands`, {
       method: 'POST',
@@ -1242,7 +2001,7 @@ async function configureAdminBotWebhook(apiBase) {
 async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = false, storeRow = null) {
   const base = resolveCatalogBaseFromEnv();
   if (!base) return { ok: false, error: 'WEBAPP_URL_NOT_CONFIGURED' };
-  const webAppUrl = `${base}/store/${encodeURIComponent(storeId)}`;
+  const webAppUrl = appendWebAppVersion(`${base}/store/${encodeURIComponent(storeId)}`);
   const settings = getStoreSettings(storeRow);
   const ownerNote = isOwner ? '\n\nДля админки используйте ваш Bot ID + пароль в Admin mini app.' : '';
   const welcomeTextRaw = String(settings?.botWelcomeText || '').trim();
@@ -1285,13 +2044,7 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
   }
 }
 
-async function notifyOrderViaTelegram(storeRow, orderPayload) {
-  const token = decryptBotToken(storeRow.bot_token_enc);
-  if (!token) return { ok: false, skipped: true, reason: 'BOT_NOT_CONNECTED' };
-  const settings = getStoreSettings(storeRow);
-  const chatId = String(settings?.orderChatId || settings?.chatId || settings?.telegramChatId || '').trim();
-  if (!chatId) return { ok: false, skipped: true, reason: 'CHAT_ID_NOT_CONFIGURED' };
-
+function buildOrderNotificationText(storeRow, orderPayload) {
   const customer = orderPayload.customer || {};
   const items = Array.isArray(orderPayload.items) ? orderPayload.items : [];
   const itemsText = items.slice(0, 25).map((it) => {
@@ -1314,6 +2067,52 @@ async function notifyOrderViaTelegram(storeRow, orderPayload) {
     customer.deliveryAddress ? `Адрес: ${customer.deliveryAddress}` : '',
     itemsText ? `\nТовары:\n${itemsText}` : '',
   ].filter(Boolean).join('\n');
+  return text;
+}
+
+function buildOrderNotificationTemplateValues(storeRow, orderPayload, messageText = '') {
+  const customer = orderPayload.customer || {};
+  const totalRaw = Number(orderPayload.total || 0);
+  const total = Number.isFinite(totalRaw) ? totalRaw : 0;
+  return {
+    store_id: String(storeRow?.store_id || '').trim(),
+    order_id: String(orderPayload?.id || '').trim(),
+    total: total > 0 ? total.toFixed(2) : '0.00',
+    currency: 'RUB',
+    customer_name: String(customer?.name || '').trim(),
+    customer_phone: String(customer?.phone || '').trim(),
+    customer_email: String(customer?.email || '').trim(),
+    telegram_user_id: String(customer?.telegramId || orderPayload?.telegramUserId || '').trim(),
+    message: String(messageText || '').trim(),
+  };
+}
+
+function buildOrderMessengerRedirectUrl(targetTemplate, values) {
+  const template = String(targetTemplate || '').trim();
+  if (!template) return '';
+  let resolved = fillPaymentTemplate(template, values);
+  if (!isValidHttpUrl(resolved)) return '';
+  const hasMessagePlaceholder = /\{message\}/i.test(template);
+  if (hasMessagePlaceholder) return resolved;
+  try {
+    const parsed = new URL(resolved);
+    if (!parsed.searchParams.has('text') && !parsed.searchParams.has('message')) {
+      parsed.searchParams.set('text', String(values?.message || ''));
+    }
+    resolved = parsed.toString();
+    return isValidHttpUrl(resolved) ? resolved : '';
+  } catch {
+    return '';
+  }
+}
+
+async function notifyOrderViaTelegram(storeRow, orderPayload, { chatIdOverride = '' } = {}) {
+  const token = decryptBotToken(storeRow.bot_token_enc);
+  if (!token) return { ok: false, skipped: true, reason: 'BOT_NOT_CONNECTED' };
+  const settings = getStoreSettings(storeRow);
+  const chatId = normalizeTelegramChatId(chatIdOverride) || resolveOrderRequestChatIdFromSettings(settings);
+  if (!chatId) return { ok: false, skipped: true, reason: 'CHAT_ID_NOT_CONFIGURED' };
+  const text = buildOrderNotificationText(storeRow, orderPayload);
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
@@ -1327,10 +2126,65 @@ async function notifyOrderViaTelegram(storeRow, orderPayload) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.ok) return { ok: false, error: 'TELEGRAM_SEND_FAILED' };
-    return { ok: true };
+    return { ok: true, via: 'telegram_chat' };
   } catch {
     return { ok: false, error: 'TELEGRAM_SEND_FAILED' };
   }
+}
+
+async function notifyOrderViaWebhook(targetUrl, storeRow, orderPayload) {
+  const endpoint = String(targetUrl || '').trim();
+  if (!isValidHttpUrl(endpoint)) return { ok: false, skipped: true, reason: 'WEBHOOK_URL_NOT_CONFIGURED' };
+  const text = buildOrderNotificationText(storeRow, orderPayload);
+  const payload = {
+    type: 'order_request',
+    storeId: String(storeRow?.store_id || '').trim(),
+    orderId: String(orderPayload?.id || '').trim(),
+    order: orderPayload,
+    message: text,
+    createdAt: nowIso(),
+  };
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const responseBody = await response.text().catch(() => '');
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: 'WEBHOOK_SEND_FAILED',
+        details: String(responseBody || '').slice(0, 200),
+      };
+    }
+    return { ok: true, via: 'webhook' };
+  } catch {
+    return { ok: false, error: 'WEBHOOK_SEND_FAILED' };
+  }
+}
+
+async function notifyOrderRequest(storeRow, orderPayload) {
+  const settings = getStoreSettings(storeRow);
+  const config = resolveOrderRequestChannelConfig(settings);
+  if (config.channelType === 'telegram_chat') {
+    return notifyOrderViaTelegram(storeRow, orderPayload, { chatIdOverride: config.target });
+  }
+  if (config.channelType === 'webhook') {
+    return notifyOrderViaWebhook(config.target, storeRow, orderPayload);
+  }
+  const message = buildOrderNotificationText(storeRow, orderPayload);
+  const values = buildOrderNotificationTemplateValues(storeRow, orderPayload, message);
+  const redirectUrl = buildOrderMessengerRedirectUrl(config.target, values);
+  if (!redirectUrl) {
+    return { ok: false, skipped: true, reason: 'MESSENGER_LINK_NOT_CONFIGURED' };
+  }
+  return {
+    ok: true,
+    via: 'messenger_link',
+    delivery: 'redirect',
+    redirectUrl,
+  };
 }
 
 async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
@@ -1438,7 +2292,9 @@ async function flushPendingAdminMessages(telegramUserId = '') {
 function getAdminMiniAppUrl() {
   const base = resolveCatalogBaseFromEnv();
   if (!base) return '';
-  return `${base}/?admin=1`;
+  const url = new URL(`${base}/`);
+  url.searchParams.set('admin', '1');
+  return appendWebAppVersion(url.toString());
 }
 
 function getAdminStartKeyboard() {
@@ -1506,6 +2362,22 @@ async function sendAdminBotInstructions(chatId) {
   return sendTelegramTextByToken(ADMIN_BOT_TOKEN, chatId, getAdminBotInstructionsText(), {
     reply_markup: getAdminStartKeyboard(),
   });
+}
+
+async function sendAdminChatIdHint(chatId, chatTitle = '') {
+  if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  const normalizedChatId = String(chatId || '').trim();
+  if (!normalizedChatId) return { ok: false, error: 'CHAT_ID_REQUIRED' };
+  const title = String(chatTitle || '').trim();
+  const text = [
+    'Чат для заявок подключен.',
+    title ? `Чат: ${title}` : '',
+    `Chat ID: ${normalizedChatId}`,
+    '',
+    'Скопируйте Chat ID и вставьте в админке:',
+    'Профиль -> Уведомления о заказах в чат -> поле Chat ID Telegram.',
+  ].filter(Boolean).join('\n');
+  return sendTelegramTextByToken(ADMIN_BOT_TOKEN, normalizedChatId, text);
 }
 
 async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', catalogUrl = '' }) {
@@ -1922,6 +2794,24 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
     }));
   }
 
+  let telegramProfile = null;
+  const authUserId = String(req.auth.userId || '').trim();
+  if (authUserId.startsWith('tg:')) {
+    const tgUserId = authUserId.slice(3).trim();
+    const tgUser = getAdminTelegramUserById(tgUserId);
+    if (tgUser) {
+      telegramProfile = {
+        id: String(tgUser.user_id || ''),
+        username: String(tgUser.username || ''),
+        firstName: String(tgUser.first_name || ''),
+        chatId: String(tgUser.chat_id || ''),
+        lastSeenAt: String(tgUser.last_seen_at || ''),
+      };
+    } else {
+      telegramProfile = { id: tgUserId, username: '', firstName: '' };
+    }
+  }
+
   return res.json({
     ok: true,
     storeId: row.store_id,
@@ -1930,6 +2820,7 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
     isActive: Number(row.is_active || 0) === 1,
     subscription: getStoreSubscriptionState(row.store_id),
     userId: req.auth.userId || '',
+    telegramProfile,
     stores,
   });
 });
@@ -2124,9 +3015,10 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
 
 app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
-  const orderChatId = String(req.body?.orderChatId || '').trim();
+  const hasOrderChatIdField = Boolean(req.body && Object.prototype.hasOwnProperty.call(req.body, 'orderChatId'));
+  const orderChatId = normalizeTelegramChatId(req.body?.orderChatId || '');
   const settingsPatch = sanitizeSettingsPatch(req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : {});
-  if (!botToken && !orderChatId && !Object.keys(settingsPatch).length) {
+  if (!botToken && !hasOrderChatIdField && !Object.keys(settingsPatch).length) {
     return res.status(400).json({ error: 'BOT_SETTINGS_REQUIRED' });
   }
 
@@ -2141,7 +3033,17 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     ...oldSettings,
     ...settingsPatch,
   };
-  if (orderChatId) mergedSettings.orderChatId = orderChatId;
+  if (hasOrderChatIdField) {
+    mergedSettings.orderRequestChannelType = 'telegram_chat';
+    mergedSettings.orderRequestTarget = '';
+    mergedSettings.orderRequestUrl = '';
+    mergedSettings.orderRequestWebhookUrl = '';
+    mergedSettings.orderRequestLink = '';
+    mergedSettings.orderRequestChatId = orderChatId;
+    mergedSettings.orderChatId = orderChatId;
+    mergedSettings.chatId = orderChatId;
+    mergedSettings.telegramChatId = orderChatId;
+  }
 
   let webhookSecret = String(req.store?.bot_webhook_secret || '').trim();
   if (botToken && !webhookSecret) webhookSecret = crypto.randomBytes(16).toString('hex');
@@ -2201,7 +3103,7 @@ app.put('/api/admin/data', authMiddleware, (req, res) => {
   replaceProductsTx(req.auth.storeId, products);
 
   const nextSettings = settings && typeof settings === 'object'
-    ? settings
+    ? sanitizeSettingsPatch(settings)
     : safeJsonParse(row.settings_json || '{}', {});
 
   db.prepare(`
@@ -2237,7 +3139,7 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
   replaceProductsTx(req.storeId, products);
 
   const nextSettings = settings && typeof settings === 'object'
-    ? settings
+    ? sanitizeSettingsPatch(settings)
     : safeJsonParse(req.store.settings_json || '{}', {});
 
   db.prepare(`
@@ -2254,6 +3156,65 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
   );
 
   return res.json({ ok: true, storeId: req.storeId });
+});
+
+app.get('/api/stores/:storeId/admin/payment-settings', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const settings = getStorePaymentIntegration(req.store, { includeSecret: false, req });
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    settings,
+  });
+});
+
+app.put('/api/stores/:storeId/admin/payment-settings', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const provider = normalizePaymentProvider(req.body?.provider || '');
+  if (!provider || provider === 'custom_link') return res.status(400).json({ error: 'UNSUPPORTED_PAYMENT_PROVIDER' });
+  const accountId = String(req.body?.accountId || req.body?.yookassaShopId || '').trim();
+  const secretKey = String(req.body?.secretKey || req.body?.yookassaSecretKey || '').trim();
+  const apiUrl = String(req.body?.apiUrl || '').trim();
+  const returnUrl = String(getStoreCatalogUrl(req.storeId, req) || '').trim();
+  const extra = {};
+  if (providerNeedsAccount(provider) && !accountId) return res.status(400).json({ error: 'PAYMENT_ACCOUNT_ID_REQUIRED' });
+  if (!returnUrl) return res.status(400).json({ error: 'STORE_CATALOG_URL_REQUIRED' });
+  if (apiUrl) {
+    try {
+      const parsedApi = new URL(apiUrl);
+      if (!/^https?:$/i.test(parsedApi.protocol)) throw new Error('INVALID_PROTOCOL');
+    } catch {
+      return res.status(400).json({ error: 'INVALID_PAYMENT_API_URL' });
+    }
+  }
+  const existingSecretEnc = String(req.store?.payment_secret_enc || req.store?.yookassa_secret_enc || '').trim();
+  if (providerNeedsSecret(provider) && !secretKey && !existingSecretEnc) {
+    return res.status(400).json({ error: 'PAYMENT_SECRET_REQUIRED' });
+  }
+  const secretToStore = secretKey ? encryptBotToken(secretKey) : existingSecretEnc;
+  const apiToStore = apiUrl || PAYMENT_PROVIDER_DEFAULT_API[provider] || '';
+  const accountToStore = accountId;
+  db.prepare(`
+    UPDATE stores
+    SET payment_provider = ?, payment_account_id = ?, payment_secret_enc = ?, payment_api_url = ?, payment_return_url = ?, payment_extra_json = ?, yookassa_shop_id = ?, yookassa_secret_enc = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(
+    provider,
+    accountToStore,
+    secretToStore,
+    apiToStore,
+    returnUrl,
+    JSON.stringify(extra),
+    provider === 'yookassa' ? accountToStore : String(req.store?.yookassa_shop_id || ''),
+    provider === 'yookassa' ? secretToStore : String(req.store?.yookassa_secret_enc || ''),
+    nowIso(),
+    req.storeId,
+  );
+  const nextStore = getStoreRow(req.storeId);
+  const settings = getStorePaymentIntegration(nextStore, { includeSecret: false, req });
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    settings,
+  });
 });
 
 app.post('/api/upload-image', authMiddleware, upload.single('file'), (req, res) => {
@@ -2327,12 +3288,33 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   if (Number(req.store.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
 
   const incoming = req.body?.order && typeof req.body.order === 'object' ? req.body.order : req.body;
-  const items = Array.isArray(incoming?.items) ? incoming.items : [];
+  const rawItems = Array.isArray(incoming?.items) ? incoming.items : [];
   const customer = incoming?.customer && typeof incoming.customer === 'object' ? incoming.customer : {};
-  if (!items.length) return res.status(400).json({ error: 'ORDER_ITEMS_REQUIRED' });
+  if (!rawItems.length) return res.status(400).json({ error: 'ORDER_ITEMS_REQUIRED' });
+
+  const items = rawItems.map((it) => {
+    const qtyRaw = Number(it?.qty || 1);
+    const qty = Number.isFinite(qtyRaw) ? Math.max(1, Math.round(qtyRaw)) : 1;
+    const isRequestPrice = Boolean(it?.isRequestPrice);
+    const priceRaw = Number(it?.price || 0);
+    const price = !isRequestPrice && Number.isFinite(priceRaw) && priceRaw > 0 ? priceRaw : 0;
+    return {
+      ...it,
+      qty,
+      price,
+      isRequestPrice,
+    };
+  });
 
   const orderId = String(incoming?.id || `ORD-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`);
-  const total = Number(incoming?.total || 0);
+  const computedTotal = items.reduce((acc, it) => {
+    if (it.isRequestPrice) return acc;
+    return acc + (Number(it.price || 0) * Number(it.qty || 1));
+  }, 0);
+  const total = Number(computedTotal.toFixed(2));
+  if (!Number.isFinite(total) || total <= 0) {
+    return res.status(400).json({ error: 'ORDER_TOTAL_REQUIRED' });
+  }
   const telegramUserId = String(
     incoming?.telegramUserId || customer?.telegramId || req.body?.telegramUserId || ''
   ).trim();
@@ -2392,11 +3374,204 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     return res.status(409).json({ error: 'ORDER_ALREADY_EXISTS' });
   }
 
+  const storeSettings = getStoreSettings(req.store);
+  const orderMode = normalizeOrderProcessingMode(storeSettings?.orderProcessingMode || '');
+  const orderRequestChannel = resolveOrderRequestChannelConfig(storeSettings);
   const subscription = getStoreSubscriptionState(req.storeId);
   const notify = subscription.notifyOrders
-    ? await notifyOrderViaTelegram(req.store, { ...incoming, id: orderId, items, customer, total, telegramUserId })
+    ? await notifyOrderRequest(req.store, { ...incoming, id: orderId, items, customer, total, telegramUserId })
     : { ok: false, skipped: true, reason: 'SUBSCRIPTION_INACTIVE' };
-  return res.json({ ok: true, orderId, notification: notify });
+  let payment = { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_NOT_CONFIGURED' };
+  if (subscription.notifyOrders) {
+    if (orderMode === 'chat') {
+      payment = { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_SKIPPED_CHAT_MODE' };
+    } else {
+      payment = await createOrderPayment({
+        storeRow: req.store,
+        orderRow: {
+          id: orderId,
+          total_amount: total,
+          currency: 'RUB',
+          telegram_user_id: telegramUserId,
+        },
+        telegramUserId,
+        req,
+      });
+    }
+  } else {
+    payment = { ok: false, provider: '', url: '', paymentId: '', error: 'SUBSCRIPTION_INACTIVE' };
+  }
+  return res.json({
+    ok: true,
+    orderId,
+    total,
+    orderMode,
+    notification: notify,
+    payment,
+    chat: {
+      configured: Boolean(orderRequestChannel?.target),
+      channelType: orderRequestChannel?.channelType || 'telegram_chat',
+    },
+  });
+});
+
+function updateOrderPaymentFromCallback({
+  storeId,
+  provider,
+  paymentId,
+  orderId = '',
+  status = 'pending',
+  amount = 0,
+  currency = 'RUB',
+  confirmationUrl = '',
+  telegramUserId = '',
+  payload = {},
+}) {
+  const normalizedProvider = normalizePaymentProvider(provider);
+  const normalizedPaymentId = String(paymentId || '').trim();
+  if (!normalizedProvider || !normalizedPaymentId) return { ok: false, reason: 'PAYMENT_ID_REQUIRED' };
+  const normalizedStoreId = String(storeId || '').trim().toUpperCase();
+  const existing = db.prepare(`
+    SELECT order_id
+    FROM order_payments
+    WHERE provider = ? AND payment_id = ? AND store_id = ?
+    LIMIT 1
+  `).get(normalizedProvider, normalizedPaymentId, normalizedStoreId);
+  const resolvedOrderId = String(existing?.order_id || orderId || '').trim();
+  if (!resolvedOrderId) return { ok: false, reason: 'ORDER_NOT_FOUND' };
+
+  const amountValue = Number.isFinite(Number(amount)) ? Number(amount) : 0;
+  const statusCode = String(status || '').trim().toLowerCase() || 'pending';
+  const currencyCode = String(currency || 'RUB').trim().toUpperCase() || 'RUB';
+  const ts = nowIso();
+  db.prepare(`
+    INSERT INTO order_payments (
+      store_id, order_id, provider, payment_id, amount, currency, status, confirmation_url, payload_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, payment_id) DO UPDATE SET
+      amount = excluded.amount,
+      currency = excluded.currency,
+      status = excluded.status,
+      confirmation_url = excluded.confirmation_url,
+      payload_json = excluded.payload_json,
+      updated_at = excluded.updated_at
+  `).run(
+    normalizedStoreId,
+    resolvedOrderId,
+    normalizedProvider,
+    normalizedPaymentId,
+    amountValue,
+    currencyCode,
+    statusCode,
+    String(confirmationUrl || '').trim(),
+    JSON.stringify(payload && typeof payload === 'object' ? payload : {}),
+    ts,
+    ts,
+  );
+
+  const successStatuses = new Set(['succeeded', 'success', 'paid', 'authorized', 'confirmed']);
+  const failedStatuses = new Set(['failed', 'fail', 'canceled', 'cancelled', 'rejected', 'declined', 'expired']);
+  const success = successStatuses.has(statusCode);
+  const canceled = failedStatuses.has(statusCode);
+  const orderStatus = success ? 'payment_success' : (canceled ? 'payment_failed' : 'payment_pending');
+  db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
+    .run(orderStatus, ts, resolvedOrderId, normalizedStoreId);
+
+  const eventType = success ? 'payment_success' : (canceled ? 'payment_fail' : 'payment_pending');
+  db.prepare(`
+    INSERT INTO events (store_id, event_type, product_id, telegram_user_id, session_id, payload_json, created_at)
+    VALUES (?, ?, '', ?, '', ?, ?)
+  `).run(
+    normalizedStoreId,
+    eventType,
+    String(telegramUserId || '').trim(),
+    JSON.stringify({ orderId: resolvedOrderId, paymentId: normalizedPaymentId, status: statusCode, amount: amountValue, provider: normalizedProvider }),
+    ts,
+  );
+  return { ok: true, orderId: resolvedOrderId };
+}
+
+app.post('/api/stores/:storeId/payments/yookassa/webhook', storeParamMiddleware, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const event = String(payload?.event || '').trim().toLowerCase();
+  const object = payload?.object && typeof payload.object === 'object' ? payload.object : {};
+  const paymentId = String(object?.id || '').trim();
+  if (!paymentId) return res.json({ ok: true });
+  const metadata = object?.metadata && typeof object.metadata === 'object' ? object.metadata : {};
+  const metadataStoreId = String(metadata?.store_id || '').trim().toUpperCase();
+  if (metadataStoreId && metadataStoreId !== req.storeId) return res.json({ ok: true });
+  const status = String(object?.status || '').trim().toLowerCase() || (event === 'payment.succeeded' ? 'succeeded' : 'pending');
+  updateOrderPaymentFromCallback({
+    storeId: req.storeId,
+    provider: 'yookassa',
+    paymentId,
+    orderId: String(metadata?.order_id || '').trim(),
+    status,
+    amount: Number(object?.amount?.value || 0),
+    currency: String(object?.amount?.currency || 'RUB'),
+    confirmationUrl: String(object?.confirmation?.confirmation_url || '').trim(),
+    telegramUserId: String(metadata?.telegram_user_id || '').trim(),
+    payload,
+  });
+  return res.json({ ok: true });
+});
+
+app.post('/api/stores/:storeId/payments/tbank/webhook', storeParamMiddleware, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const orderId = String(payload?.OrderId || payload?.orderId || '').trim();
+  const paymentId = String(payload?.PaymentId || payload?.paymentId || '').trim();
+  if (!paymentId) return res.json({ ok: true });
+  const status = String(payload?.Status || payload?.status || '').trim().toLowerCase()
+    || (payload?.Success === true || String(payload?.Success || '').toLowerCase() === 'true' ? 'succeeded' : 'pending');
+  updateOrderPaymentFromCallback({
+    storeId: req.storeId,
+    provider: 'tbank',
+    paymentId,
+    orderId,
+    status,
+    amount: Number(payload?.Amount || 0) / 100,
+    currency: 'RUB',
+    payload,
+  });
+  return res.json({ ok: true });
+});
+
+app.all('/api/stores/:storeId/payments/robokassa/webhook', storeParamMiddleware, (req, res) => {
+  const src = req.method === 'GET'
+    ? (req.query && typeof req.query === 'object' ? req.query : {})
+    : (req.body && typeof req.body === 'object' ? req.body : {});
+  const paymentId = String(src?.InvId || src?.invId || '').trim();
+  if (!paymentId) return res.send('OK');
+  const amount = Number(src?.OutSum || src?.outSum || 0);
+  updateOrderPaymentFromCallback({
+    storeId: req.storeId,
+    provider: 'robokassa',
+    paymentId,
+    orderId: String(src?.Shp_order_id || src?.shp_order_id || '').trim(),
+    status: 'succeeded',
+    amount,
+    currency: 'RUB',
+    payload: src,
+  });
+  return res.send(`OK${paymentId}`);
+});
+
+app.post('/api/stores/:storeId/payments/alfabank/webhook', storeParamMiddleware, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const paymentId = String(payload?.orderId || payload?.paymentId || '').trim();
+  if (!paymentId) return res.json({ ok: true });
+  const status = String(payload?.orderStatus || payload?.status || '').trim().toLowerCase() || 'pending';
+  updateOrderPaymentFromCallback({
+    storeId: req.storeId,
+    provider: 'alfabank',
+    paymentId,
+    orderId: String(payload?.orderNumber || '').trim(),
+    status,
+    amount: Number(payload?.amount || 0) / 100,
+    currency: 'RUB',
+    payload,
+  });
+  return res.json({ ok: true });
 });
 
 app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
@@ -2494,6 +3669,24 @@ app.post('/api/telegram/admin/webhook', async (req, res) => {
   }
 
   const update = req.body && typeof req.body === 'object' ? req.body : {};
+  const chatMemberUpdate = update?.my_chat_member && typeof update.my_chat_member === 'object'
+    ? update.my_chat_member
+    : null;
+  if (chatMemberUpdate) {
+    const chat = chatMemberUpdate?.chat && typeof chatMemberUpdate.chat === 'object' ? chatMemberUpdate.chat : {};
+    const chatIdFromMember = chat?.id ? String(chat.id) : '';
+    const chatType = String(chat?.type || '').trim().toLowerCase();
+    const oldStatus = String(chatMemberUpdate?.old_chat_member?.status || '').trim().toLowerCase();
+    const newStatus = String(chatMemberUpdate?.new_chat_member?.status || '').trim().toLowerCase();
+    const wasActive = oldStatus === 'member' || oldStatus === 'administrator';
+    const isActive = newStatus === 'member' || newStatus === 'administrator';
+    const isGroupChat = chatType === 'group' || chatType === 'supergroup';
+    if (isGroupChat && chatIdFromMember && isActive && !wasActive) {
+      await sendAdminChatIdHint(chatIdFromMember, String(chat?.title || '').trim());
+    }
+    return res.json({ ok: true });
+  }
+
   const message = update?.message || null;
   const textRaw = String(message?.text || '').trim();
   const text = textRaw.toLowerCase();
@@ -2567,11 +3760,35 @@ async function runSubscriptionReminderTick() {
   }
 }
 
+function sendNoCacheFile(res, filePath, contentType) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  if (contentType) res.type(contentType);
+  res.sendFile(filePath);
+}
+
 app.get(/^\/store\/[A-Za-z0-9]{6}$/u, (_req, res) => {
-  res.sendFile(path.join(ROOT, 'index.html'));
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
 });
 
-app.use(express.static(ROOT));
+app.get('/', (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get('/index.html', (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get('/app.js', (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'app.js'), 'application/javascript');
+});
+
+app.get('/style.css', (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'style.css'), 'text/css');
+});
+
+app.use(express.static(ROOT, { maxAge: 0, etag: true, lastModified: true }));
 
 app.use((err, _req, res, _next) => {
   if (String(err?.message || '') === 'CORS_NOT_ALLOWED') {
@@ -2600,9 +3817,37 @@ async function bootstrapAdminBot() {
   }
 }
 
+async function syncStoreCatalogMenus() {
+  const base = resolveCatalogBaseFromEnv();
+  if (!base) {
+    console.log('[store-bot] menu sync skipped: WEBAPP_URL/PUBLIC_API_BASE not configured');
+    return;
+  }
+  const stores = db.prepare(`
+    SELECT store_id, bot_token_enc
+    FROM stores
+    WHERE is_active = 1
+      AND bot_token_enc IS NOT NULL
+      AND TRIM(bot_token_enc) <> ''
+  `).all();
+  let ok = 0;
+  let failed = 0;
+  for (const row of stores) {
+    const storeId = String(row?.store_id || '').trim().toUpperCase();
+    const botToken = decryptBotToken(String(row?.bot_token_enc || ''));
+    if (!storeId || !botToken) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const setup = await configureTelegramBotMenu(botToken, storeId);
+    if (setup?.ok) ok += 1;
+    else failed += 1;
+  }
+  console.log(`[store-bot] menu sync finished: ok=${ok}, failed=${failed}`);
+}
+
 const server = app.listen(PORT, () => {
   console.log(`SaaS server started on http://0.0.0.0:${PORT}`);
   void bootstrapAdminBot();
+  void syncStoreCatalogMenus();
 });
 
 const pendingAdminMessagesTimer = setInterval(() => {

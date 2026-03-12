@@ -35,62 +35,6 @@ console.log("✅ telegram.js loaded");
     }
   }
 
-  async function requestContact() {
-    if (!isTelegram || !Telegram.WebApp.requestContact) {
-      return { ok: false, phone: "" };
-    }
-
-    return new Promise((resolve) => {
-      let settled = false;
-
-      function extractPhone(payload) {
-        if (!payload) return "";
-        const direct =
-          payload.phone_number ||
-          payload.phone ||
-          payload.contact?.phone_number ||
-          payload.user?.phone_number ||
-          payload.user?.contact?.phone_number ||
-          payload.receiver?.phone_number ||
-          "";
-        return String(direct || "").trim();
-      }
-
-      function done(ok, payload) {
-        if (settled) return;
-        settled = true;
-        const fromPayload = extractPhone(payload);
-        const fromInitData =
-          String(
-            Telegram.WebApp?.initDataUnsafe?.user?.phone_number ||
-            Telegram.WebApp?.initDataUnsafe?.user?.contact?.phone_number ||
-            Telegram.WebApp?.initDataUnsafe?.contact?.phone_number ||
-            Telegram.WebApp?.initDataUnsafe?.phone_number ||
-            ""
-          ).trim();
-        const phone = fromPayload || fromInitData;
-        resolve({ ok: Boolean(ok || phone), phone: String(phone || "") });
-      }
-
-      try {
-        const maybePromise = Telegram.WebApp.requestContact((shared) => done(shared, null));
-        if (maybePromise && typeof maybePromise.then === "function") {
-          maybePromise
-            .then((result) => done(true, result))
-            .catch((error) => {
-              console.log(error);
-              done(false, null);
-            });
-        }
-      } catch (e) {
-        console.log(e);
-        done(false, null);
-      }
-
-      setTimeout(() => done(false, null), 6000);
-    });
-  }
-
   async function sendCheckoutOrder(order) {
     if (!isTelegram) {
       return { ok: false, error: "Mini App открыт не в Telegram." };
@@ -150,7 +94,6 @@ console.log("✅ telegram.js loaded");
     hasInitData,
     apiUrl,
     show,
-    requestContact,
     sendCheckoutOrder,
     sendOrder,
     sendOrderViaApi,
@@ -160,30 +103,24 @@ console.log("✅ telegram.js loaded");
   if (isTelegram) {
     Telegram.WebApp.ready();
     Telegram.WebApp.expand();
-    if (typeof Telegram.WebApp.disableVerticalSwipes === "function") {
-      Telegram.WebApp.disableVerticalSwipes();
+    try {
+      if (typeof Telegram.WebApp.disableVerticalSwipes === "function") {
+        Telegram.WebApp.disableVerticalSwipes();
+      }
+    } catch (e) {
+      console.log("disableVerticalSwipes failed", e);
+    }
+    try {
+      if (typeof Telegram.WebApp.enableClosingConfirmation === "function") {
+        Telegram.WebApp.enableClosingConfirmation();
+      }
+    } catch (e) {
+      console.log("enableClosingConfirmation failed", e);
     }
   }
 
-  // Fallback: prevent pull-down close gesture when page is at top.
-  // Keeps normal vertical scrolling inside the app content.
-  let touchStartY = 0;
-  document.addEventListener(
-    "touchstart",
-    (e) => {
-      touchStartY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
-    },
-    { passive: true }
-  );
-  document.addEventListener(
-    "touchmove",
-    (e) => {
-      const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : 0;
-      const pullingDown = currentY > touchStartY + 2;
-      if (pullingDown && window.scrollY <= 0) {
-        e.preventDefault();
-      }
-    },
-    { passive: false }
-  );
+  // Fallback на уровне документа: убираем pull-to-refresh/overscroll вверх-вниз.
+  // Не мешает горизонтальным лентам (pan-x остаётся в компонентах).
+  document.documentElement.style.overscrollBehaviorY = "none";
+  document.body.style.overscrollBehaviorY = "none";
 })();
