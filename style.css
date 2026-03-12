@@ -2530,6 +2530,78 @@ body:not(.admin-mode) .profile-theme-panel {
   opacity: 0.9;
 }
 
+.profile-bot-copy-button {
+  width: 100%;
+}
+
+.catalog-bot-list {
+  display: grid;
+  gap: 10px;
+}
+
+.catalog-bot-empty {
+  border: 1px dashed var(--stroke);
+  border-radius: 12px;
+  padding: 14px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.catalog-bot-card {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  display: grid;
+  gap: 8px;
+}
+
+.catalog-bot-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text);
+}
+
+.catalog-bot-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--stroke);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.catalog-bot-card-line {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.catalog-bot-card-line span:last-child {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.catalog-bot-card-url {
+  font-size: 12px;
+}
+
+.catalog-bot-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .subscription-tariffs {
   display: grid;
   gap: 8px;

@@ -75,6 +75,26 @@ CREATE TABLE IF NOT EXISTS store_users (
   FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS store_catalog_connections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  platform TEXT NOT NULL DEFAULT 'telegram',
+  title TEXT NOT NULL DEFAULT '',
+  bot_identifier TEXT NOT NULL DEFAULT '',
+  bot_username TEXT NOT NULL DEFAULT '',
+  bot_token_enc TEXT NOT NULL DEFAULT '',
+  webhook_secret TEXT NOT NULL DEFAULT '',
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_store_catalog_connections_store_sort
+  ON store_catalog_connections(store_id, sort_order ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_store_catalog_connections_store_platform
+  ON store_catalog_connections(store_id, platform);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   store_id TEXT NOT NULL,
@@ -669,6 +689,271 @@ async function createYookassaSubscriptionPayment({ storeId, userId, days, amount
 
 function getStoreSettings(row) {
   return safeJsonParse(row?.settings_json || '{}', {});
+}
+
+function normalizeCatalogConnectionPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram' || value === 'telegram_bot' || value === 'tg') return 'telegram';
+  if (value === 'vk' || value === 'vk_bot' || value === 'vkontakte') return 'vk';
+  if (value === 'max' || value === 'max_bot') return 'max';
+  return 'custom';
+}
+
+function getCatalogConnectionPlatformLabel(platform) {
+  const normalized = normalizeCatalogConnectionPlatform(platform);
+  if (normalized === 'telegram') return 'Telegram';
+  if (normalized === 'vk') return 'VK';
+  if (normalized === 'max') return 'MAX';
+  return 'Другая платформа';
+}
+
+function normalizeCatalogConnectionTitle(raw, platform = 'custom', fallback = '') {
+  const value = String(raw || '').trim().slice(0, 120);
+  if (value) return value;
+  const fallbackValue = String(fallback || '').trim().slice(0, 120);
+  if (fallbackValue) return fallbackValue;
+  return `${getCatalogConnectionPlatformLabel(platform)} бот`;
+}
+
+function normalizeCatalogConnectionIdentifier(raw) {
+  return String(raw || '').trim().slice(0, 300);
+}
+
+function serializeCatalogConnection(row, { req = null } = {}) {
+  if (!row) return null;
+  const platform = normalizeCatalogConnectionPlatform(row.platform);
+  const title = normalizeCatalogConnectionTitle(row.title, platform, row.bot_username || row.bot_identifier || '');
+  const botUsername = String(row.bot_username || '').trim();
+  const identifier = String(row.bot_identifier || '').trim();
+  return {
+    id: Number(row.id || 0),
+    platform,
+    platformLabel: getCatalogConnectionPlatformLabel(platform),
+    title,
+    identifier,
+    botUsername,
+    hasToken: Boolean(String(row.bot_token_enc || '').trim()),
+    webhookConfigured: Boolean(String(row.webhook_secret || '').trim()),
+    managed: platform === 'telegram' && Boolean(String(row.bot_token_enc || '').trim()),
+    catalogUrl: getStoreCatalogUrl(row.store_id, req),
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+function listStoreCatalogConnections(storeId, { req = null } = {}) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) return [];
+  const storeRow = getStoreRow(sid);
+  if (storeRow) ensureLegacyStoreCatalogConnection(storeRow);
+  const rows = db.prepare(`
+    SELECT *
+    FROM store_catalog_connections
+    WHERE store_id = ?
+    ORDER BY sort_order ASC, id ASC
+  `).all(sid);
+  return rows.map((row) => serializeCatalogConnection(row, { req })).filter(Boolean);
+}
+
+function listStoreCatalogConnectionRows(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) return [];
+  const storeRow = getStoreRow(sid);
+  if (storeRow) ensureLegacyStoreCatalogConnection(storeRow);
+  return db.prepare(`
+    SELECT *
+    FROM store_catalog_connections
+    WHERE store_id = ?
+    ORDER BY sort_order ASC, id ASC
+  `).all(sid);
+}
+
+function getPrimaryTelegramCatalogConnectionRow(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) return null;
+  return db.prepare(`
+    SELECT *
+    FROM store_catalog_connections
+    WHERE store_id = ?
+      AND platform = 'telegram'
+    ORDER BY sort_order ASC, id ASC
+    LIMIT 1
+  `).get(sid) || null;
+}
+
+function getTelegramCatalogConnectionBySecret(storeId, webhookSecret) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  const secret = String(webhookSecret || '').trim();
+  if (!sid || !secret) return null;
+  return db.prepare(`
+    SELECT *
+    FROM store_catalog_connections
+    WHERE store_id = ?
+      AND platform = 'telegram'
+      AND webhook_secret = ?
+    ORDER BY sort_order ASC, id ASC
+    LIMIT 1
+  `).get(sid, secret) || null;
+}
+
+function getStoreTelegramBotTokens(storeRow) {
+  const sid = String(storeRow?.store_id || '').trim().toUpperCase();
+  if (!sid) return [];
+  const unique = new Set();
+  const out = [];
+  const rows = listStoreCatalogConnectionRows(sid);
+  rows.forEach((row) => {
+    if (normalizeCatalogConnectionPlatform(row.platform) !== 'telegram') return;
+    const token = decryptBotToken(String(row.bot_token_enc || ''));
+    if (!token || unique.has(token)) return;
+    unique.add(token);
+    out.push(token);
+  });
+  const legacy = decryptBotToken(String(storeRow?.bot_token_enc || ''));
+  if (legacy && !unique.has(legacy)) out.push(legacy);
+  return out;
+}
+
+function ensureLegacyStoreCatalogConnection(storeRow) {
+  const sid = String(storeRow?.store_id || '').trim().toUpperCase();
+  if (!sid) return;
+  const legacyToken = String(storeRow?.bot_token_enc || '').trim();
+  const legacyUsername = String(storeRow?.bot_username || '').trim();
+  const legacySecret = String(storeRow?.bot_webhook_secret || '').trim();
+  if (!legacyToken && !legacyUsername) return;
+  const existing = db.prepare(`
+    SELECT id
+    FROM store_catalog_connections
+    WHERE store_id = ?
+      AND platform = 'telegram'
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(sid);
+  if (existing?.id) return;
+  const ts = nowIso();
+  db.prepare(`
+    INSERT INTO store_catalog_connections (
+      store_id, platform, title, bot_identifier, bot_username, bot_token_enc, webhook_secret, meta_json, sort_order, created_at, updated_at
+    )
+    VALUES (?, 'telegram', ?, ?, ?, ?, ?, ?, 0, ?, ?)
+  `).run(
+    sid,
+    normalizeCatalogConnectionTitle('', 'telegram', legacyUsername || 'Telegram бот'),
+    legacyUsername,
+    legacyUsername,
+    legacyToken,
+    legacySecret,
+    JSON.stringify({ migratedFrom: 'stores' }),
+    ts,
+    ts,
+  );
+}
+
+function syncLegacyStoreBotColumns(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) return;
+  const primary = getPrimaryTelegramCatalogConnectionRow(sid);
+  const current = getStoreRow(sid);
+  const nextToken = String(primary?.bot_token_enc || '');
+  const nextUsername = String(primary?.bot_username || primary?.bot_identifier || '');
+  const nextSecret = String(primary?.webhook_secret || '');
+  if (
+    current
+    && String(current.bot_token_enc || '') === nextToken
+    && String(current.bot_username || '') === nextUsername
+    && String(current.bot_webhook_secret || '') === nextSecret
+  ) {
+    return;
+  }
+  db.prepare(`
+    UPDATE stores
+    SET bot_token_enc = ?,
+        bot_username = ?,
+        bot_webhook_secret = ?,
+        updated_at = ?
+    WHERE store_id = ?
+  `).run(
+    nextToken,
+    nextUsername,
+    nextSecret,
+    nowIso(),
+    sid,
+  );
+}
+
+function createCatalogConnectionRecord({
+  storeId,
+  platform,
+  title = '',
+  botIdentifier = '',
+  botUsername = '',
+  botTokenEnc = '',
+  webhookSecret = '',
+  meta = {},
+}) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) throw new Error('STORE_ID_REQUIRED');
+  const normalizedPlatform = normalizeCatalogConnectionPlatform(platform);
+  const safeTitle = normalizeCatalogConnectionTitle(title, normalizedPlatform, botUsername || botIdentifier || '');
+  const safeIdentifier = normalizeCatalogConnectionIdentifier(botIdentifier || botUsername || '');
+  const safeUsername = String(botUsername || '').trim().slice(0, 120);
+  const safeMeta = meta && typeof meta === 'object' ? meta : {};
+  const nextSort = Number(
+    db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort FROM store_catalog_connections WHERE store_id = ?').get(sid)?.next_sort || 0,
+  );
+  const ts = nowIso();
+  const result = db.prepare(`
+    INSERT INTO store_catalog_connections (
+      store_id, platform, title, bot_identifier, bot_username, bot_token_enc, webhook_secret, meta_json, sort_order, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sid,
+    normalizedPlatform,
+    safeTitle,
+    safeIdentifier,
+    safeUsername,
+    String(botTokenEnc || ''),
+    String(webhookSecret || ''),
+    JSON.stringify(safeMeta),
+    nextSort,
+    ts,
+    ts,
+  );
+  return db.prepare('SELECT * FROM store_catalog_connections WHERE id = ?').get(result.lastInsertRowid) || null;
+}
+
+function migrateLegacyCatalogConnections() {
+  const stores = db.prepare('SELECT store_id, bot_token_enc, bot_username, bot_webhook_secret FROM stores').all();
+  stores.forEach((row) => {
+    ensureLegacyStoreCatalogConnection(row);
+    syncLegacyStoreBotColumns(row.store_id);
+  });
+}
+
+function getStoreCatalogConnectionSummary(storeRow) {
+  const sid = String(storeRow?.store_id || '').trim().toUpperCase();
+  if (!sid) return { total: 0, botUsername: '' };
+  ensureLegacyStoreCatalogConnection(storeRow);
+  const rows = listStoreCatalogConnectionRows(sid);
+  if (!rows.length) {
+    return { total: 0, botUsername: '' };
+  }
+  const primaryTelegram = rows.find((row) => normalizeCatalogConnectionPlatform(row.platform) === 'telegram') || null;
+  const total = rows.length;
+  if (primaryTelegram) {
+    const label = String(primaryTelegram.bot_username || primaryTelegram.bot_identifier || '').trim() || 'Telegram';
+    return {
+      total,
+      botUsername: total > 1 ? `${label} +${total - 1}` : label,
+    };
+  }
+  const first = rows[0];
+  const platformLabel = getCatalogConnectionPlatformLabel(first.platform);
+  return {
+    total,
+    botUsername: total > 1 ? `${platformLabel} +${total - 1}` : platformLabel,
+  };
 }
 
 function normalizeOrderProcessingMode(raw) {
@@ -1735,6 +2020,7 @@ function migrateLegacyToTenantTables() {
 
 seedDefaultStore();
 migrateLegacyToTenantTables();
+migrateLegacyCatalogConnections();
 
 app.set('trust proxy', 1);
 app.use(cors({
@@ -1868,9 +2154,11 @@ function resolveTelegramUserIdFromBody(body, { preferStoreToken = false, storeRo
   if (fromAdmin) return fromAdmin;
 
   if (preferStoreToken && storeRow) {
-    const storeToken = decryptBotToken(storeRow.bot_token_enc || '');
-    const fromStore = parseTelegramIdFromInitData(initData, storeToken);
-    if (fromStore) return fromStore;
+    const storeTokens = getStoreTelegramBotTokens(storeRow);
+    for (const storeToken of storeTokens) {
+      const fromStore = parseTelegramIdFromInitData(initData, storeToken);
+      if (fromStore) return fromStore;
+    }
   }
   if (allowUnverified) {
     const loose = parseTelegramIdFromInitDataUnsafe(initData);
@@ -1945,6 +2233,23 @@ async function configureTelegramBotWebhook(botToken, storeId, webhookSecret, api
     return { ok: true, webhookUrl: hookUrl };
   } catch {
     return { ok: false, error: 'SET_WEBHOOK_FAILED' };
+  }
+}
+
+async function deleteTelegramBotWebhook(botToken) {
+  const safeToken = String(botToken || '').trim();
+  if (!safeToken) return { ok: false, skipped: true, reason: 'BOT_TOKEN_REQUIRED' };
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(safeToken)}/deleteWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drop_pending_updates: false }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) return { ok: false, error: 'DELETE_WEBHOOK_FAILED' };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'DELETE_WEBHOOK_FAILED' };
   }
 }
 
@@ -2581,6 +2886,17 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   ensureStoreSubscriptionRow(storeId, ts);
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
+  createCatalogConnectionRecord({
+    storeId,
+    platform: 'telegram',
+    title: normalizeCatalogConnectionTitle('', 'telegram', botUsername || 'Telegram бот'),
+    botIdentifier: botUsername,
+    botUsername,
+    botTokenEnc: encryptBotToken(botToken),
+    webhookSecret,
+    meta: { createdBy: 'register-by-bot' },
+  });
+  syncLegacyStoreBotColumns(storeId);
 
   const apiBase = resolvePublicApiBase(req);
   const menuSetup = await configureTelegramBotMenu(botToken, storeId);
@@ -2943,30 +3259,34 @@ app.post('/api/subscription/yookassa/webhook', async (req, res) => {
 app.get('/api/admin/stores', authMiddleware, (req, res) => {
   if (req.auth.userId) {
     const stores = db.prepare(`
-      SELECT s.store_id, s.store_name, s.bot_username, s.created_at, s.updated_at
+      SELECT s.store_id, s.store_name, s.bot_username, s.bot_token_enc, s.bot_webhook_secret, s.created_at, s.updated_at
       FROM stores s
       JOIN store_users su ON su.store_id = s.store_id
       WHERE su.user_id = ?
       ORDER BY s.created_at ASC
-    `).all(req.auth.userId).map((s) => ({
-      storeId: s.store_id,
-      storeName: s.store_name,
-      botUsername: s.bot_username || '',
-      catalogUrl: getStoreCatalogUrl(s.store_id, req),
-      createdAt: s.created_at,
-      updatedAt: s.updated_at,
-    }));
+    `).all(req.auth.userId).map((s) => {
+      const summary = getStoreCatalogConnectionSummary(s);
+      return {
+        storeId: s.store_id,
+        storeName: s.store_name,
+        botUsername: summary.botUsername || s.bot_username || '',
+        catalogUrl: getStoreCatalogUrl(s.store_id, req),
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      };
+    });
     return res.json({ ok: true, stores });
   }
 
   const row = getStoreRow(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  const summary = getStoreCatalogConnectionSummary(row);
   return res.json({
     ok: true,
     stores: [{
       storeId: row.store_id,
       storeName: row.store_name,
-      botUsername: row.bot_username || '',
+      botUsername: summary.botUsername || row.bot_username || '',
       catalogUrl: getStoreCatalogUrl(row.store_id, req),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -3013,6 +3333,113 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
   return res.json({ ok: true, storeId, active: false });
 });
 
+app.get('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  ensureLegacyStoreCatalogConnection(req.store);
+  syncLegacyStoreBotColumns(req.storeId);
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    catalogUrl: getStoreCatalogUrl(req.storeId, req),
+    connections: listStoreCatalogConnections(req.storeId, { req }),
+  });
+});
+
+app.post('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
+  const platform = normalizeCatalogConnectionPlatform(req.body?.platform || 'telegram');
+  const title = normalizeCatalogConnectionTitle(req.body?.title || '', platform, req.body?.identifier || '');
+  const identifier = normalizeCatalogConnectionIdentifier(req.body?.identifier || '');
+  const botToken = String(req.body?.botToken || '').trim();
+  const existingRows = listStoreCatalogConnectionRows(req.storeId);
+
+  let validation = { ok: true, username: '' };
+  if (platform === 'telegram') {
+    if (!botToken || !botToken.includes(':')) {
+      return res.status(400).json({ error: 'BOT_TOKEN_REQUIRED' });
+    }
+    validation = await validateTelegramBotToken(botToken);
+    if (!validation.ok) return res.status(400).json({ error: validation.error || 'BOT_TOKEN_INVALID' });
+    const normalizedUsername = String(validation.username || '').trim().toLowerCase();
+    const hasDuplicate = existingRows.some((row) => (
+      normalizeCatalogConnectionPlatform(row.platform) === 'telegram'
+      && String(row.bot_username || '').trim().toLowerCase() === normalizedUsername
+      && normalizedUsername
+    ));
+    if (hasDuplicate) return res.status(409).json({ error: 'BOT_ALREADY_CONNECTED' });
+  } else if (!identifier) {
+    return res.status(400).json({ error: 'BOT_IDENTIFIER_REQUIRED' });
+  }
+
+  const normalizedIdentifier = platform === 'telegram'
+    ? normalizeCatalogConnectionIdentifier(identifier || validation.username || '')
+    : identifier;
+  const duplicateExternal = platform !== 'telegram' && existingRows.some((row) => (
+    normalizeCatalogConnectionPlatform(row.platform) === platform
+    && String(row.bot_identifier || '').trim().toLowerCase() === normalizedIdentifier.toLowerCase()
+  ));
+  if (duplicateExternal) return res.status(409).json({ error: 'BOT_ALREADY_CONNECTED' });
+
+  const webhookSecret = platform === 'telegram' ? crypto.randomBytes(16).toString('hex') : '';
+  const created = createCatalogConnectionRecord({
+    storeId: req.storeId,
+    platform,
+    title,
+    botIdentifier: normalizedIdentifier,
+    botUsername: String(validation.username || '').trim(),
+    botTokenEnc: platform === 'telegram' ? encryptBotToken(botToken) : '',
+    webhookSecret,
+    meta: { createdBy: 'admin-profile' },
+  });
+  syncLegacyStoreBotColumns(req.storeId);
+
+  let menuSetup = { ok: false, skipped: true, reason: 'PLATFORM_NOT_TELEGRAM' };
+  let webhookSetup = { ok: false, skipped: true, reason: 'PLATFORM_NOT_TELEGRAM' };
+  if (platform === 'telegram') {
+    menuSetup = await configureTelegramBotMenu(botToken, req.storeId);
+    webhookSetup = await configureTelegramBotWebhook(botToken, req.storeId, webhookSecret, resolvePublicApiBase(req));
+  }
+
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    connection: serializeCatalogConnection(created, { req }),
+    botUsername: String(validation.username || '').trim(),
+    menuSetup,
+    webhookSetup,
+    connections: listStoreCatalogConnections(req.storeId, { req }),
+  });
+});
+
+app.delete('/api/admin/stores/:storeId/catalog-bots/:connectionId', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
+  const connectionId = Number(req.params.connectionId || 0);
+  if (!Number.isInteger(connectionId) || connectionId <= 0) {
+    return res.status(400).json({ error: 'INVALID_CONNECTION_ID' });
+  }
+  const row = db.prepare(`
+    SELECT *
+    FROM store_catalog_connections
+    WHERE id = ?
+      AND store_id = ?
+    LIMIT 1
+  `).get(connectionId, req.storeId);
+  if (!row) return res.status(404).json({ error: 'CONNECTION_NOT_FOUND' });
+
+  const platform = normalizeCatalogConnectionPlatform(row.platform);
+  const token = platform === 'telegram' ? decryptBotToken(String(row.bot_token_enc || '')) : '';
+  let webhookDelete = { ok: false, skipped: true, reason: 'PLATFORM_NOT_TELEGRAM' };
+  if (token) webhookDelete = await deleteTelegramBotWebhook(token);
+
+  db.prepare('DELETE FROM store_catalog_connections WHERE id = ? AND store_id = ?').run(connectionId, req.storeId);
+  syncLegacyStoreBotColumns(req.storeId);
+
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    removedId: connectionId,
+    webhookDelete,
+    connections: listStoreCatalogConnections(req.storeId, { req }),
+  });
+});
+
 app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
   const hasOrderChatIdField = Boolean(req.body && Object.prototype.hasOwnProperty.call(req.body, 'orderChatId'));
@@ -3022,10 +3449,18 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     return res.status(400).json({ error: 'BOT_SETTINGS_REQUIRED' });
   }
 
-  let validation = { ok: true, username: req.store?.bot_username || '' };
+  let validation = { ok: true, username: '' };
   if (botToken) {
     validation = await validateTelegramBotToken(botToken);
     if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const existingRows = listStoreCatalogConnectionRows(req.storeId);
+    const normalizedUsername = String(validation.username || '').trim().toLowerCase();
+    const hasDuplicate = existingRows.some((row) => (
+      normalizeCatalogConnectionPlatform(row.platform) === 'telegram'
+      && String(row.bot_username || '').trim().toLowerCase() === normalizedUsername
+      && normalizedUsername
+    ));
+    if (hasDuplicate) return res.status(409).json({ error: 'BOT_ALREADY_CONNECTED' });
   }
 
   const oldSettings = getStoreSettings(req.store);
@@ -3045,20 +3480,11 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     mergedSettings.telegramChatId = orderChatId;
   }
 
-  let webhookSecret = String(req.store?.bot_webhook_secret || '').trim();
-  if (botToken && !webhookSecret) webhookSecret = crypto.randomBytes(16).toString('hex');
-
-  const tokenToStore = botToken ? encryptBotToken(botToken) : req.store.bot_token_enc;
-  const usernameToStore = botToken ? (validation.username || '') : (req.store.bot_username || '');
-
   db.prepare(`
     UPDATE stores
-    SET bot_token_enc = ?, bot_username = ?, bot_webhook_secret = ?, settings_json = ?, updated_at = ?
+    SET settings_json = ?, updated_at = ?
     WHERE store_id = ?
   `).run(
-    tokenToStore,
-    usernameToStore,
-    webhookSecret,
     JSON.stringify(mergedSettings),
     nowIso(),
     req.storeId,
@@ -3067,10 +3493,31 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   let menuSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
   let webhookSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
   if (botToken) {
+    const webhookSecret = crypto.randomBytes(16).toString('hex');
+    createCatalogConnectionRecord({
+      storeId: req.storeId,
+      platform: 'telegram',
+      title: normalizeCatalogConnectionTitle('', 'telegram', validation.username || 'Telegram бот'),
+      botIdentifier: String(validation.username || '').trim(),
+      botUsername: String(validation.username || '').trim(),
+      botTokenEnc: encryptBotToken(botToken),
+      webhookSecret,
+      meta: { createdBy: 'legacy-bot-endpoint' },
+    });
+    syncLegacyStoreBotColumns(req.storeId);
     menuSetup = await configureTelegramBotMenu(botToken, req.storeId);
     webhookSetup = await configureTelegramBotWebhook(botToken, req.storeId, webhookSecret, resolvePublicApiBase(req));
   }
-  return res.json({ ok: true, storeId: req.storeId, botUsername: usernameToStore, menuSetup, webhookSetup, settings: mergedSettings });
+
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    botUsername: String(validation.username || '').trim(),
+    menuSetup,
+    webhookSetup,
+    settings: mergedSettings,
+    connections: listStoreCatalogConnections(req.storeId, { req }),
+  });
 });
 
 app.get('/api/admin/data', authMiddleware, (req, res) => {
@@ -3642,8 +4089,10 @@ app.get('/api/stores/:storeId/public', storeParamMiddleware, (req, res) => {
 
 app.post('/api/telegram/webhook/:storeId', storeParamMiddleware, async (req, res) => {
   const secretHeader = String(req.headers['x-telegram-bot-api-secret-token'] || '').trim();
+  const matchedConnection = getTelegramCatalogConnectionBySecret(req.storeId, secretHeader);
   const expectedSecret = String(req.store?.bot_webhook_secret || '').trim();
-  if (!expectedSecret || !secretHeader || secretHeader !== expectedSecret) {
+  const isLegacySecret = Boolean(expectedSecret && secretHeader && secretHeader === expectedSecret);
+  if (!matchedConnection && !isLegacySecret) {
     return res.status(401).json({ error: 'INVALID_WEBHOOK_SECRET' });
   }
 
@@ -3654,7 +4103,9 @@ app.post('/api/telegram/webhook/:storeId', storeParamMiddleware, async (req, res
   if (!chatId) return res.json({ ok: true });
 
   if (text === '/start' || text.startsWith('/start ')) {
-    const token = decryptBotToken(req.store?.bot_token_enc || '');
+    const token = matchedConnection
+      ? decryptBotToken(String(matchedConnection.bot_token_enc || ''))
+      : decryptBotToken(String(req.store?.bot_token_enc || ''));
     if (token) await sendStoreCatalogKeyboard(token, chatId, req.storeId, false, req.store);
   }
 
@@ -3823,16 +4274,18 @@ async function syncStoreCatalogMenus() {
     console.log('[store-bot] menu sync skipped: WEBAPP_URL/PUBLIC_API_BASE not configured');
     return;
   }
-  const stores = db.prepare(`
-    SELECT store_id, bot_token_enc
-    FROM stores
-    WHERE is_active = 1
-      AND bot_token_enc IS NOT NULL
-      AND TRIM(bot_token_enc) <> ''
+  const connections = db.prepare(`
+    SELECT s.store_id, c.bot_token_enc
+    FROM store_catalog_connections c
+    JOIN stores s ON s.store_id = c.store_id
+    WHERE s.is_active = 1
+      AND c.platform = 'telegram'
+      AND c.bot_token_enc IS NOT NULL
+      AND TRIM(c.bot_token_enc) <> ''
   `).all();
   let ok = 0;
   let failed = 0;
-  for (const row of stores) {
+  for (const row of connections) {
     const storeId = String(row?.store_id || '').trim().toUpperCase();
     const botToken = decryptBotToken(String(row?.bot_token_enc || ''));
     if (!storeId || !botToken) continue;

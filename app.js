@@ -41,6 +41,9 @@ const state = {
     articles: 0,
   },
   pendingPayment: null,
+  catalogBotConnections: [],
+  catalogBotConnectionsStoreId: '',
+  catalogBotConnectionsLoading: false,
   paymentIntegration: {
     provider: 'yookassa',
     accountId: '',
@@ -237,11 +240,20 @@ const ui = {
   adminLogoutButton: document.getElementById('adminLogoutButton'),
   profileBotConnectSection: document.getElementById('profileBotConnectSection'),
   profileBotStoreIdValue: document.getElementById('profileBotStoreIdValue'),
-  profileBotUsernameValue: document.getElementById('profileBotUsernameValue'),
+  profileBotCatalogUrlValue: document.getElementById('profileBotCatalogUrlValue'),
+  profileBotCatalogUrlCopyButton: document.getElementById('profileBotCatalogUrlCopyButton'),
   profileBotConnectForm: document.getElementById('profileBotConnectForm'),
+  profileBotPlatformInput: document.getElementById('profileBotPlatformInput'),
+  profileBotLabelInput: document.getElementById('profileBotLabelInput'),
+  profileBotIdentifierLabel: document.getElementById('profileBotIdentifierLabel'),
+  profileBotIdentifierLabelText: document.getElementById('profileBotIdentifierLabelText'),
+  profileBotIdentifierInput: document.getElementById('profileBotIdentifierInput'),
+  profileBotTokenLabel: document.getElementById('profileBotTokenLabel'),
+  profileBotTokenLabelText: document.getElementById('profileBotTokenLabelText'),
   profileBotTokenInput: document.getElementById('profileBotTokenInput'),
   profileBotConnectStatus: document.getElementById('profileBotConnectStatus'),
   profileBotConnectSaveButton: document.getElementById('profileBotConnectSaveButton'),
+  profileBotConnectionsList: document.getElementById('profileBotConnectionsList'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   profileHistorySection: document.getElementById('profileHistorySection'),
   statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
@@ -373,6 +385,45 @@ const PAYMENT_PROVIDER_META = {
     defaultApiUrl: 'https://pay.alfabank.ru/payment/rest/register.do',
     needsSecret: true,
     needsAccount: true,
+  },
+};
+
+const CATALOG_BOT_PLATFORM_META = {
+  telegram: {
+    label: 'Telegram',
+    identifierLabel: 'Username / ссылка (необязательно)',
+    identifierPlaceholder: '@shop_bot или https://t.me/shop_bot',
+    tokenLabel: 'Bot Token Telegram',
+    tokenPlaceholder: '123456:ABC...',
+    tokenRequired: true,
+    hint: 'Для Telegram бот подключается автоматически: настраиваются меню и webhook каталога.',
+  },
+  vk: {
+    label: 'VK',
+    identifierLabel: 'ID / ссылка бота VK',
+    identifierPlaceholder: 'vk.com/club..., bot id или ссылка на сообщество',
+    tokenLabel: '',
+    tokenPlaceholder: '',
+    tokenRequired: false,
+    hint: 'Для VK сохраняется точка входа и общий URL каталога этого магазина.',
+  },
+  max: {
+    label: 'MAX',
+    identifierLabel: 'ID / ссылка бота MAX',
+    identifierPlaceholder: 'Ссылка, username или внутренний ID бота',
+    tokenLabel: '',
+    tokenPlaceholder: '',
+    tokenRequired: false,
+    hint: 'Для MAX сохраняется привязка к тому же каталогу магазина.',
+  },
+  custom: {
+    label: 'Другая площадка',
+    identifierLabel: 'ID / ссылка бота',
+    identifierPlaceholder: 'Ссылка, username или внутренний ID бота',
+    tokenLabel: '',
+    tokenPlaceholder: '',
+    tokenRequired: false,
+    hint: 'Подходит для любых внешних площадок, где нужно хранить привязку к каталогу.',
   },
 };
 
@@ -859,17 +910,33 @@ function ensureProfileAdminSections() {
     section.id = 'profileBotConnectSection';
     section.className = 'profile-subscription-card hidden';
     section.innerHTML = `
-      <div class="section-title">Подключение Telegram-бота</div>
-      <p class="feedback-note">Bot ID магазина используется для входа в админку и привязки уведомлений.</p>
-      <div class="profile-admin-store">Bot ID: <strong id="profileBotStoreIdValue">—</strong></div>
-      <div class="profile-admin-store">Статус бота: <strong id="profileBotUsernameValue">не подключен</strong></div>
+      <div class="section-title">Подключение ботов каталога</div>
+      <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким ботам и площадкам. Telegram-боты подключаются по токену автоматически, а VK/MAX и другие платформы сохраняются как внешние точки входа в каталог.</p>
+      <div class="profile-admin-store">Bot ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
+      <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
+      <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
       <form id="profileBotConnectForm" class="order-form flat">
-        <label>Bot Token
+        <label>Платформа
+          <select id="profileBotPlatformInput">
+            <option value="telegram">Telegram</option>
+            <option value="vk">VK</option>
+            <option value="max">MAX</option>
+            <option value="custom">Другая площадка</option>
+          </select>
+        </label>
+        <label>Название подключения
+          <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
+        </label>
+        <label id="profileBotIdentifierLabel"><span id="profileBotIdentifierLabelText">ID / ссылка бота</span>
+          <input id="profileBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://vk.com/..." />
+        </label>
+        <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Bot Token Telegram</span>
           <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
         </label>
         <div id="profileBotConnectStatus" class="status"></div>
-        <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Подключить бота</button>
+        <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
       </form>
+      <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
     `;
     const anchor = ui.profilePromoSection || ui.profilePaymentIntegrationSection || ui.profileSubscriptionSection || ui.profileHistorySection;
     if (anchor && anchor.parentNode === profileScreen) {
@@ -908,11 +975,20 @@ function ensureProfileAdminSections() {
   // Refresh UI references in case sections were injected dynamically.
   ui.profileBotConnectSection = document.getElementById('profileBotConnectSection');
   ui.profileBotStoreIdValue = document.getElementById('profileBotStoreIdValue');
-  ui.profileBotUsernameValue = document.getElementById('profileBotUsernameValue');
+  ui.profileBotCatalogUrlValue = document.getElementById('profileBotCatalogUrlValue');
+  ui.profileBotCatalogUrlCopyButton = document.getElementById('profileBotCatalogUrlCopyButton');
   ui.profileBotConnectForm = document.getElementById('profileBotConnectForm');
+  ui.profileBotPlatformInput = document.getElementById('profileBotPlatformInput');
+  ui.profileBotLabelInput = document.getElementById('profileBotLabelInput');
+  ui.profileBotIdentifierLabel = document.getElementById('profileBotIdentifierLabel');
+  ui.profileBotIdentifierLabelText = document.getElementById('profileBotIdentifierLabelText');
+  ui.profileBotIdentifierInput = document.getElementById('profileBotIdentifierInput');
+  ui.profileBotTokenLabel = document.getElementById('profileBotTokenLabel');
+  ui.profileBotTokenLabelText = document.getElementById('profileBotTokenLabelText');
   ui.profileBotTokenInput = document.getElementById('profileBotTokenInput');
   ui.profileBotConnectStatus = document.getElementById('profileBotConnectStatus');
   ui.profileBotConnectSaveButton = document.getElementById('profileBotConnectSaveButton');
+  ui.profileBotConnectionsList = document.getElementById('profileBotConnectionsList');
 
   ui.profileOrderChatSection = document.getElementById('profileOrderChatSection');
   ui.orderChatSettingsForm = document.getElementById('orderChatSettingsForm');
@@ -2602,6 +2678,9 @@ function clearSaasAuth() {
   state.saas.userProfile = null;
   state.saas.stores = [];
   state.saas.settings = {};
+  state.catalogBotConnections = [];
+  state.catalogBotConnectionsStoreId = '';
+  state.catalogBotConnectionsLoading = false;
   localStorage.removeItem(SAAS_TOKEN_KEY);
   localStorage.removeItem(SAAS_STORE_KEY);
 }
@@ -2622,6 +2701,9 @@ async function saasSwitchStore(nextStoreId) {
   const normalized = String(nextStoreId || '').trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(normalized)) return false;
   state.saas.storeId = normalized;
+  state.catalogBotConnections = [];
+  state.catalogBotConnectionsStoreId = '';
+  state.catalogBotConnectionsLoading = false;
   localStorage.setItem(SAAS_STORE_KEY, normalized);
   const payload = await saasRequest(`/stores/${encodeURIComponent(normalized)}/admin/data`, { auth: true });
   applyStoreDataset(payload);
@@ -2642,6 +2724,8 @@ async function saasSwitchStore(nextStoreId) {
   renderProfile();
   renderOrders();
   applyAdminModeUi();
+  await loadCatalogBotConnections({ force: true });
+  renderProfileBotConnectSection();
   await loadPaymentIntegrationSettings();
   reportStatus(`Переключено на магазин ${normalized}`);
   return true;
@@ -2700,14 +2784,22 @@ async function saasConnectBotFlow() {
   if (!botToken) return;
   const orderChatId = String(window.prompt('Chat ID для заказов (например: -1001234567890):', '') || '').trim();
   try {
-    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/bot`, {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/catalog-bots`, {
       method: 'POST',
       auth: true,
-      body: { botToken, orderChatId },
+      body: { platform: 'telegram', botToken },
     });
     const username = String(payload?.botUsername || '').trim();
-    window.alert(`Бот подключен${username ? `: ${username}` : ''}`);
+    if (orderChatId) {
+      await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/bot`, {
+        method: 'POST',
+        auth: true,
+        body: { orderChatId },
+      });
+    }
+    window.alert(`Подключение добавлено${username ? `: ${username}` : ''}`);
     await saasLoadStoresList();
+    state.catalogBotConnectionsStoreId = '';
   } catch (error) {
     window.alert(`Ошибка подключения бота: ${String(error?.message || 'unknown')}`);
   }
@@ -3071,6 +3163,73 @@ function getCurrentStoreCatalogUrl() {
   return `${window.location.origin}/store/${encodeURIComponent(storeId)}`;
 }
 
+function normalizeCatalogBotPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram' || value === 'tg') return 'telegram';
+  if (value === 'vk' || value === 'vkontakte') return 'vk';
+  if (value === 'max') return 'max';
+  return 'custom';
+}
+
+function getCatalogBotPlatformMeta(platform) {
+  return CATALOG_BOT_PLATFORM_META[normalizeCatalogBotPlatform(platform)] || CATALOG_BOT_PLATFORM_META.custom;
+}
+
+function getCatalogBotSummaryText(connections) {
+  const items = Array.isArray(connections) ? connections : [];
+  if (!items.length) return '';
+  const telegram = items.find((item) => normalizeCatalogBotPlatform(item?.platform) === 'telegram');
+  if (telegram) {
+    const label = String(telegram.botUsername || telegram.identifier || telegram.title || 'Telegram').trim();
+    return items.length > 1 ? `${label} +${items.length - 1}` : label;
+  }
+  const first = items[0];
+  const label = String(first?.platformLabel || getCatalogBotPlatformMeta(first?.platform).label || 'Подключение').trim();
+  return items.length > 1 ? `${label} +${items.length - 1}` : label;
+}
+
+async function loadCatalogBotConnections({ force = false } = {}) {
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!state.admin.enabled || !storeId || !state.saas.token) {
+    state.catalogBotConnections = [];
+    state.catalogBotConnectionsStoreId = '';
+    state.catalogBotConnectionsLoading = false;
+    return [];
+  }
+  if (!force && !state.catalogBotConnectionsLoading && state.catalogBotConnectionsStoreId === storeId) {
+    return state.catalogBotConnections;
+  }
+  state.catalogBotConnectionsLoading = true;
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/catalog-bots`, {
+      auth: true,
+    });
+    state.catalogBotConnections = Array.isArray(payload?.connections) ? payload.connections : [];
+    state.catalogBotConnectionsStoreId = storeId;
+    const summary = getCatalogBotSummaryText(state.catalogBotConnections);
+    if (Array.isArray(state.saas.stores)) {
+      state.saas.stores = state.saas.stores.map((store) => {
+        if (String(store?.storeId || '').trim().toUpperCase() !== storeId) return store;
+        return {
+          ...store,
+          botUsername: summary || store.botUsername || '',
+          catalogUrl: String(payload?.catalogUrl || store.catalogUrl || '').trim(),
+        };
+      });
+    }
+    return state.catalogBotConnections;
+  } catch (error) {
+    state.catalogBotConnections = [];
+    state.catalogBotConnectionsStoreId = '';
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = `Ошибка загрузки подключений: ${String(error?.message || 'unknown')}`;
+    }
+    return [];
+  } finally {
+    state.catalogBotConnectionsLoading = false;
+  }
+}
+
 function renderBotSettings() {
   const settings = getBotSettingsDraft();
   if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = settings.botWelcomeImage;
@@ -3109,21 +3268,75 @@ function renderProfileBotConnectSection() {
   ui.profileBotConnectSection.classList.toggle('hidden', !show);
   if (!show) return;
 
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  const catalogUrl = getCurrentStoreCatalogUrl();
+  const platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  const platformMeta = getCatalogBotPlatformMeta(platform);
+
   if (ui.profileBotStoreIdValue) {
-    ui.profileBotStoreIdValue.textContent = state.saas.storeId || '—';
+    ui.profileBotStoreIdValue.textContent = storeId || '—';
   }
-  const botUsername = String(getCurrentStoreMeta()?.botUsername || '').trim();
-  if (ui.profileBotUsernameValue) {
-    ui.profileBotUsernameValue.textContent = botUsername || 'не подключен';
+  if (ui.profileBotCatalogUrlValue) {
+    ui.profileBotCatalogUrlValue.textContent = catalogUrl || '—';
+  }
+  if (ui.profileBotPlatformInput) {
+    ui.profileBotPlatformInput.value = platform;
+  }
+  if (ui.profileBotIdentifierLabelText) {
+    ui.profileBotIdentifierLabelText.textContent = platformMeta.identifierLabel;
+  }
+  if (ui.profileBotIdentifierInput) {
+    ui.profileBotIdentifierInput.placeholder = platformMeta.identifierPlaceholder;
+  }
+  if (ui.profileBotTokenLabelText) {
+    ui.profileBotTokenLabelText.textContent = platformMeta.tokenLabel || 'Bot Token Telegram';
+  }
+  if (ui.profileBotTokenInput) {
+    ui.profileBotTokenInput.placeholder = platformMeta.tokenPlaceholder || '123456:ABC...';
+  }
+  if (ui.profileBotTokenLabel) {
+    ui.profileBotTokenLabel.classList.toggle('hidden', !platformMeta.tokenRequired);
+  }
+  if (ui.profileBotConnectionsList) {
+    if (state.catalogBotConnectionsLoading) {
+      ui.profileBotConnectionsList.innerHTML = '<div class="catalog-bot-empty">Загружаем подключения...</div>';
+    } else if (!state.catalogBotConnections.length) {
+      ui.profileBotConnectionsList.innerHTML = '<div class="catalog-bot-empty">Подключения каталога пока не добавлены.</div>';
+    } else {
+      ui.profileBotConnectionsList.innerHTML = state.catalogBotConnections.map((connection) => {
+        const platformLabel = escapeHtml(String(connection?.platformLabel || getCatalogBotPlatformMeta(connection?.platform).label || 'Платформа'));
+        const title = escapeHtml(String(connection?.title || 'Подключение'));
+        const identifier = escapeHtml(String(connection?.botUsername || connection?.identifier || '—'));
+        const modeLabel = connection?.managed ? 'Автоподключение' : 'Внешняя точка входа';
+        const safeId = Number(connection?.id || 0);
+        return `
+          <div class="catalog-bot-card">
+            <div class="catalog-bot-card-head">
+              <span class="catalog-bot-badge">${platformLabel}</span>
+              <strong>${title}</strong>
+            </div>
+            <div class="catalog-bot-card-line"><span>Бот:</span><span>${identifier}</span></div>
+            <div class="catalog-bot-card-line"><span>Режим:</span><span>${escapeHtml(modeLabel)}</span></div>
+            <div class="catalog-bot-card-line"><span>Каталог:</span><span class="catalog-bot-card-url">${escapeHtml(String(connection?.catalogUrl || catalogUrl || '—'))}</span></div>
+            <div class="catalog-bot-card-actions">
+              <button class="secondary-button" type="button" data-catalog-bot-remove="${safeId}">Удалить</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
   }
   if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
-    if (!state.saas.storeId) {
-      ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID), затем подключите бота.';
+    if (!storeId) {
+      ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID), затем добавьте подключение.';
     } else {
-      ui.profileBotConnectStatus.textContent = botUsername
-        ? `Бот подключен: ${botUsername}`
-        : 'Бот пока не подключен. Вставьте Bot Token и сохраните.';
+      ui.profileBotConnectStatus.textContent = platformMeta.hint;
     }
+  }
+  if (storeId && state.catalogBotConnectionsStoreId !== storeId && !state.catalogBotConnectionsLoading) {
+    void loadCatalogBotConnections({ force: true }).then(() => {
+      renderProfileBotConnectSection();
+    });
   }
 }
 
@@ -3134,39 +3347,73 @@ async function saveProfileBotConnection() {
     return;
   }
   if (!requireAdminFeatureAccess()) return;
+  const platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  const title = String(ui.profileBotLabelInput?.value || '').trim();
+  const identifier = String(ui.profileBotIdentifierInput?.value || '').trim();
   const botToken = String(ui.profileBotTokenInput?.value || '').trim();
-  if (!botToken || !botToken.includes(':')) {
-    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Введите корректный Bot Token (формат 123456:ABC...).';
+  if (platform === 'telegram' && (!botToken || !botToken.includes(':'))) {
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Введите корректный Bot Token Telegram (формат 123456:ABC...).';
     return;
   }
-  if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Подключаем бота...';
+  if (platform !== 'telegram' && !identifier) {
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Укажите ID или ссылку бота для выбранной площадки.';
+    return;
+  }
+  if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Сохраняем подключение...';
   try {
-    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/catalog-bots`, {
       method: 'POST',
       auth: true,
-      body: { botToken },
+      body: { platform, title, identifier, botToken },
     });
+    state.catalogBotConnections = Array.isArray(payload?.connections) ? payload.connections : state.catalogBotConnections;
+    state.catalogBotConnectionsStoreId = String(state.saas.storeId || '').trim().toUpperCase();
     const botUsername = String(payload?.botUsername || '').trim();
+    const summary = getCatalogBotSummaryText(state.catalogBotConnections);
+    if (ui.profileBotTokenInput) ui.profileBotTokenInput.value = '';
+    if (ui.profileBotLabelInput) ui.profileBotLabelInput.value = '';
+    if (ui.profileBotIdentifierInput) ui.profileBotIdentifierInput.value = '';
     if (Array.isArray(state.saas.stores)) {
       state.saas.stores = state.saas.stores.map((store) => {
         if (String(store?.storeId || '').trim().toUpperCase() !== String(state.saas.storeId || '').trim().toUpperCase()) return store;
         return {
           ...store,
-          botUsername: botUsername || store.botUsername || '',
+          botUsername: summary || botUsername || store.botUsername || '',
         };
       });
     }
-    if (ui.profileBotTokenInput) ui.profileBotTokenInput.value = '';
     if (ui.profileBotConnectStatus) {
       ui.profileBotConnectStatus.textContent = botUsername
-        ? `Бот подключен: ${botUsername}`
-        : 'Бот подключен.';
+        ? `Подключение добавлено: ${botUsername}`
+        : 'Подключение добавлено.';
     }
     await saasLoadStoresList();
     renderProfileBotConnectSection();
   } catch (error) {
     if (ui.profileBotConnectStatus) {
       ui.profileBotConnectStatus.textContent = `Ошибка подключения: ${String(error?.message || 'unknown')}`;
+    }
+  }
+}
+
+async function removeProfileBotConnection(connectionId) {
+  const numericId = Number(connectionId || 0);
+  if (!state.admin.enabled || !state.saas.storeId || !numericId) return;
+  if (!requireAdminFeatureAccess()) return;
+  if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Удаляем подключение...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/catalog-bots/${numericId}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+    state.catalogBotConnections = Array.isArray(payload?.connections) ? payload.connections : [];
+    state.catalogBotConnectionsStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+    await saasLoadStoresList();
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Подключение удалено.';
+    renderProfileBotConnectSection();
+  } catch (error) {
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = `Ошибка удаления: ${String(error?.message || 'unknown')}`;
     }
   }
 }
@@ -5841,9 +6088,9 @@ function bindEvents() {
     if (!state.admin.enabled) return;
     if (ui.profileBotConnectSection && !ui.profileBotConnectSection.classList.contains('hidden')) {
       ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      if (ui.profileBotTokenInput) ui.profileBotTokenInput.focus();
+      if (ui.profileBotPlatformInput) ui.profileBotPlatformInput.focus();
       if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
-        ui.profileBotConnectStatus.textContent = 'Введите Bot Token и нажмите «Подключить бота».';
+        ui.profileBotConnectStatus.textContent = 'Выберите платформу, заполните данные бота и добавьте подключение.';
       }
       return;
     }
@@ -5875,9 +6122,36 @@ function bindEvents() {
     e.preventDefault();
     await saveOrderChatSettings();
   });
+  on(ui.profileBotPlatformInput, 'change', () => {
+    renderProfileBotConnectSection();
+  });
+  on(ui.profileBotCatalogUrlCopyButton, 'click', async () => {
+    const value = getCurrentStoreCatalogUrl();
+    if (!value) {
+      if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Ссылка каталога пока недоступна.';
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        window.prompt('Скопируйте ссылку каталога:', value);
+      }
+      if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Ссылка каталога скопирована.';
+    } catch {
+      window.prompt('Скопируйте ссылку каталога:', value);
+    }
+  });
   on(ui.profileBotConnectForm, 'submit', async (e) => {
     e.preventDefault();
     await saveProfileBotConnection();
+  });
+  on(ui.profileBotConnectionsList, 'click', async (e) => {
+    const removeButton = e.target.closest('[data-catalog-bot-remove]');
+    if (!removeButton) return;
+    const connectionId = Number(removeButton.dataset.catalogBotRemove || 0);
+    if (!connectionId) return;
+    await removeProfileBotConnection(connectionId);
   });
   on(ui.paymentIntegrationProviderInput, 'change', () => {
     const nextProvider = normalizePaymentProviderCode(ui.paymentIntegrationProviderInput?.value || 'yookassa');
