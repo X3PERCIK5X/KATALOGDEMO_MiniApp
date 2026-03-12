@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-208" />
+    <link rel="stylesheet" href="/style.css?v=20260313-209" />
   </head>
   <body>
     <header class="header">
@@ -305,28 +305,6 @@
               <div id="profileHandle" class="profile-handle">@telegram</div>
             </div>
           </div>
-          <div id="profileAppearancePanel" class="profile-theme-panel">
-            <div class="profile-theme-row">
-              <label class="profile-theme-label" for="themeSelect">Тема оформления</label>
-              <select id="themeSelect" class="profile-theme-select">
-                <option value="white">Белый</option>
-                <option value="dark">Тёмный</option>
-                <option value="blue">Синий</option>
-                <option value="lime">Салатовый</option>
-                <option value="terracotta">Терракотовый</option>
-              </select>
-            </div>
-            <div class="profile-theme-row">
-              <label class="profile-theme-label" for="accentSelect">Цвет кнопок</label>
-              <select id="accentSelect" class="profile-theme-select">
-                <option value="rose">Розовый</option>
-                <option value="blue">Синий</option>
-                <option value="lime">Салатовый</option>
-                <option value="amber">Янтарный</option>
-                <option value="terracotta">Терракотовый</option>
-              </select>
-            </div>
-          </div>
         </div>
         <button id="profileManagerButton" class="profile-manager-button" type="button">
           <span>💬</span>
@@ -339,10 +317,62 @@
           <div class="profile-admin-store">Bot ID: <strong id="adminStoreIdValue">—</strong></div>
           <div class="profile-admin-actions">
             <button id="adminReloadStoresButton" class="secondary-button profile-admin-logout" type="button">Мои магазины</button>
-            <button id="adminConnectBotButton" class="secondary-button profile-admin-logout" type="button">Подключить бота</button>
-            <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел Бот</button>
+            <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел настроек</button>
           </div>
           <button id="adminLogoutButton" class="secondary-button profile-admin-logout" type="button">Выйти из админки</button>
+        </div>
+        <div id="profileSubscriptionSection" class="profile-subscription-card hidden">
+          <div class="section-title">Оплата подписки</div>
+          <div class="subscription-tariffs" id="subscriptionTariffs">
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="30" checked />
+              <span>30 дней</span>
+              <strong>4 000 ₽</strong>
+            </label>
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="180" />
+              <span>180 дней</span>
+              <strong>20 000 ₽</strong>
+            </label>
+            <label class="subscription-tariff">
+              <input type="radio" name="subscriptionTariff" value="365" />
+              <span>365 дней</span>
+              <strong>30 000 ₽</strong>
+            </label>
+          </div>
+          <div id="subscriptionStatus" class="status"></div>
+          <button id="subscriptionPayButton" class="primary-button" type="button">Оплатить</button>
+        </div>
+        <div id="profileHistorySection">
+          <div class="home-section-title">История заказов</div>
+          <div id="ordersList" class="orders-list"></div>
+        </div>
+      </section>
+
+      <section id="screen-bot" class="screen">
+        <div class="screen-head">
+          <h2>Настройки</h2>
+        </div>
+        <div class="settings-nav-list">
+          <button class="settings-nav-card" data-admin-screen="settings-bots" type="button">
+            <div class="section-title">1. Настройки бота</div>
+            <p class="feedback-note">Подключение ботов каталога и настройка сообщения в Telegram-боте.</p>
+          </button>
+          <button class="settings-nav-card" data-admin-screen="settings-checkout" type="button">
+            <div class="section-title">2. Настройки оформления заказа</div>
+            <p class="feedback-note">Интеграция оплаты и отправка уведомлений о заказах.</p>
+          </button>
+          <button class="settings-nav-card" data-admin-screen="settings-store" type="button">
+            <div class="section-title">3. Настройки магазина</div>
+            <p class="feedback-note">Темы, цвета кнопок и промокоды текущего магазина.</p>
+          </button>
+        </div>
+      </section>
+
+      <section id="screen-settings-bots" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
+          <h2>Настройки бота</h2>
         </div>
         <div id="profileBotConnectSection" class="profile-subscription-card hidden">
           <div class="section-title">Подключение ботов каталога</div>
@@ -373,26 +403,33 @@
           </form>
           <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
         </div>
-        <div id="profilePromoSection" class="profile-subscription-card hidden">
-          <div class="section-title">Промокоды</div>
-          <p class="feedback-note">Промокоды применяются только в текущем магазине (<strong>store_id</strong>).</p>
-          <form id="promoSettingsForm" class="order-form flat">
-            <label>Промокод
-              <input id="promoSettingsCodeInput" type="text" placeholder="Например: SALE10" autocomplete="off" />
+        <div class="bot-settings-card">
+          <div class="section-title">Сообщение бота</div>
+          <p class="feedback-note">Настройте, что получает пользователь при команде <code>/start</code>. Кнопка каталога сохраняется автоматически.</p>
+          <div class="order-form flat">
+            <label>Ссылка каталога этого магазина
+              <input id="botCatalogUrlInput" type="text" readonly />
             </label>
-            <label>Тип скидки
-              <select id="promoSettingsTypeInput">
-                <option value="percent">Процент</option>
-                <option value="fixed">Фиксированная сумма</option>
-              </select>
+            <button id="botCatalogUrlCopyButton" class="secondary-button" type="button">Скопировать ссылку</button>
+          </div>
+          <form id="botSettingsForm" class="order-form flat">
+            <label>Ссылка на приветственную картинку
+              <input id="botWelcomeImageInput" type="url" placeholder="https://..." />
             </label>
-            <label>Значение скидки
-              <input id="promoSettingsValueInput" type="number" min="1" step="1" placeholder="10" />
+            <button id="botWelcomeImageUploadButton" class="secondary-button" type="button">Загрузить картинку</button>
+            <label>Приветственный текст
+              <textarea id="botWelcomeTextInput" rows="6" placeholder="Введите текст приветствия"></textarea>
             </label>
-            <div id="promoSettingsStatus" class="status"></div>
-            <button class="primary-button" type="submit">Сохранить промокод</button>
+            <div id="botSettingsStatus" class="status"></div>
+            <button id="botSettingsSaveButton" class="primary-button" type="submit">Сохранить в боте</button>
           </form>
-          <div id="promoSettingsList" class="promo-admin-list"></div>
+        </div>
+      </section>
+
+      <section id="screen-settings-checkout" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
+          <h2>Оформление заказа</h2>
         </div>
         <div id="profileOrderChatSection" class="profile-subscription-card hidden">
           <div class="section-title">Уведомления о заказах в чат</div>
@@ -432,58 +469,58 @@
             <button id="paymentIntegrationSaveButton" class="primary-button" type="submit">Сохранить подключение</button>
           </form>
         </div>
-        <div id="profileSubscriptionSection" class="profile-subscription-card hidden">
-          <div class="section-title">Оплата подписки</div>
-          <div class="subscription-tariffs" id="subscriptionTariffs">
-            <label class="subscription-tariff">
-              <input type="radio" name="subscriptionTariff" value="30" checked />
-              <span>30 дней</span>
-              <strong>4 000 ₽</strong>
-            </label>
-            <label class="subscription-tariff">
-              <input type="radio" name="subscriptionTariff" value="180" />
-              <span>180 дней</span>
-              <strong>20 000 ₽</strong>
-            </label>
-            <label class="subscription-tariff">
-              <input type="radio" name="subscriptionTariff" value="365" />
-              <span>365 дней</span>
-              <strong>30 000 ₽</strong>
-            </label>
-          </div>
-          <div id="subscriptionStatus" class="status"></div>
-          <button id="subscriptionPayButton" class="primary-button" type="button">Оплатить</button>
-        </div>
-        <div id="profileHistorySection">
-          <div class="home-section-title">История заказов</div>
-          <div id="ordersList" class="orders-list"></div>
-        </div>
       </section>
 
-      <section id="screen-bot" class="screen">
+      <section id="screen-settings-store" class="screen">
         <div class="screen-head">
-          <h2>Бот</h2>
+          <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
+          <h2>Настройки магазина</h2>
         </div>
-        <div class="bot-settings-card">
-          <div class="section-title">Приветствие в боте</div>
-          <p class="feedback-note">Настройте, что получает пользователь при команде <code>/start</code>. Кнопка каталога сохраняется автоматически.</p>
-          <div class="order-form flat">
-            <label>Ссылка каталога этого магазина
-              <input id="botCatalogUrlInput" type="text" readonly />
-            </label>
-            <button id="botCatalogUrlCopyButton" class="secondary-button" type="button">Скопировать ссылку</button>
+        <div id="profileAppearancePanel" class="profile-subscription-card hidden">
+          <div class="section-title">Тема и цвета</div>
+          <div class="profile-theme-panel">
+            <div class="profile-theme-row">
+              <label class="profile-theme-label" for="themeSelect">Тема оформления</label>
+              <select id="themeSelect" class="profile-theme-select">
+                <option value="white">Белый</option>
+                <option value="dark">Тёмный</option>
+                <option value="blue">Синий</option>
+                <option value="lime">Салатовый</option>
+                <option value="terracotta">Терракотовый</option>
+              </select>
+            </div>
+            <div class="profile-theme-row">
+              <label class="profile-theme-label" for="accentSelect">Цвет кнопок</label>
+              <select id="accentSelect" class="profile-theme-select">
+                <option value="rose">Розовый</option>
+                <option value="blue">Синий</option>
+                <option value="lime">Салатовый</option>
+                <option value="amber">Янтарный</option>
+                <option value="terracotta">Терракотовый</option>
+              </select>
+            </div>
           </div>
-          <form id="botSettingsForm" class="order-form flat">
-            <label>Ссылка на приветственную картинку
-              <input id="botWelcomeImageInput" type="url" placeholder="https://..." />
+        </div>
+        <div id="profilePromoSection" class="profile-subscription-card hidden">
+          <div class="section-title">Промокоды</div>
+          <p class="feedback-note">Промокоды применяются только в текущем магазине (<strong>store_id</strong>).</p>
+          <form id="promoSettingsForm" class="order-form flat">
+            <label>Промокод
+              <input id="promoSettingsCodeInput" type="text" placeholder="Например: SALE10" autocomplete="off" />
             </label>
-            <button id="botWelcomeImageUploadButton" class="secondary-button" type="button">Загрузить картинку</button>
-            <label>Приветственный текст
-              <textarea id="botWelcomeTextInput" rows="6" placeholder="Введите текст приветствия"></textarea>
+            <label>Тип скидки
+              <select id="promoSettingsTypeInput">
+                <option value="percent">Процент</option>
+                <option value="fixed">Фиксированная сумма</option>
+              </select>
             </label>
-            <div id="botSettingsStatus" class="status"></div>
-            <button id="botSettingsSaveButton" class="primary-button" type="submit">Сохранить в боте</button>
+            <label>Значение скидки
+              <input id="promoSettingsValueInput" type="number" min="1" step="1" placeholder="10" />
+            </label>
+            <div id="promoSettingsStatus" class="status"></div>
+            <button class="primary-button" type="submit">Сохранить промокод</button>
           </form>
+          <div id="promoSettingsList" class="promo-admin-list"></div>
         </div>
       </section>
 
@@ -666,15 +703,12 @@
         </svg>
         <span>Профиль</span>
       </button>
-      <button id="botButton" class="bottom-item nav-hidden" type="button" aria-label="Бот">
+      <button id="botButton" class="bottom-item nav-hidden" type="button" aria-label="Настройки">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 2v3" />
-          <rect x="4" y="5" width="16" height="14" rx="4" />
-          <circle cx="9" cy="12" r="1" />
-          <circle cx="15" cy="12" r="1" />
-          <path d="M8 16h8" />
+          <circle cx="12" cy="12" r="3.5" />
+          <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 1 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 1 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 1 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6H20a2 2 0 1 1 0 4h-.2a1 1 0 0 0-.9.6z" />
         </svg>
-        <span>Бот</span>
+        <span>Настройки</span>
       </button>
       <button id="statsButton" class="bottom-item nav-hidden" type="button" aria-label="Статистика">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -689,7 +723,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-208"></script>
-    <script src="/app.js?v=20260313-208"></script>
+    <script src="/telegram.js?v=20260313-209"></script>
+    <script src="/app.js?v=20260313-209"></script>
   </body>
 </html>

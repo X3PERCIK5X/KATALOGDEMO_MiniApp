@@ -844,6 +844,17 @@ function setScreen(name) {
   if (name === 'bot') {
     renderBotSettings();
   }
+  if (name === 'settings-bots') {
+    renderBotSettings();
+    renderProfileBotConnectSection();
+  }
+  if (name === 'settings-checkout') {
+    renderOrderChatSettings();
+    renderPaymentIntegrationSettings();
+  }
+  if (name === 'settings-store') {
+    renderStoreSettingsSection();
+  }
   if (name === 'stats') {
     void renderAdminStatsOverview();
   }
@@ -1011,6 +1022,9 @@ function updateBottomNav(screen) {
     cart: ui.cartButton,
     profile: ui.profileButton,
     bot: ui.botButton,
+    'settings-bots': ui.botButton,
+    'settings-checkout': ui.botButton,
+    'settings-store': ui.botButton,
     stats: ui.statsButton,
     'stats-revenue': ui.statsButton,
     'stats-orders': ui.statsButton,
@@ -5214,11 +5228,6 @@ function renderProfile() {
       ui.profileAvatar.textContent = (firstName[0] || 'P').toUpperCase();
     }
   }
-  if (ui.profileAppearancePanel) {
-    ui.profileAppearancePanel.classList.toggle('hidden', !state.admin.enabled);
-  }
-  if (ui.themeSelect) ui.themeSelect.value = normalizeThemeCode(state.theme);
-  if (ui.accentSelect) ui.accentSelect.value = normalizeAccentCode(state.accent);
   if (ui.adminProfilePanel) {
     const showAdminPanel = Boolean(state.admin.enabled && state.saas.storeId);
     ui.adminProfilePanel.classList.toggle('hidden', !showAdminPanel);
@@ -5238,7 +5247,7 @@ function renderProfile() {
   }
   if (state.admin.enabled) renderOrderChatSettings();
   if (state.admin.enabled) renderPaymentIntegrationSettings();
-  renderAdminPromoSettings();
+  renderStoreSettingsSection();
   if (state.admin.enabled && ui.subscriptionStatus) {
     const t = getSelectedSubscriptionTariff();
     const code = String(state.subscription?.code || '');
@@ -5422,6 +5431,15 @@ function renderAdminPromoSettings() {
       `).join('');
     }
   }
+}
+
+function renderStoreSettingsSection() {
+  if (ui.profileAppearancePanel) {
+    ui.profileAppearancePanel.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (ui.themeSelect) ui.themeSelect.value = normalizeThemeCode(state.theme);
+  if (ui.accentSelect) ui.accentSelect.value = normalizeAccentCode(state.accent);
+  renderAdminPromoSettings();
 }
 
 async function saveAdminPromoCode() {
@@ -6300,6 +6318,15 @@ function bindEvents() {
       renderProfile();
       if (!state.admin.enabled) renderOrders();
     }
+  });
+
+  on(document, 'click', (e) => {
+    const btn = e.target.closest('[data-admin-screen]');
+    if (!btn || !state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    const target = String(btn.dataset.adminScreen || '').trim();
+    if (!target) return;
+    setScreen(target);
   });
 
   on(ui.menuCatalogToggle, 'click', () => {

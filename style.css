@@ -4883,7 +4883,10 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 }
 
 /* 2026-03-02: admin bot form readability + dock stability */
-#screen-bot .bot-settings-card {
+#screen-bot .bot-settings-card,
+#screen-settings-bots .bot-settings-card,
+#screen-settings-checkout .bot-settings-card,
+#screen-settings-store .bot-settings-card {
   width: 100%;
   margin-top: 12px;
   padding: 14px;
@@ -4895,7 +4898,10 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
   gap: 10px;
 }
 
-#screen-bot .section-title {
+#screen-bot .section-title,
+#screen-settings-bots .section-title,
+#screen-settings-checkout .section-title,
+#screen-settings-store .section-title {
   font-size: 20px;
   line-height: 1.2;
   color: var(--text);
@@ -4904,17 +4910,26 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
   text-transform: none;
 }
 
-#screen-bot .feedback-note {
+#screen-bot .feedback-note,
+#screen-settings-bots .feedback-note,
+#screen-settings-checkout .feedback-note,
+#screen-settings-store .feedback-note {
   color: var(--muted);
   margin-bottom: 2px;
   line-height: 1.45;
 }
 
-#screen-bot .order-form {
+#screen-bot .order-form,
+#screen-settings-bots .order-form,
+#screen-settings-checkout .order-form,
+#screen-settings-store .order-form {
   margin-top: 2px;
 }
 
-#screen-bot .order-form.flat label {
+#screen-bot .order-form.flat label,
+#screen-settings-bots .order-form.flat label,
+#screen-settings-checkout .order-form.flat label,
+#screen-settings-store .order-form.flat label {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
@@ -4923,7 +4938,17 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 }
 
 #screen-bot .order-form.flat input,
-#screen-bot .order-form.flat textarea {
+#screen-bot .order-form.flat textarea,
+#screen-bot .order-form.flat select,
+#screen-settings-bots .order-form.flat input,
+#screen-settings-bots .order-form.flat textarea,
+#screen-settings-bots .order-form.flat select,
+#screen-settings-checkout .order-form.flat input,
+#screen-settings-checkout .order-form.flat textarea,
+#screen-settings-checkout .order-form.flat select,
+#screen-settings-store .order-form.flat input,
+#screen-settings-store .order-form.flat textarea,
+#screen-settings-store .order-form.flat select {
   width: 100%;
   border: 1px solid var(--stroke) !important;
   background: rgba(255, 255, 255, 0.06) !important;
@@ -4933,45 +4958,107 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
   box-sizing: border-box;
 }
 
-#screen-bot .order-form.flat textarea {
+#screen-bot .order-form.flat textarea,
+#screen-settings-bots .order-form.flat textarea,
+#screen-settings-checkout .order-form.flat textarea,
+#screen-settings-store .order-form.flat textarea {
   min-height: 124px;
   resize: vertical;
   line-height: 1.45;
 }
 
 #screen-bot .order-form.flat input::placeholder,
-#screen-bot .order-form.flat textarea::placeholder {
+#screen-bot .order-form.flat textarea::placeholder,
+#screen-settings-bots .order-form.flat input::placeholder,
+#screen-settings-bots .order-form.flat textarea::placeholder,
+#screen-settings-checkout .order-form.flat input::placeholder,
+#screen-settings-checkout .order-form.flat textarea::placeholder,
+#screen-settings-store .order-form.flat input::placeholder,
+#screen-settings-store .order-form.flat textarea::placeholder {
   color: rgba(224, 233, 248, 0.55);
 }
 
-#screen-bot .order-form.flat input[readonly] {
+#screen-bot .order-form.flat input[readonly],
+#screen-settings-bots .order-form.flat input[readonly],
+#screen-settings-checkout .order-form.flat input[readonly],
+#screen-settings-store .order-form.flat input[readonly] {
   color: rgba(224, 233, 248, 0.72) !important;
 }
 
 #screen-bot .secondary-button,
-#screen-bot .primary-button {
+#screen-bot .primary-button,
+#screen-settings-bots .secondary-button,
+#screen-settings-bots .primary-button,
+#screen-settings-checkout .secondary-button,
+#screen-settings-checkout .primary-button,
+#screen-settings-store .secondary-button,
+#screen-settings-store .primary-button {
   min-height: 48px;
 }
 
-#screen-bot .status {
+#screen-bot .status,
+#screen-settings-bots .status,
+#screen-settings-checkout .status,
+#screen-settings-store .status {
   color: var(--text);
   opacity: 0.9;
 }
 
 html[data-theme="light"] #screen-bot .order-form.flat input,
-html[data-theme="light"] #screen-bot .order-form.flat textarea {
+html[data-theme="light"] #screen-bot .order-form.flat textarea,
+html[data-theme="light"] #screen-bot .order-form.flat select,
+html[data-theme="light"] #screen-settings-bots .order-form.flat input,
+html[data-theme="light"] #screen-settings-bots .order-form.flat textarea,
+html[data-theme="light"] #screen-settings-bots .order-form.flat select,
+html[data-theme="light"] #screen-settings-checkout .order-form.flat input,
+html[data-theme="light"] #screen-settings-checkout .order-form.flat textarea,
+html[data-theme="light"] #screen-settings-checkout .order-form.flat select,
+html[data-theme="light"] #screen-settings-store .order-form.flat input,
+html[data-theme="light"] #screen-settings-store .order-form.flat textarea,
+html[data-theme="light"] #screen-settings-store .order-form.flat select {
   border-color: rgba(14, 18, 26, 0.14) !important;
   background: rgba(18, 42, 62, 0.04) !important;
   color: #172033 !important;
 }
 
 html[data-theme="light"] #screen-bot .order-form.flat input::placeholder,
-html[data-theme="light"] #screen-bot .order-form.flat textarea::placeholder {
+html[data-theme="light"] #screen-bot .order-form.flat textarea::placeholder,
+html[data-theme="light"] #screen-settings-bots .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-settings-bots .order-form.flat textarea::placeholder,
+html[data-theme="light"] #screen-settings-checkout .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-settings-checkout .order-form.flat textarea::placeholder,
+html[data-theme="light"] #screen-settings-store .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-settings-store .order-form.flat textarea::placeholder {
   color: rgba(23, 32, 51, 0.48);
 }
 
-html[data-theme="light"] #screen-bot .feedback-note {
+html[data-theme="light"] #screen-bot .feedback-note,
+html[data-theme="light"] #screen-settings-bots .feedback-note,
+html[data-theme="light"] #screen-settings-checkout .feedback-note,
+html[data-theme="light"] #screen-settings-store .feedback-note {
   color: #58677d;
+}
+
+.settings-nav-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-nav-card {
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  text-align: left;
+  display: grid;
+  gap: 8px;
+}
+
+.settings-nav-card .section-title,
+.settings-nav-card .feedback-note {
+  margin: 0;
 }
 
 body.admin-mode .bottom-nav {
