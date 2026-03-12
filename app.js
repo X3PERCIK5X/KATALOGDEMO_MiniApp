@@ -56,7 +56,7 @@ const state = {
   },
   admin: {
     enabled: false,
-    holdMs: 4000,
+    tapDelay: 260,
     draftKey: 'demo_catalog_admin_draft_v1',
     selectionMode: false,
     selectedType: '',
@@ -1689,10 +1689,29 @@ function adminEditValue(title, currentValue, { numeric = false, multiline = fals
   });
 }
 
-function adminBindHold(el, handler) {
-  if (!state.admin.enabled || !el || el.dataset.adminEditBound === '1') return;
-  el.dataset.adminEditBound = '1';
-  let lastTouchTs = 0;
+const adminTapIntentState = {
+  key: '',
+  ts: 0,
+  timer: null,
+};
+
+function adminBindTapIntent(el, {
+  onSingleTap = null,
+  onDoubleTap = null,
+  selectType = '',
+  selectId = null,
+  tapGroup = '',
+} = {}) {
+  if (!state.admin.enabled || !el || el.dataset.adminTapIntentBound === '1') return;
+  el.dataset.adminTapIntentBound = '1';
+
+  const clear = () => {
+    if (adminTapIntentState.timer) window.clearTimeout(adminTapIntentState.timer);
+    adminTapIntentState.timer = null;
+    adminTapIntentState.key = '';
+    adminTapIntentState.ts = 0;
+  };
+
   const flashTarget = () => {
     el.classList.remove('admin-doubletap-flash');
     void el.offsetWidth;
@@ -1700,56 +1719,52 @@ function adminBindHold(el, handler) {
     window.setTimeout(() => el.classList.remove('admin-doubletap-flash'), 520);
   };
 
-  el.addEventListener('dblclick', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    flashTarget();
-    handler();
-  });
+  const resolveSelectId = () => (typeof selectId === 'function' ? selectId() : selectId);
+  const resolveTapGroup = () => {
+    const raw = typeof tapGroup === 'function' ? tapGroup() : tapGroup;
+    if (raw) return String(raw);
+    const selectedId = resolveSelectId();
+    if (selectType && selectedId) return `${selectType}:${selectedId}`;
+    return el.id || el.dataset.adminTapIntentBound || '';
+  };
 
-  el.addEventListener('touchend', (event) => {
-    const now = Date.now();
-    if (now - lastTouchTs <= 320) {
+  const shouldIgnore = (event) => {
+    if (!event.target || !event.target.closest) return false;
+    const interactive = event.target.closest('input, textarea, select, a, [data-admin-add], .qty-btn, .icon-btn');
+    return !!(interactive && interactive !== el && el.contains(interactive));
+  };
+
+  el.addEventListener('click', (event) => {
+    if (!state.admin.enabled || shouldIgnore(event)) return;
+
+    const selectedId = resolveSelectId();
+    if (state.admin.selectionMode && selectType && selectedId) {
       event.preventDefault();
       event.stopPropagation();
-      lastTouchTs = 0;
-      flashTarget();
-      handler();
+      clear();
+      adminSelectItem(selectType, selectedId);
       return;
     }
-    lastTouchTs = now;
-  }, { passive: false });
-}
 
-function adminBindLongPress(el, handler) {
-  if (!state.admin.enabled || !el || el.dataset.adminLongBound === '1') return;
-  el.dataset.adminLongBound = '1';
-  let timer = null;
+    event.preventDefault();
+    event.stopPropagation();
 
-  const clear = () => {
-    if (timer) window.clearTimeout(timer);
-    timer = null;
-    el.classList.remove('admin-hold-pending');
-  };
-
-  const start = (event) => {
-    if (event.type === 'mousedown' && event.button !== 0) return;
-    if (event.target && event.target.closest) {
-      const interactive = event.target.closest('input, textarea, select, a, [data-admin-add], .qty-btn, .icon-btn');
-      if (interactive && interactive !== el && el.contains(interactive)) return;
-    }
-    clear();
-    el.classList.add('admin-hold-pending');
-    timer = window.setTimeout(() => {
+    const now = Date.now();
+    const groupKey = resolveTapGroup();
+    if (adminTapIntentState.timer && adminTapIntentState.key === groupKey && now - adminTapIntentState.ts <= state.admin.tapDelay) {
       clear();
-      handler();
-    }, state.admin.holdMs);
-  };
+      flashTarget();
+      if (typeof onDoubleTap === 'function') onDoubleTap();
+      return;
+    }
 
-  el.addEventListener('mousedown', start);
-  el.addEventListener('touchstart', start, { passive: true });
-  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach((eventName) => {
-    el.addEventListener(eventName, clear, { passive: true });
+    clear();
+    adminTapIntentState.key = groupKey;
+    adminTapIntentState.ts = now;
+    adminTapIntentState.timer = window.setTimeout(() => {
+      clear();
+      if (typeof onSingleTap === 'function') onSingleTap();
+    }, state.admin.tapDelay);
   });
 }
 
@@ -1993,7 +2008,8 @@ function adminBindHome() {
     const title = card.querySelector('.featured-title');
     const text = card.querySelector('.featured-text');
     const kicker = card.querySelector('.featured-chip');
-    adminBindLongPress(card, () => {
+    const openBanner = () => setScreen('home');
+    const openBannerMenu = () => {
       adminOpenActionSheet('Баннер', [
         { id: 'open', label: 'Открыть страницу' },
         { id: 'move-prev', label: 'Сдвинуть влево' },
@@ -2049,28 +2065,21 @@ function adminBindHome() {
           renderHomeBanners();
         }
       });
+    };
+    adminBindTapIntent(card, {
+      onSingleTap: openBanner,
+      onDoubleTap: openBannerMenu,
+      selectType: 'banner',
+      selectId: () => itemId,
+      tapGroup: () => `banner:${itemId}`,
     });
-    adminBindHold(title, () => {
-      adminEditValue('Заголовок баннера', item.title || '').then((value) => {
-        if (value == null || value.__delete) return;
-        item.title = value;
-        renderHomeBanners();
-      });
-    });
-    adminBindHold(text, () => {
-      adminEditValue('Текст баннера', item.text || '', { multiline: true }).then((value) => {
-        if (value == null || value.__delete) return;
-        item.text = value;
-        renderHomeBanners();
-      });
-    });
-    adminBindHold(kicker, () => {
-      adminEditValue('Кикер баннера', item.kicker || '').then((value) => {
-        if (value == null || value.__delete) return;
-        item.kicker = value;
-        renderHomeBanners();
-      });
-    });
+    [title, text, kicker].forEach((el) => adminBindTapIntent(el, {
+      onSingleTap: openBanner,
+      onDoubleTap: openBannerMenu,
+      selectType: 'banner',
+      selectId: () => itemId,
+      tapGroup: () => `banner:${itemId}`,
+    }));
   });
 
   const articleCards = ui.homeArticleTrack ? Array.from(ui.homeArticleTrack.querySelectorAll('[data-article-id]')) : [];
@@ -2082,7 +2091,8 @@ function adminBindHome() {
     const title = card.querySelector('strong');
     const text = card.querySelector('span:last-child');
     const kicker = card.querySelector('.home-article-kicker');
-    adminBindLongPress(card, () => {
+    const openArticle = () => setScreen(item.screen || 'about');
+    const openArticleMenu = () => {
       adminOpenActionSheet('Статья', [
         { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
@@ -2118,65 +2128,82 @@ function adminBindHome() {
           renderHomeArticles();
         }
       });
+    };
+    adminBindTapIntent(card, {
+      onSingleTap: openArticle,
+      onDoubleTap: openArticleMenu,
+      tapGroup: () => `article:${itemId}`,
     });
-    adminBindHold(title, () => {
-      adminEditValue('Заголовок статьи', item.title || '', { allowDelete: true }).then((value) => {
-        if (value == null) return;
-        const list = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
-        const idx = list.findIndex((x, i) => (x?.id || `article-${i}`) === itemId);
-        if (idx < 0) return;
-        if (value.__delete) list.splice(idx, 1);
-        else list[idx].title = value;
-        renderHomeArticles();
-      });
-    });
-    adminBindHold(text, () => {
-      adminEditValue('Текст статьи', item.text || '', { multiline: true }).then((value) => {
-        if (value == null || value.__delete) return;
-        item.text = value;
-        renderHomeArticles();
-      });
-    });
-    adminBindHold(kicker, () => {
-      adminEditValue('Кикер статьи', item.kicker || '').then((value) => {
-        if (value == null || value.__delete) return;
-        item.kicker = value;
-        renderHomeArticles();
-      });
-    });
+    [title, text, kicker].forEach((el) => adminBindTapIntent(el, {
+      onSingleTap: openArticle,
+      onDoubleTap: openArticleMenu,
+      tapGroup: () => `article:${itemId}`,
+    }));
   });
 
-  adminBindHold(ui.aboutText, () => {
-    adminEditValue('aboutText', state.config.aboutText || '', { multiline: true }).then((value) => {
-      if (value == null || value.__delete) return;
-      state.config.aboutText = value;
-      ui.aboutText.innerHTML = formatMultiline(value);
-      adminSaveDraft(true);
-    });
+  adminBindTapIntent(ui.aboutText, {
+    tapGroup: 'about-text',
+    onDoubleTap: () => {
+      adminOpenActionSheet('О продукте', [
+        { id: 'edit', label: 'Редактировать текст' },
+      ]).then((action) => {
+        if (action !== 'edit') return;
+        adminEditValue('aboutText', state.config.aboutText || '', { multiline: true }).then((value) => {
+          if (value == null || value.__delete) return;
+          state.config.aboutText = value;
+          ui.aboutText.innerHTML = formatMultiline(value);
+          adminSaveDraft(true);
+        });
+      });
+    },
   });
-  adminBindHold(ui.paymentText, () => {
-    adminEditValue('paymentText', state.config.paymentText || '', { multiline: true }).then((value) => {
-      if (value == null || value.__delete) return;
-      state.config.paymentText = value;
-      ui.paymentText.innerHTML = formatMultiline(value);
-      adminSaveDraft(true);
-    });
+  adminBindTapIntent(ui.paymentText, {
+    tapGroup: 'payment-text',
+    onDoubleTap: () => {
+      adminOpenActionSheet('Оплата', [
+        { id: 'edit', label: 'Редактировать текст' },
+      ]).then((action) => {
+        if (action !== 'edit') return;
+        adminEditValue('paymentText', state.config.paymentText || '', { multiline: true }).then((value) => {
+          if (value == null || value.__delete) return;
+          state.config.paymentText = value;
+          ui.paymentText.innerHTML = formatMultiline(value);
+          adminSaveDraft(true);
+        });
+      });
+    },
   });
-  adminBindHold(ui.productionText, () => {
-    adminEditValue('productionText', state.config.productionText || '', { multiline: true }).then((value) => {
-      if (value == null || value.__delete) return;
-      state.config.productionText = value;
-      ui.productionText.innerHTML = formatMultiline(value);
-      adminSaveDraft(true);
-    });
+  adminBindTapIntent(ui.productionText, {
+    tapGroup: 'production-text',
+    onDoubleTap: () => {
+      adminOpenActionSheet('Производство', [
+        { id: 'edit', label: 'Редактировать текст' },
+      ]).then((action) => {
+        if (action !== 'edit') return;
+        adminEditValue('productionText', state.config.productionText || '', { multiline: true }).then((value) => {
+          if (value == null || value.__delete) return;
+          state.config.productionText = value;
+          ui.productionText.innerHTML = formatMultiline(value);
+          adminSaveDraft(true);
+        });
+      });
+    },
   });
-  adminBindHold(ui.contactsCard, () => {
-    adminEditValue('contactsText', state.config.contactsText || '', { multiline: true }).then((value) => {
-      if (value == null || value.__delete) return;
-      state.config.contactsText = value;
-      ui.contactsCard.innerHTML = formatMultiline(value);
-      adminSaveDraft(true);
-    });
+  adminBindTapIntent(ui.contactsCard, {
+    tapGroup: 'contacts-text',
+    onDoubleTap: () => {
+      adminOpenActionSheet('Контакты', [
+        { id: 'edit', label: 'Редактировать текст' },
+      ]).then((action) => {
+        if (action !== 'edit') return;
+        adminEditValue('contactsText', state.config.contactsText || '', { multiline: true }).then((value) => {
+          if (value == null || value.__delete) return;
+          state.config.contactsText = value;
+          ui.contactsCard.innerHTML = formatMultiline(value);
+          adminSaveDraft(true);
+        });
+      });
+    },
   });
 
 }
@@ -2187,7 +2214,8 @@ function adminBindCategories() {
     const categoryId = card.dataset.category;
     const category = state.categories.find((c) => c.id === categoryId);
     if (!category) return;
-    adminBindLongPress(card, () => {
+    const openCategory = () => openCategoryById(category.id);
+    const openCategoryMenu = () => {
       adminOpenActionSheet(`Категория: ${category.title}`, [
         { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
@@ -2222,21 +2250,28 @@ function adminBindCategories() {
           renderCategories();
         }
       });
+    };
+    adminBindTapIntent(card, {
+      onSingleTap: openCategory,
+      onDoubleTap: openCategoryMenu,
+      selectType: 'category',
+      selectId: () => category.id,
+      tapGroup: () => `category:${category.id}`,
     });
     const title = card.querySelector('span');
-    adminBindHold(title, () => {
-      adminEditValue(`Название категории ${category.title}`, category.title || '').then((value) => {
-        if (value == null || value.__delete) return;
-        category.title = value;
-        renderCategories();
-        adminSaveDraft(true);
-      });
+    adminBindTapIntent(title, {
+      onSingleTap: openCategory,
+      onDoubleTap: openCategoryMenu,
+      selectType: 'category',
+      selectId: () => category.id,
+      tapGroup: () => `category:${category.id}`,
     });
   });
 
   const promoCard = ui.categoriesGrid.querySelector('[data-open-screen="promo"]');
   if (promoCard) {
-    adminBindLongPress(promoCard, () => {
+    const openPromo = () => setScreen('promo');
+    const openPromoMenu = () => {
       const promoCatalog = ensurePromoCatalogConfig();
       adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
         { id: 'open', label: 'Открыть страницу' },
@@ -2268,17 +2303,17 @@ function adminBindCategories() {
           });
         }
       });
+    };
+    adminBindTapIntent(promoCard, {
+      onSingleTap: openPromo,
+      onDoubleTap: openPromoMenu,
+      tapGroup: 'promo-card',
     });
     const promoTitle = promoCard.querySelector('span');
-    adminBindHold(promoTitle, () => {
-      const promoCatalog = ensurePromoCatalogConfig();
-      adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
-        if (value == null || value.__delete) return;
-        const cfg = ensurePromoCatalogConfig();
-        cfg.title = String(value || '').trim() || DEFAULT_PROMO_CATALOG.title;
-        renderCategories();
-        adminSaveDraft(true);
-      });
+    adminBindTapIntent(promoTitle, {
+      onSingleTap: openPromo,
+      onDoubleTap: openPromoMenu,
+      tapGroup: 'promo-card',
     });
   }
 
@@ -2286,7 +2321,10 @@ function adminBindCategories() {
 
 function adminBindMenuPromo() {
   if (!state.admin.enabled || !ui.menuPromoButton) return;
-  adminBindLongPress(ui.menuPromoButton, () => {
+  adminBindTapIntent(ui.menuPromoButton, {
+    onSingleTap: () => setScreen('promo'),
+    tapGroup: 'promo-menu-button',
+    onDoubleTap: () => {
     const promoCatalog = ensurePromoCatalogConfig();
     adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
       { id: 'open', label: 'Открыть страницу' },
@@ -2319,6 +2357,7 @@ function adminBindMenuPromo() {
         });
       }
     });
+    },
   });
 }
 
@@ -2328,7 +2367,12 @@ function adminBindProducts() {
     const productId = card.dataset.open;
     const p = getProduct(productId);
     if (!p) return;
-    adminBindLongPress(card, () => {
+    const openProduct = () => {
+      state.currentProduct = p.id;
+      renderProductView();
+      setScreen('product');
+    };
+    const openProductMenu = () => {
       adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
         { id: 'open', label: 'Открыть страницу' },
         { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
@@ -2388,15 +2432,21 @@ function adminBindProducts() {
           renderProducts();
         }
       });
+    };
+    adminBindTapIntent(card, {
+      onSingleTap: openProduct,
+      onDoubleTap: openProductMenu,
+      selectType: 'product',
+      selectId: () => p.id,
+      tapGroup: () => `product:${p.id}`,
     });
     const title = card.querySelector('.product-title');
-    adminBindHold(title, () => {
-      adminEditValue(`Название товара ${p.id}`, p.title || '').then((value) => {
-        if (value == null || value.__delete) return;
-        p.title = value;
-        renderProducts();
-        adminSaveDraft(true);
-      });
+    adminBindTapIntent(title, {
+      onSingleTap: openProduct,
+      onDoubleTap: openProductMenu,
+      selectType: 'product',
+      selectId: () => p.id,
+      tapGroup: () => `product:${p.id}`,
     });
   });
 
@@ -2409,7 +2459,9 @@ function adminBindProductView() {
 
   const title = ui.productView.querySelector('.product-title');
   const desc = ui.productView.querySelector('.section-body');
-  adminBindHold(title, () => {
+  adminBindTapIntent(title, {
+    tapGroup: () => `product-view:${p.id}:title`,
+    onDoubleTap: () => {
     adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
       { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
       { id: 'edit', label: 'Редактировать заголовок' },
@@ -2435,17 +2487,30 @@ function adminBindProductView() {
         goBack();
       }
     });
+    },
   });
-  adminBindHold(desc, () => {
-    adminEditValue(`Описание товара ${p.id}`, p.description || '', { multiline: true }).then((value) => {
-      if (value == null || value.__delete) return;
-      p.description = value;
-      renderProductView();
-    });
+  adminBindTapIntent(desc, {
+    tapGroup: () => `product-view:${p.id}:desc`,
+    onDoubleTap: () => {
+      adminOpenActionSheet(`Описание товара ${p.id}`, [
+        { id: 'edit', label: 'Редактировать описание' },
+      ]).then((action) => {
+        if (action !== 'edit') return;
+        adminEditValue(`Описание товара ${p.id}`, p.description || '', { multiline: true }).then((value) => {
+          if (value == null || value.__delete) return;
+          p.description = value;
+          renderProductView();
+        });
+      });
+    },
   });
 
   ui.productView.querySelectorAll('.product-gallery img').forEach((img, index) => {
-    adminBindHold(img, () => {
+    adminBindTapIntent(img, {
+      selectType: 'image',
+      selectId: () => String(index),
+      tapGroup: () => `product-image:${p.id}:${index}`,
+      onDoubleTap: () => {
       adminOpenActionSheet(`Фото #${index + 1}`, [
         { id: 'move-left', label: 'Сдвинуть влево' },
         { id: 'move-right', label: 'Сдвинуть вправо' },
@@ -2482,12 +2547,15 @@ function adminBindProductView() {
           adminSaveDraft(true);
         }
       });
+      },
     });
   });
 
   const specRows = ui.productView.querySelectorAll('.product-specs > div');
   specRows.forEach((row, index) => {
-    adminBindHold(row, () => {
+    adminBindTapIntent(row, {
+      tapGroup: () => `product-spec:${p.id}:${index}`,
+      onDoubleTap: () => {
       if (!Array.isArray(p.specs)) p.specs = [];
       const current = typeof p.specs[index] === 'string' ? p.specs[index] : '';
       adminOpenActionSheet(`Характеристика #${index + 1}`, [
@@ -2508,6 +2576,7 @@ function adminBindProductView() {
           renderProductView();
         }
       });
+      },
     });
   });
 }
@@ -2536,7 +2605,7 @@ function adminBuildPanel() {
       <button type="button" data-admin-action="save-draft">Сохранить</button>
       <button type="button" data-admin-action="download-all">Скачать JSON</button>
     </div>
-    <div class="admin-panel-hint">ADMIN MODE: удержание 5 сек на зоне для редактирования</div>
+    <div class="admin-panel-hint">ADMIN MODE: один тап открывает раздел, двойной тап открывает меню редактирования</div>
   `;
   document.body.appendChild(panel);
   state.admin.ui.panel = panel;
@@ -4355,53 +4424,63 @@ function renderStores() {
       const storeId = btn.dataset.storeId;
       const store = state.stores.find((item) => item.id === storeId);
       if (!store) return;
-      adminBindLongPress(btn, () => {
-        adminOpenActionSheet(`Адрес: ${store.city}`, [
-          { id: 'open', label: 'Открыть страницу' },
-          { id: 'edit-city', label: 'Изменить город' },
-          { id: 'edit-address', label: 'Изменить полный адрес' },
-          { id: 'delete', label: 'Удалить адрес', danger: true },
-        ]).then((action) => {
-          if (!action) return;
-          if (action === 'open') {
-            state.selectedStoreId = store.id;
-            saveStorage();
-            renderHeaderStore();
-            renderStores();
-            setScreen('home');
-            return;
-          }
-          if (action === 'edit-city') {
-            adminEditValue('Город', store.city || '').then((value) => {
-              if (value == null || value.__delete) return;
-              store.city = String(value).trim() || store.city;
+      adminBindTapIntent(btn, {
+        onSingleTap: () => {
+          state.selectedStoreId = store.id;
+          saveStorage();
+          renderHeaderStore();
+          renderStores();
+          setScreen('home');
+        },
+        tapGroup: () => `store:${store.id}`,
+        onDoubleTap: () => {
+          adminOpenActionSheet(`Адрес: ${store.city}`, [
+            { id: 'open', label: 'Открыть страницу' },
+            { id: 'edit-city', label: 'Изменить город' },
+            { id: 'edit-address', label: 'Изменить полный адрес' },
+            { id: 'delete', label: 'Удалить адрес', danger: true },
+          ]).then((action) => {
+            if (!action) return;
+            if (action === 'open') {
+              state.selectedStoreId = store.id;
+              saveStorage();
+              renderHeaderStore();
+              renderStores();
+              setScreen('home');
+              return;
+            }
+            if (action === 'edit-city') {
+              adminEditValue('Город', store.city || '').then((value) => {
+                if (value == null || value.__delete) return;
+                store.city = String(value).trim() || store.city;
+                state.config.storeLocations = state.stores;
+                adminSaveDraft(true);
+                renderStores();
+                renderHeaderStore();
+              });
+              return;
+            }
+            if (action === 'edit-address') {
+              adminEditValue('Полный адрес', store.address || '', { multiline: true }).then((value) => {
+                if (value == null || value.__delete) return;
+                store.address = String(value).trim() || store.address;
+                state.config.storeLocations = state.stores;
+                adminSaveDraft(true);
+                renderStores();
+              });
+              return;
+            }
+            if (action === 'delete') {
+              state.stores = state.stores.filter((item) => item.id !== store.id);
+              if (!state.stores.length) state.stores = getFallbackStores();
               state.config.storeLocations = state.stores;
+              if (state.selectedStoreId === store.id) state.selectedStoreId = state.stores[0]?.id || null;
               adminSaveDraft(true);
               renderStores();
               renderHeaderStore();
-            });
-            return;
-          }
-          if (action === 'edit-address') {
-            adminEditValue('Полный адрес', store.address || '', { multiline: true }).then((value) => {
-              if (value == null || value.__delete) return;
-              store.address = String(value).trim() || store.address;
-              state.config.storeLocations = state.stores;
-              adminSaveDraft(true);
-              renderStores();
-            });
-            return;
-          }
-          if (action === 'delete') {
-            state.stores = state.stores.filter((item) => item.id !== store.id);
-            if (!state.stores.length) state.stores = getFallbackStores();
-            state.config.storeLocations = state.stores;
-            if (state.selectedStoreId === store.id) state.selectedStoreId = state.stores[0]?.id || null;
-            adminSaveDraft(true);
-            renderStores();
-            renderHeaderStore();
-          }
-        });
+            }
+          });
+        },
       });
     });
   }
@@ -6007,40 +6086,47 @@ function bindEvents() {
     setScreen('stores');
   });
   if (state.admin.enabled && ui.headerStoreButton) {
-    adminBindLongPress(ui.headerStoreButton, () => {
-      const selected = getSelectedStore();
-      if (!selected) return;
-      adminOpenActionSheet(`Текущий адрес: ${selected.city}`, [
-        { id: 'open', label: 'Открыть страницу' },
-        { id: 'edit-city', label: 'Изменить город' },
-        { id: 'edit-address', label: 'Изменить полный адрес' },
-      ]).then((action) => {
-        if (!action) return;
-        if (action === 'open') {
-          renderStores();
-          setScreen('stores');
-          return;
-        }
-        if (action === 'edit-city') {
-          adminEditValue('Город', selected.city || '').then((value) => {
-            if (value == null || value.__delete) return;
-            selected.city = String(value).trim() || selected.city;
-            state.config.storeLocations = state.stores;
-            adminSaveDraft(true);
-            renderHeaderStore();
+    adminBindTapIntent(ui.headerStoreButton, {
+      onSingleTap: () => {
+        renderStores();
+        setScreen('stores');
+      },
+      tapGroup: 'header-store',
+      onDoubleTap: () => {
+        const selected = getSelectedStore();
+        if (!selected) return;
+        adminOpenActionSheet(`Текущий адрес: ${selected.city}`, [
+          { id: 'open', label: 'Открыть страницу' },
+          { id: 'edit-city', label: 'Изменить город' },
+          { id: 'edit-address', label: 'Изменить полный адрес' },
+        ]).then((action) => {
+          if (!action) return;
+          if (action === 'open') {
             renderStores();
-          });
-        }
-        if (action === 'edit-address') {
-          adminEditValue('Полный адрес', selected.address || '', { multiline: true }).then((value) => {
-            if (value == null || value.__delete) return;
-            selected.address = String(value).trim() || selected.address;
-            state.config.storeLocations = state.stores;
-            adminSaveDraft(true);
-            renderStores();
-          });
-        }
-      });
+            setScreen('stores');
+            return;
+          }
+          if (action === 'edit-city') {
+            adminEditValue('Город', selected.city || '').then((value) => {
+              if (value == null || value.__delete) return;
+              selected.city = String(value).trim() || selected.city;
+              state.config.storeLocations = state.stores;
+              adminSaveDraft(true);
+              renderHeaderStore();
+              renderStores();
+            });
+          }
+          if (action === 'edit-address') {
+            adminEditValue('Полный адрес', selected.address || '', { multiline: true }).then((value) => {
+              if (value == null || value.__delete) return;
+              selected.address = String(value).trim() || selected.address;
+              state.config.storeLocations = state.stores;
+              adminSaveDraft(true);
+              renderStores();
+            });
+          }
+        });
+      },
     });
   }
   on(ui.storeAddButton, 'click', () => {
