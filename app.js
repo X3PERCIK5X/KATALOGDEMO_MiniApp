@@ -2011,7 +2011,6 @@ function adminBindHome() {
     const openBanner = () => setScreen('home');
     const openBannerMenu = () => {
       adminOpenActionSheet('Баннер', [
-        { id: 'open', label: 'Открыть страницу' },
         { id: 'move-prev', label: 'Сдвинуть влево' },
         { id: 'move-next', label: 'Сдвинуть вправо' },
         { id: 'edit-image', label: 'Изменить фото' },
@@ -2020,10 +2019,6 @@ function adminBindHome() {
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
-        if (action === 'open') {
-          setScreen('home');
-          return;
-        }
         if (action === 'move-prev') {
           adminMoveBannerByOffset(itemId, -1);
           return;
@@ -2094,16 +2089,11 @@ function adminBindHome() {
     const openArticle = () => setScreen(item.screen || 'about');
     const openArticleMenu = () => {
       adminOpenActionSheet('Статья', [
-        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-text', label: 'Редактировать текст' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
-        if (action === 'open') {
-          setScreen(item.screen || 'about');
-          return;
-        }
         const list = Array.isArray(state.config.homeArticles) ? state.config.homeArticles : [];
         const idx = list.findIndex((x, i) => (x?.id || `article-${i}`) === itemId);
         if (idx < 0) return;
@@ -2217,16 +2207,11 @@ function adminBindCategories() {
     const openCategory = () => openCategoryById(category.id);
     const openCategoryMenu = () => {
       adminOpenActionSheet(`Категория: ${category.title}`, [
-        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
-        if (action === 'open') {
-          openCategoryById(category.id);
-          return;
-        }
         if (action === 'edit-title') {
           adminEditValue(`Название категории ${category.title}`, category.title || '').then((value) => {
             if (value == null || value.__delete) return;
@@ -2274,15 +2259,10 @@ function adminBindCategories() {
     const openPromoMenu = () => {
       const promoCatalog = ensurePromoCatalogConfig();
       adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
-        { id: 'open', label: 'Открыть страницу' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
       ]).then((action) => {
         if (!action) return;
-        if (action === 'open') {
-          setScreen('promo');
-          return;
-        }
         if (action === 'edit-title') {
           adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
             if (value == null || value.__delete) return;
@@ -2327,15 +2307,10 @@ function adminBindMenuPromo() {
     onDoubleTap: () => {
     const promoCatalog = ensurePromoCatalogConfig();
     adminOpenActionSheet(`Раздел: ${promoCatalog.title}`, [
-      { id: 'open', label: 'Открыть страницу' },
       { id: 'edit-title', label: 'Редактировать заголовок' },
       { id: 'edit-image', label: 'Изменить обложку в каталоге' },
     ]).then((action) => {
       if (!action) return;
-      if (action === 'open') {
-        setScreen('promo');
-        return;
-      }
       if (action === 'edit-title') {
         adminEditValue('Название раздела Акции', promoCatalog.title || 'Акции').then((value) => {
           if (value == null || value.__delete) return;
@@ -2374,7 +2349,6 @@ function adminBindProducts() {
     };
     const openProductMenu = () => {
       adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
-        { id: 'open', label: 'Открыть страницу' },
         { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
@@ -2383,12 +2357,6 @@ function adminBindProducts() {
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
-        if (action === 'open') {
-          state.currentProduct = p.id;
-          renderProductView();
-          setScreen('product');
-          return;
-        }
         if (action === 'set-promo') {
           adminConfigureProductPromo(p);
           return;
@@ -4435,20 +4403,11 @@ function renderStores() {
         tapGroup: () => `store:${store.id}`,
         onDoubleTap: () => {
           adminOpenActionSheet(`Адрес: ${store.city}`, [
-            { id: 'open', label: 'Открыть страницу' },
             { id: 'edit-city', label: 'Изменить город' },
             { id: 'edit-address', label: 'Изменить полный адрес' },
             { id: 'delete', label: 'Удалить адрес', danger: true },
           ]).then((action) => {
             if (!action) return;
-            if (action === 'open') {
-              state.selectedStoreId = store.id;
-              saveStorage();
-              renderHeaderStore();
-              renderStores();
-              setScreen('home');
-              return;
-            }
             if (action === 'edit-city') {
               adminEditValue('Город', store.city || '').then((value) => {
                 if (value == null || value.__delete) return;
@@ -6096,16 +6055,10 @@ function bindEvents() {
         const selected = getSelectedStore();
         if (!selected) return;
         adminOpenActionSheet(`Текущий адрес: ${selected.city}`, [
-          { id: 'open', label: 'Открыть страницу' },
           { id: 'edit-city', label: 'Изменить город' },
           { id: 'edit-address', label: 'Изменить полный адрес' },
         ]).then((action) => {
           if (!action) return;
-          if (action === 'open') {
-            renderStores();
-            setScreen('stores');
-            return;
-          }
           if (action === 'edit-city') {
             adminEditValue('Город', selected.city || '').then((value) => {
               if (value == null || value.__delete) return;
