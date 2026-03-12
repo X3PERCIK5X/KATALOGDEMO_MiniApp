@@ -3414,6 +3414,17 @@ async function removeProfileBotConnection(connectionId) {
   const numericId = Number(connectionId || 0);
   if (!state.admin.enabled || !state.saas.storeId || !numericId) return;
   if (!requireAdminFeatureAccess()) return;
+  const targetConnection = Array.isArray(state.catalogBotConnections)
+    ? state.catalogBotConnections.find((item) => Number(item?.id || 0) === numericId)
+    : null;
+  const targetTitle = String(
+    targetConnection?.title
+    || targetConnection?.botUsername
+    || targetConnection?.identifier
+    || 'это подключение'
+  ).trim();
+  const confirmed = window.confirm(`Удалить подключение "${targetTitle}"?`);
+  if (!confirmed) return;
   if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Удаляем подключение...';
   try {
     const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/catalog-bots/${numericId}`, {
