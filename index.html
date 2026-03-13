@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-214" />
+    <link rel="stylesheet" href="/style.css?v=20260313-215" />
   </head>
   <body>
     <header class="header">
@@ -605,6 +605,11 @@
             <div id="statsOrdersPreview" class="admin-analytics-value">—</div>
             <div class="admin-analytics-meta">Открыть список заказов и контакты</div>
           </button>
+          <button id="statsOpenPopularButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Популярные товары</div>
+            <div id="statsPopularPreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Топ 10 по количеству покупок</div>
+          </button>
         </div>
       </section>
 
@@ -622,6 +627,14 @@
           <h2>Заказы с данными о клиенте</h2>
         </div>
         <div id="statsOrdersList" class="orders-list"></div>
+      </section>
+
+      <section id="screen-stats-popular" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="stats" aria-label="Назад">←</button>
+          <h2>Популярные товары</h2>
+        </div>
+        <div id="statsPopularList" class="orders-list"></div>
       </section>
 
       <section id="screen-about" class="screen">
@@ -791,7 +804,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-214"></script>
-    <script src="/app.js?v=20260313-214"></script>
+    <script src="/telegram.js?v=20260313-215"></script>
+    <script src="/app.js?v=20260313-215"></script>
   </body>
 </html>

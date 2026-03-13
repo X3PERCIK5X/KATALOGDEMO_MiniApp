@@ -272,10 +272,13 @@ const ui = {
   ordersCanceledList: document.getElementById('ordersCanceledList'),
   statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
   statsOpenOrdersButton: document.getElementById('statsOpenOrdersButton'),
+  statsOpenPopularButton: document.getElementById('statsOpenPopularButton'),
   statsRevenuePreview: document.getElementById('statsRevenuePreview'),
   statsOrdersPreview: document.getElementById('statsOrdersPreview'),
+  statsPopularPreview: document.getElementById('statsPopularPreview'),
   statsRevenueList: document.getElementById('statsRevenueList'),
   statsOrdersList: document.getElementById('statsOrdersList'),
+  statsPopularList: document.getElementById('statsPopularList'),
   profileSubscriptionSection: document.getElementById('profileSubscriptionSection'),
   subscriptionTariffs: document.getElementById('subscriptionTariffs'),
   subscriptionStatus: document.getElementById('subscriptionStatus'),
@@ -896,6 +899,9 @@ function setScreen(name) {
   if (name === 'stats-orders') {
     void renderAdminStatsOrders();
   }
+  if (name === 'stats-popular') {
+    void renderAdminStatsPopular();
+  }
   if (name === 'pay') {
     renderPayScreen();
   }
@@ -1065,6 +1071,7 @@ function updateBottomNav(screen) {
     stats: ui.profileButton,
     'stats-revenue': ui.profileButton,
     'stats-orders': ui.profileButton,
+    'stats-popular': ui.profileButton,
     favorites: ui.favoritesButton,
     menu: ui.menuButton,
   };
@@ -5063,6 +5070,49 @@ async function getAdminAnalyticsData() {
   return { orders, monthMap, remoteMetrics };
 }
 
+function buildPopularProductsFromOrders(orders = []) {
+  const map = new Map();
+  orders.forEach((order) => {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    items.forEach((item) => {
+      const key = String(item?.id || item?.productId || item?.title || '').trim();
+      if (!key) return;
+      const current = map.get(key) || {
+        productId: String(item?.id || item?.productId || '').trim(),
+        title: String(item?.title || 'Товар').trim() || 'Товар',
+        qty: 0,
+        revenue: 0,
+      };
+      const qty = Math.max(1, Number(item?.qty || 1));
+      const price = Math.max(0, Number(item?.price || 0));
+      current.qty += qty;
+      current.revenue += price * qty;
+      map.set(key, current);
+    });
+  });
+  return Array.from(map.values())
+    .sort((a, b) => {
+      if (b.qty !== a.qty) return b.qty - a.qty;
+      if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+      return a.title.localeCompare(b.title, 'ru');
+    })
+    .slice(0, 10);
+}
+
+async function getAdminPopularProductsData() {
+  const { orders, remoteMetrics } = await getAdminAnalyticsData();
+  const remoteTop = Array.isArray(remoteMetrics?.topProducts) ? remoteMetrics.topProducts : [];
+  if (remoteTop.length) {
+    return remoteTop.slice(0, 10).map((item) => ({
+      productId: String(item?.productId || '').trim(),
+      title: String(item?.title || 'Товар').trim() || 'Товар',
+      qty: Number(item?.qty || 0),
+      revenue: Number(item?.revenue || 0),
+    }));
+  }
+  return buildPopularProductsFromOrders(orders);
+}
+
 function adminEnsureReportModal() {
   if (state.admin.ui.reportModal) return state.admin.ui.reportModal;
   const modal = document.createElement('div');
@@ -5242,10 +5292,12 @@ async function renderAdminSalesAnalytics() {
 async function renderAdminStatsOverview() {
   if (!state.admin.enabled) return;
   const { orders, monthMap } = await getAdminAnalyticsData();
+  const popular = await getAdminPopularProductsData();
   const thisMonthKey = adminMonthKey(new Date().toISOString());
   const thisMonth = monthMap.get(thisMonthKey) || { total: 0, margin: 0, count: 0 };
   if (ui.statsRevenuePreview) ui.statsRevenuePreview.textContent = `${formatPrice(thisMonth.total)} ₽`;
   if (ui.statsOrdersPreview) ui.statsOrdersPreview.textContent = String(orders.length);
+  if (ui.statsPopularPreview) ui.statsPopularPreview.textContent = popular.length ? String(popular[0].qty || 0) : '0';
 }
 
 async function renderAdminStatsRevenue() {
@@ -5349,6 +5401,29 @@ async function renderAdminStatsOrders() {
       );
     });
   });
+}
+
+async function renderAdminStatsPopular() {
+  if (!state.admin.enabled || !ui.statsPopularList) return;
+  const items = await getAdminPopularProductsData();
+  if (!items.length) {
+    ui.statsPopularList.innerHTML = '<div class="text-card">Покупок по товарам пока нет.</div>';
+    return;
+  }
+  ui.statsPopularList.innerHTML = `
+    <div class="admin-analytics-orders">
+      ${items.map((item, index) => `
+        <div class="admin-order-card">
+          <div class="admin-order-head">
+            <strong>${index + 1}. ${escapeHtml(item.title || 'Товар')}</strong>
+            <span>Топ ${index + 1}</span>
+          </div>
+          <div class="admin-order-meta">Купили: ${formatPrice(Number(item.qty || 0))} шт.</div>
+          <div class="admin-order-meta">Выручка: ${formatPrice(Number(item.revenue || 0))} ₽</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function normalizeOrderProcessingMode(raw) {
@@ -7143,6 +7218,12 @@ function bindEvents() {
     if (!requireAdminFeatureAccess()) return;
     void renderAdminStatsOrders();
     setScreen('stats-orders');
+  });
+  on(ui.statsOpenPopularButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminStatsPopular();
+    setScreen('stats-popular');
   });
   on(ui.homeButton, 'click', () => { renderHomePopular(); setScreen('home'); });
   on(ui.checkoutButton, 'click', () => {
