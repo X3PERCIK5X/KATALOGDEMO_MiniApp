@@ -2163,7 +2163,7 @@ function renderProductImportPanel(scope = 'category') {
   }
   if (importUi.previewButton) {
     importUi.previewButton.disabled = !canUseImport || !importState.file || importState.loading || importState.importing;
-    importUi.previewButton.textContent = importState.loading ? 'Проверяем...' : 'Проверить';
+    importUi.previewButton.textContent = importState.loading ? 'Проверяем...' : 'Обновить';
   }
   if (importUi.submitButton) {
     importUi.submitButton.disabled = !canUseImport || !getProductImportReadyRows(scope).length || importState.loading || importState.importing;
@@ -2232,7 +2232,7 @@ async function previewProductImportFile(scope = 'category') {
     importState.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
     importState.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
     const summary = importState.summary || {};
-    importState.status = `Проверка завершена: готово ${summary.readyToImport || 0}, ошибок ${summary.invalidRows || 0}, новых категорий ${summary.categoriesToCreate || 0}.`;
+    importState.status = `Файл проверен: готово ${summary.readyToImport || 0}, ошибок ${summary.invalidRows || 0}, новых категорий ${summary.categoriesToCreate || 0}. Нажмите «Импортировать».`;
   } catch (error) {
     resetProductImportState(scope, { keepFile: true });
     importState.status = `Ошибка проверки: ${error.message || 'unknown'}`;
@@ -7206,9 +7206,10 @@ function bindEvents() {
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Выбран файл: ${importState.fileName}`
+      ? `Файл выбран: ${importState.fileName}. Проверяем...`
       : 'Файл не выбран.';
     renderProductImportPanel('catalog');
+    if (file) void previewProductImportFile('catalog');
   });
 
   on(ui.catalogImportPreviewButton, 'click', () => {
@@ -7227,9 +7228,10 @@ function bindEvents() {
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Выбран файл: ${importState.fileName}`
+      ? `Файл выбран: ${importState.fileName}. Проверяем...`
       : 'Файл не выбран.';
     renderProductImportPanel('category');
+    if (file) void previewProductImportFile('category');
   });
 
   on(ui.productsImportPreviewButton, 'click', () => {
