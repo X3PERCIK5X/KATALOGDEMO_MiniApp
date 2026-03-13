@@ -2046,9 +2046,41 @@ function normalizeCategoryGroupId(value) {
   return String(value || '').trim() || 'apparel';
 }
 
+function splitPackedImportString(value) {
+  const text = String(value || '').trim();
+  if (!text) return [];
+  const delimiters = [',', ';', '\t', '|'];
+  const counts = delimiters.map((delimiter) => ({
+    delimiter,
+    count: delimiter === '\t' ? (text.match(/\t/g) || []).length : (text.split(delimiter).length - 1),
+  }));
+  counts.sort((a, b) => b.count - a.count);
+  const delimiter = counts[0]?.count > 0 ? counts[0].delimiter : ',';
+  return parseCsvLine(text, delimiter).map((item) => String(item || '').trim());
+}
+
+function unpackCompactImportRow(row) {
+  const entries = Object.entries(row || {});
+  if (entries.length !== 1) return row || {};
+  const [rawHeader, rawValue] = entries[0];
+  const headerText = String(rawHeader || '').trim();
+  const valueText = String(rawValue || '').trim();
+  if (!/[;,|\t]/.test(headerText)) return row || {};
+  const headers = splitPackedImportString(headerText);
+  const values = splitPackedImportString(valueText);
+  if (!headers.length) return row || {};
+  const out = {};
+  headers.forEach((header, index) => {
+    if (!header) return;
+    out[header] = values[index] ?? '';
+  });
+  return out;
+}
+
 function normalizeImportObject(row) {
   const out = {};
-  Object.entries(row || {}).forEach(([key, value]) => {
+  const sourceRow = unpackCompactImportRow(row);
+  Object.entries(sourceRow || {}).forEach(([key, value]) => {
     const normalizedKey = normalizeImportFieldName(key);
     if (!normalizedKey) return;
     out[normalizedKey] = value;
@@ -2256,7 +2288,7 @@ function parseCsvRows(csvText) {
       if (value) hasAnyValue = true;
       row[header] = value;
     });
-    if (hasAnyValue) rows.push(row);
+    if (hasAnyValue) rows.push(unpackCompactImportRow(row));
   }
   return rows;
 }
@@ -2282,7 +2314,7 @@ function worksheetToImportRows(worksheet) {
       if (String(rawValue || '').trim()) hasAnyValue = true;
       row[header] = rawValue;
     }
-    if (hasAnyValue) rows.push(row);
+    if (hasAnyValue) rows.push(unpackCompactImportRow(row));
   }
   return rows;
 }
