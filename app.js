@@ -2100,6 +2100,7 @@ function getImportScopeOptions(scope) {
     scope: 'catalog',
     categoryId: '',
     categoryTitle: '',
+    groupId: String(state.currentGroup || 'apparel').trim() || 'apparel',
     previewHint: 'Поддерживаются CSV и XLSX до 5 МБ. Категории создаются автоматически по полю category.',
     idleStatus: 'Загрузите CSV или XLSX. Система создаст категории из файла и распределит товары по разделам.',
   };
@@ -2228,6 +2229,7 @@ async function previewProductImportFile(scope = 'category') {
     form.append('file', importState.file);
     form.append('scope', scopeOptions.scope);
     if (scopeOptions.categoryId) form.append('categoryId', scopeOptions.categoryId);
+    if (scopeOptions.groupId) form.append('groupId', scopeOptions.groupId);
     const payload = await saasRequestWithForm(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products/preview`, form, { auth: true });
     importState.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
     importState.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
@@ -2265,7 +2267,7 @@ async function importProductsFromPreview(scope = 'category') {
     const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products`, {
       method: 'POST',
       auth: true,
-      body: { rows: importState.previewRows, scope: scopeOptions.scope, categoryId: scopeOptions.categoryId },
+      body: { rows: importState.previewRows, scope: scopeOptions.scope, categoryId: scopeOptions.categoryId, groupId: scopeOptions.groupId },
     });
     if (payload.dataset) applyStoreDataset(payload.dataset);
     renderHeaderStore();

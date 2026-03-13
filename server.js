@@ -1785,7 +1785,7 @@ function listCategories(storeId) {
       id: r.category_id,
       title: r.title,
       image: r.image || '',
-      groupId: r.group_id || payload.groupId || '',
+      groupId: String(r.group_id || payload.groupId || 'apparel').trim() || 'apparel',
     };
   });
 }
@@ -1916,6 +1916,10 @@ function normalizeImportFieldName(value) {
   return map[base] || base;
 }
 
+function normalizeCategoryGroupId(value) {
+  return String(value || '').trim() || 'apparel';
+}
+
 function normalizeImportObject(row) {
   const out = {};
   Object.entries(row || {}).forEach(([key, value]) => {
@@ -2014,7 +2018,14 @@ function validateImportProductRow(sourceRow, index, context = {}) {
 
 function resolveImportContext(rawContext, categories = []) {
   const scope = String(rawContext?.scope || '').trim().toLowerCase() === 'category' ? 'category' : 'catalog';
-  if (scope !== 'category') return { scope: 'catalog', categoryId: '', categoryTitle: '' };
+  if (scope !== 'category') {
+    return {
+      scope: 'catalog',
+      categoryId: '',
+      categoryTitle: '',
+      groupId: normalizeCategoryGroupId(rawContext?.groupId || ''),
+    };
+  }
   const categoryId = String(rawContext?.categoryId || '').trim();
   const category = categories.find((item) => String(item?.id || '').trim() === categoryId) || null;
   if (!category) {
@@ -2026,6 +2037,7 @@ function resolveImportContext(rawContext, categories = []) {
     scope: 'category',
     categoryId,
     categoryTitle: String(category.title || '').trim(),
+    groupId: normalizeCategoryGroupId(category.groupId || ''),
   };
 }
 
@@ -2178,7 +2190,7 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
         id: nextImportEntityId('category', usedCategoryIds),
         title: validated.normalized.category,
         image: '',
-        groupId: '',
+        groupId: normalizeCategoryGroupId(context?.groupId || ''),
       };
       existingCategoryByKey.set(categoryKey, category);
       nextCategories.push(category);
