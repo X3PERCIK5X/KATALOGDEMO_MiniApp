@@ -4641,7 +4641,7 @@ body.admin-mode #screen-categories .screen-head > h2 {
 body.admin-mode #screen-categories .screen-head > .admin-catalog-controls[data-admin-controls="category"] {
   grid-area: controls;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) repeat(5, var(--admin-icon-btn-size));
+  grid-template-columns: minmax(0, 1fr) repeat(6, var(--admin-icon-btn-size));
   gap: 6px;
   width: 100%;
   margin-left: 0;

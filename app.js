@@ -247,6 +247,7 @@ const ui = {
   adminMoveDownButton: document.getElementById('adminMoveDownButton'),
   adminMoveLeftButton: document.getElementById('adminMoveLeftButton'),
   adminMoveRightButton: document.getElementById('adminMoveRightButton'),
+  adminDeleteSelectedCategoriesButton: document.getElementById('adminDeleteSelectedCategoriesButton'),
   adminDeleteSelectedButton: document.getElementById('adminDeleteSelectedButton'),
   adminSaveDraftButton: document.getElementById('adminSaveDraftButton'),
   adminPublishButton: document.getElementById('adminPublishButton'),
@@ -3037,6 +3038,7 @@ function applyAdminModeUi() {
     const active = state.admin.enabled && state.admin.selectionMode && scope === state.admin.selectedType;
     btn.classList.toggle('active', active);
     if (active && scope === 'product' && hasSelectedProducts()) btn.textContent = `Выбрано: ${getSelectedProductIds().length}`;
+    else if (active && scope === 'category' && hasSelectedCategories()) btn.textContent = `Выбрано: ${getSelectedCategoryIds().length}`;
     else btn.textContent = active ? 'Выделение: вкл' : 'Выделить';
     btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
   });
@@ -3047,7 +3049,11 @@ function applyAdminModeUi() {
       return;
     }
     const scope = String(btn.dataset.adminMoveScope || '');
-    const hasSelection = scope === 'product' ? hasSelectedProducts() : !!state.admin.selectedId;
+    const hasSelection = scope === 'product'
+      ? hasSelectedProducts()
+      : scope === 'category'
+        ? hasSelectedCategories()
+        : !!state.admin.selectedId;
     if (!(state.admin.enabled && state.admin.selectionMode && hasSelection && scope === state.admin.selectedType)) {
       btn.disabled = true;
       return;
@@ -3067,6 +3073,15 @@ function applyAdminModeUi() {
       && state.admin.selectionMode
       && state.admin.selectedType === 'product'
       && hasSelectedProducts()
+    );
+  }
+  if (ui.adminDeleteSelectedCategoriesButton) {
+    ui.adminDeleteSelectedCategoriesButton.disabled = !(
+      state.admin.enabled
+      && subscriptionAllowsAdminFeatures()
+      && state.admin.selectionMode
+      && state.admin.selectedType === 'category'
+      && hasSelectedCategories()
     );
   }
   const addButtons = Array.from(document.querySelectorAll('[data-admin-add]'));
@@ -4425,8 +4440,20 @@ function getSelectedProductIds() {
   return state.admin.selectedId ? [state.admin.selectedId] : [];
 }
 
+function getSelectedCategoryIds() {
+  if (state.admin.selectedType !== 'category') return [];
+  if (Array.isArray(state.admin.selectedIds) && state.admin.selectedIds.length) {
+    return state.admin.selectedIds.filter(Boolean);
+  }
+  return state.admin.selectedId ? [state.admin.selectedId] : [];
+}
+
 function hasSelectedProducts() {
   return getSelectedProductIds().length > 0;
+}
+
+function hasSelectedCategories() {
+  return getSelectedCategoryIds().length > 0;
 }
 
 function adminToggleSelectionMode(scope = '') {
@@ -4447,7 +4474,7 @@ function adminToggleSelectionMode(scope = '') {
 
 function adminSelectItem(type, id) {
   if (!state.admin.selectionMode) return;
-  if (type === 'product') {
+  if (type === 'product' || type === 'category') {
     state.admin.selectedType = type;
     const current = new Set(Array.isArray(state.admin.selectedIds) ? state.admin.selectedIds : []);
     if (current.has(id)) current.delete(id);
@@ -4457,7 +4484,8 @@ function adminSelectItem(type, id) {
       ? id
       : (state.admin.selectedIds[state.admin.selectedIds.length - 1] || '');
     applyAdminModeUi();
-    renderProducts();
+    if (type === 'product') renderProducts();
+    if (type === 'category') renderCategories();
     return;
   }
   state.admin.selectedType = type;
@@ -4503,6 +4531,33 @@ function adminDeleteSelectedProducts() {
   reportStatus(selectedIds.length === 1 ? 'Товар удален' : `Удалено товаров: ${selectedIds.length}`);
 }
 
+function adminDeleteSelectedCategories() {
+  const selectedIds = getSelectedCategoryIds();
+  if (!selectedIds.length) {
+    reportStatus('Сначала выберите категории для удаления');
+    return;
+  }
+  const branchIds = Array.from(new Set(selectedIds.flatMap((id) => collectCategoryBranchIds(id))));
+  const confirmed = window.confirm(
+    selectedIds.length === 1
+      ? 'Удалить выбранную категорию вместе с вложенными подразделами и товарами без возможности восстановления?'
+      : `Удалить выбранные категории (${selectedIds.length}) вместе с вложенными подразделами и товарами без возможности восстановления?`,
+  );
+  if (!confirmed) return;
+  deleteCategoriesAndProducts(branchIds);
+  if (branchIds.includes(String(state.currentCategory || ''))) {
+    state.currentCategory = null;
+    state.currentCategoryIds = null;
+  }
+  adminClearSelection();
+  adminSaveDraft(true);
+  renderPromos();
+  renderCategories();
+  renderProducts();
+  renderHomePopular();
+  reportStatus(selectedIds.length === 1 ? 'Категория удалена' : `Удалено категорий: ${selectedIds.length}`);
+}
+
 function adminMoveSelected(direction) {
   if (!state.admin.selectionMode || !state.admin.selectedType || (!state.admin.selectedId && !hasSelectedProducts())) {
     reportStatus('Сначала включите "Выделить" и выберите элемент');
@@ -4512,21 +4567,53 @@ function adminMoveSelected(direction) {
   if (state.admin.selectedType === 'category') {
     const visible = getVisibleCategories();
     const ids = visible.map((item) => item.id);
-    const fromIdx = ids.indexOf(state.admin.selectedId);
-    if (fromIdx < 0) return;
+    const selectedIds = getSelectedCategoryIds().filter((id) => ids.includes(id));
+    if (!selectedIds.length) return;
+    const selectedSet = new Set(selectedIds);
+    const orderedSelected = ids.filter((id) => selectedSet.has(id));
     const step = direction === 'up' ? -2 : direction === 'down' ? 2 : direction === 'left' ? -1 : 1;
-    const toIdx = Math.max(0, Math.min(ids.length - 1, fromIdx + step));
-    if (toIdx === fromIdx) return;
-    const toId = ids[toIdx];
-    const absFrom = state.categories.findIndex((item) => item.id === state.admin.selectedId);
-    const absTo = state.categories.findIndex((item) => item.id === toId);
-    if (absFrom < 0 || absTo < 0) return;
-    const tmp = state.categories[absFrom];
-    state.categories[absFrom] = state.categories[absTo];
-    state.categories[absTo] = tmp;
+    const remaining = ids.filter((id) => !selectedSet.has(id));
+    let nextVisibleOrder = ids.slice();
+    if (step < 0) {
+      const firstIndex = ids.indexOf(orderedSelected[0]);
+      if (firstIndex <= 0) return;
+      const neighborIndex = Math.max(0, firstIndex + step);
+      const neighborId = ids[neighborIndex];
+      if (!neighborId || selectedSet.has(neighborId)) return;
+      const insertAt = remaining.indexOf(neighborId);
+      if (insertAt < 0) return;
+      nextVisibleOrder = [
+        ...remaining.slice(0, insertAt),
+        ...orderedSelected,
+        ...remaining.slice(insertAt),
+      ];
+    } else {
+      const lastIndex = ids.indexOf(orderedSelected[orderedSelected.length - 1]);
+      if (lastIndex < 0 || lastIndex >= ids.length - 1) return;
+      const neighborIndex = Math.min(ids.length - 1, lastIndex + step);
+      const neighborId = ids[neighborIndex];
+      if (!neighborId || selectedSet.has(neighborId)) return;
+      const insertAt = remaining.indexOf(neighborId);
+      if (insertAt < 0) return;
+      nextVisibleOrder = [
+        ...remaining.slice(0, insertAt + 1),
+        ...orderedSelected,
+        ...remaining.slice(insertAt + 1),
+      ];
+    }
+    const categoryById = new Map(state.categories.map((category) => [String(category.id || ''), category]));
+    const visiblePositions = [];
+    state.categories.forEach((category, index) => {
+      if (ids.includes(String(category.id || ''))) visiblePositions.push(index);
+    });
+    const nextCategories = state.categories.slice();
+    visiblePositions.forEach((position, index) => {
+      nextCategories[position] = categoryById.get(String(nextVisibleOrder[index] || '')) || nextCategories[position];
+    });
+    state.categories = nextCategories;
     adminSaveDraft(true);
     renderCategories();
-    reportStatus('Порядок категорий обновлен');
+    reportStatus(selectedIds.length > 1 ? 'Порядок выбранных категорий обновлен' : 'Порядок категории обновлен');
     return;
   }
 
@@ -4621,6 +4708,7 @@ function renderCategories() {
   const promoCatalog = ensurePromoCatalogConfig();
   renderPromoCatalogLabels();
   const list = getVisibleCategories();
+  const selectedCategories = new Set(getSelectedCategoryIds());
   if (!list.length) {
     ui.categoriesGrid.innerHTML = `
       <div class="empty-state">
@@ -4636,7 +4724,7 @@ function renderCategories() {
     const firstProduct = state.products.find((p) => branchSet.has(String(p.categoryId || '')));
     const fallbackProductImage = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : '';
     const image = String(c.image || '').trim() || fallbackProductImage;
-    const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && state.admin.selectedId === c.id
+    const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && selectedCategories.has(c.id)
       ? ' admin-selected-target'
       : '';
     return `
@@ -7223,6 +7311,11 @@ function bindEvents() {
   on(ui.adminDeleteSelectedButton, 'click', () => {
     if (!state.admin.enabled) return;
     adminDeleteSelectedProducts();
+  });
+
+  on(ui.adminDeleteSelectedCategoriesButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminDeleteSelectedCategories();
   });
 
   on(document, 'click', (e) => {
