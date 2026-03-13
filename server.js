@@ -2237,7 +2237,7 @@ function detectCsvDelimiter(text) {
   const delimiters = [',', ';', '\t', '|'];
   const counts = delimiters.map((delimiter) => ({
     delimiter,
-    count: (sample.match(new RegExp(`\\${delimiter === '\t' ? 't' : delimiter}`, 'g')) || []).length,
+    count: delimiter === '\t' ? (sample.match(/\t/g) || []).length : (sample.split(delimiter).length - 1),
   }));
   counts.sort((a, b) => b.count - a.count);
   return counts[0]?.count > 0 ? counts[0].delimiter : ',';
@@ -2293,6 +2293,36 @@ function parseCsvRows(csvText) {
   return rows;
 }
 
+function decodeImportTextBuffer(buffer) {
+  const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  if (!bytes.length) return '';
+  const hasUtf8Bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  const hasUtf16LeBom = bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe;
+  const hasUtf16BeBom = bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff;
+  if (hasUtf8Bom) return bytes.toString('utf8').replace(/^\uFEFF/, '');
+  if (hasUtf16LeBom) return new TextDecoder('utf-16le').decode(bytes).replace(/^\uFEFF/, '');
+  if (hasUtf16BeBom) return new TextDecoder('utf-16be').decode(bytes).replace(/^\uFEFF/, '');
+
+  const candidates = [
+    { encoding: 'utf-8', text: bytes.toString('utf8') },
+    { encoding: 'utf-16le', text: new TextDecoder('utf-16le').decode(bytes) },
+    { encoding: 'windows-1251', text: new TextDecoder('windows-1251').decode(bytes) },
+  ];
+  const scoreText = (text) => {
+    const normalized = String(text || '').replace(/\u0000/g, '');
+    const firstLine = normalized.split(/\r?\n/)[0] || '';
+    let score = 0;
+    if (/[;,|\t]/.test(firstLine)) score += 10;
+    if (/title|name|product|price|category|image|description/i.test(firstLine)) score += 20;
+    if (/назв|товар|цена|катег|опис|фото|изображ/i.test(firstLine)) score += 20;
+    score -= (normalized.match(/\u0000/g) || []).length * 5;
+    score -= (normalized.match(/�/g) || []).length * 3;
+    return score;
+  };
+  candidates.sort((a, b) => scoreText(b.text) - scoreText(a.text));
+  return String(candidates[0]?.text || '').replace(/\u0000/g, '').replace(/^\uFEFF/, '');
+}
+
 function worksheetToImportRows(worksheet) {
   const ref = String(worksheet?.['!ref'] || '').trim();
   if (!ref) return [];
@@ -2336,7 +2366,7 @@ function parseProductImportFile(file, context = {}) {
   let rawRows = [];
   try {
     if (ext === '.csv') {
-      const csvText = Buffer.from(file.buffer).toString('utf8');
+      const csvText = decodeImportTextBuffer(file.buffer);
       rawRows = parseCsvRows(csvText);
     } else {
       workbook = XLSX.read(file.buffer, { type: 'buffer', raw: false });
