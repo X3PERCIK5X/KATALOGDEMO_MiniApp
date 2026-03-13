@@ -1898,13 +1898,17 @@ function persistStoreDataset(storeId, row, { config, settings, categories, produ
   );
 }
 
-function normalizeImportFieldName(value) {
-  const base = String(value || '')
+function normalizeImportHeaderBase(value) {
+  return String(value || '')
     .replace(/^\uFEFF/, '')
     .trim()
     .toLowerCase()
     .replace(/[^a-zа-яё0-9]+/gi, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+function normalizeImportFieldName(value) {
+  const base = normalizeImportHeaderBase(value);
   const map = {
     title: 'title',
     name: 'title',
@@ -1986,7 +1990,43 @@ function normalizeImportFieldName(value) {
     категория2: 'subcategory',
     раздел_2: 'subcategory',
     раздел2: 'subcategory',
+    sku: 'sku',
+    article: 'sku',
+    artikul: 'sku',
+    vendor_code: 'sku',
+    vendorcode: 'sku',
+    product_code: 'sku',
+    item_code: 'sku',
+    code: 'sku',
+    код: 'sku',
+    артикул: 'sku',
+    артикул_товара: 'sku',
+    код_товара: 'sku',
+    товарный_код: 'sku',
+    characteristics: 'characteristics',
+    characteristic: 'characteristics',
+    specs: 'characteristics',
+    spec: 'characteristics',
+    specification: 'characteristics',
+    specifications: 'characteristics',
+    attributes: 'characteristics',
+    attribute: 'characteristics',
+    характеристики: 'characteristics',
+    характеристика: 'characteristics',
+    свойства: 'characteristics',
+    свойство: 'characteristics',
     image_url: 'image_url',
+    image_urls: 'image_urls',
+    images: 'image_urls',
+    gallery: 'image_urls',
+    gallery_urls: 'image_urls',
+    image_gallery: 'image_urls',
+    photo_urls: 'image_urls',
+    photo_gallery: 'image_urls',
+    фотографии: 'image_urls',
+    фото_галерея: 'image_urls',
+    галерея: 'image_urls',
+    галерея_фото: 'image_urls',
     image_link: 'image_url',
     image_src: 'image_url',
     image_link_url: 'image_url',
@@ -2032,7 +2072,10 @@ function normalizeImportFieldName(value) {
   if (/^(category|section|group|категория|раздел|группа)_?2$/.test(base)) return 'subcategory';
   if (/^old_/.test(base) && /price|cost|цен/.test(base)) return 'old_price';
   if (/sub.*category|sub.*section|подкатег|подраздел|подгруп/.test(base)) return 'subcategory';
+  if (/^(sku|article|artikul|vendor_code|product_code|item_code|артикул|код)(_.*)?$/.test(base)) return 'sku';
   if (/category|section|group|категор|раздел|групп/.test(base)) return 'category';
+  if (/^(characteristics?|specs?|specification|specifications|attributes?|характеристик[аи]?|свойств[ао]?)(_|$)/.test(base)) return base.includes('_') ? base : 'characteristics';
+  if (/^(image_urls?|images|gallery|gallery_urls|photo_urls?|галерея|фотографии)(_.*)?$/.test(base)) return /_/.test(base) && !/^image_urls?$/.test(base) ? base : 'image_urls';
   if (/image|photo|picture|img|изображ|картин|фото/.test(base)) return 'image_url';
   if (/price|cost|цена|стоимост/.test(base)) return 'price';
   if (/description|opis|описан|комментар/.test(base)) return 'description';
@@ -2044,6 +2087,21 @@ function normalizeImportFieldName(value) {
 
 function normalizeCategoryGroupId(value) {
   return String(value || '').trim() || 'apparel';
+}
+
+function normalizeEntityCompareKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/['"`«»]/g, '')
+    .replace(/\s*[-_/|]+\s*/g, ' ')
+    .replace(/[(){}[\].,;:!?]+/g, '')
+    .trim();
+}
+
+function normalizeImportSkuKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 function splitPackedImportString(value) {
@@ -2104,6 +2162,134 @@ function resolveImportImageUrl(normalized) {
   return '';
 }
 
+function parseImportImageList(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  return raw
+    .split(/\r?\n|\s*\|\s*|\s*;\s*/)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+}
+
+function resolveImportImageCandidates(sourceRow, normalized) {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach(pushCandidate);
+      return;
+    }
+    parseImportImageList(value).forEach((item) => {
+      if (!item) return;
+      if (!candidates.includes(item)) candidates.push(item);
+    });
+  };
+  pushCandidate(normalized.image_urls);
+  pushCandidate(normalized.image_url);
+  Object.entries(sourceRow || {}).forEach(([key, value]) => {
+    const fieldName = normalizeImportFieldName(key);
+    if (
+      fieldName === 'image_url'
+      || fieldName === 'image_urls'
+      || /^image_urls?$/.test(fieldName)
+      || /^(gallery|галерея|photo_urls?|фотографии)(_|$)/.test(fieldName)
+    ) {
+      pushCandidate(value);
+    }
+  });
+  if (!candidates.length) {
+    const direct = resolveImportImageUrl(normalized);
+    if (direct) candidates.push(direct);
+  }
+  return candidates.slice(0, 8);
+}
+
+function parseImportCharacteristicsValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if ((raw.startsWith('{') && raw.endsWith('}')) || (raw.startsWith('[') && raw.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => {
+            if (!item) return '';
+            if (typeof item === 'string') return item.trim();
+            if (typeof item === 'object') {
+              const label = String(item.label || item.name || item.key || '').trim();
+              const itemValue = String(item.value || item.text || '').trim();
+              return label && itemValue ? `${label}: ${itemValue}` : label || itemValue;
+            }
+            return String(item).trim();
+          })
+          .filter(Boolean);
+      }
+      if (parsed && typeof parsed === 'object') {
+        return Object.entries(parsed)
+          .map(([key, itemValue]) => {
+            const label = String(key || '').trim();
+            const valueText = String(itemValue || '').trim();
+            return label && valueText ? `${label}: ${valueText}` : label || valueText;
+          })
+          .filter(Boolean);
+      }
+    } catch {}
+  }
+  return raw
+    .split(/\r?\n|\s*[;|]\s*/)
+    .map((line) => String(line || '').trim())
+    .filter(Boolean);
+}
+
+function extractImportCharacteristics(sourceRow, normalized) {
+  const specs = [];
+  const pushSpec = (value) => {
+    parseImportCharacteristicsValue(value).forEach((item) => {
+      const normalizedItem = String(item || '').trim();
+      if (normalizedItem && !specs.includes(normalizedItem)) specs.push(normalizedItem);
+    });
+  };
+  pushSpec(normalized.characteristics);
+  Object.entries(sourceRow || {}).forEach(([key, value]) => {
+    const rawBase = normalizeImportHeaderBase(key);
+    const normalizedField = normalizeImportFieldName(key);
+    if (normalizedField === 'characteristics' && rawBase === 'characteristics') {
+      pushSpec(value);
+      return;
+    }
+    const characteristicMatch = rawBase.match(/^(?:characteristics?|characteristic|specs?|specification|attributes?|характеристик[аи]?|свойств[ао]?|attribute|attr)_(.+)$/);
+    if (characteristicMatch) {
+      const label = String(characteristicMatch[1] || '')
+        .replace(/_/g, ' ')
+        .trim();
+      const labelText = label ? `${label[0].toUpperCase()}${label.slice(1)}` : '';
+      const valueText = String(value || '').trim();
+      if (labelText && valueText) pushSpec(`${labelText}: ${valueText}`);
+    }
+  });
+  return specs;
+}
+
+function resolveImportImageReference(storeId, value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    const error = new Error('IMAGE_EMPTY_REFERENCE');
+    error.code = 'IMAGE_EMPTY_REFERENCE';
+    throw error;
+  }
+  if (isValidHttpUrl(raw)) return { mode: 'remote', value: raw };
+  if (raw.startsWith('/uploads/') || raw.startsWith('/assets/') || raw.startsWith('assets/')) {
+    return { mode: 'local', value: raw.startsWith('/') ? raw : `/${raw}`.replace(/^\/assets\//, '/assets/') };
+  }
+  if (raw.startsWith('uploads/')) return { mode: 'local', value: `/${raw}` };
+  if (!/[\\/]/.test(raw) && /\.[a-z0-9]{2,5}$/i.test(raw)) {
+    const directPath = path.join(UPLOADS_DIR, storeId, raw);
+    if (fs.existsSync(directPath)) return { mode: 'local', value: `/uploads/${storeId}/${raw}` };
+  }
+  const error = new Error('IMAGE_REFERENCE_UNSUPPORTED');
+  error.code = 'IMAGE_REFERENCE_UNSUPPORTED';
+  throw error;
+}
+
 function parseImportNumber(value) {
   const raw = String(value ?? '').trim();
   if (!raw) return { ok: false, value: 0 };
@@ -2138,6 +2324,8 @@ function validateImportProductRow(sourceRow, index, context = {}) {
   const warnings = [];
   const title = String(normalized.title || '').trim();
   const description = String(normalized.description || '').trim();
+  const sku = String(normalized.sku || '').trim();
+  const characteristics = extractImportCharacteristics(sourceRow, normalized);
   const priceParsed = parseImportNumber(normalized.price);
   const oldPriceRaw = String(normalized.old_price ?? '').trim();
   const oldPriceParsed = oldPriceRaw ? parseImportNumber(oldPriceRaw) : { ok: true, value: 0 };
@@ -2145,7 +2333,7 @@ function validateImportProductRow(sourceRow, index, context = {}) {
   const rawSubcategory = String(normalized.subcategory || '').trim();
   let category = rawCategory;
   let subcategory = rawSubcategory;
-  const imageUrl = resolveImportImageUrl(normalized);
+  const imageCandidates = resolveImportImageCandidates(sourceRow, normalized);
   const active = parseImportBoolean(normalized.active);
   const stock = parseImportInteger(normalized.stock, 0);
 
@@ -2163,29 +2351,43 @@ function validateImportProductRow(sourceRow, index, context = {}) {
     warnings.push('Категория не указана, будет создан раздел "Без категории"');
   }
   if (oldPriceRaw && !oldPriceParsed.ok) warnings.push('Поле old_price не распознано, будет сохранено как 0');
-  if (imageUrl && !isValidHttpUrl(imageUrl)) warnings.push('Поле image_url не является валидным URL, товар будет создан без изображения');
+  const validImageRefs = [];
+  imageCandidates.forEach((imageRef) => {
+    try {
+      const resolved = resolveImportImageReference(context.storeId || '', imageRef);
+      validImageRefs.push(resolved.value);
+    } catch {
+      warnings.push(`Изображение "${imageRef}" не распознано и будет пропущено`);
+    }
+  });
 
   return {
     rowNumber,
     source: {
       title,
+      sku,
       description,
+      characteristics: characteristics.join(' | '),
       price: String(normalized.price ?? ''),
       old_price: oldPriceRaw,
       category: category || '',
       subcategory: subcategory || '',
-      image_url: imageUrl,
+      image_url: validImageRefs[0] || imageCandidates[0] || '',
+      image_urls: imageCandidates.join(' | '),
       active: String(normalized.active ?? ''),
       stock: String(normalized.stock ?? ''),
     },
     normalized: {
       title,
+      sku,
       description,
+      characteristics,
       price: priceParsed.ok ? priceParsed.value : 0,
       oldPrice: oldPriceParsed.ok ? oldPriceParsed.value : 0,
       category,
       subcategory,
-      imageUrl: isValidHttpUrl(imageUrl) ? imageUrl : '',
+      imageUrl: validImageRefs[0] || '',
+      imageUrls: validImageRefs,
       active,
       stock,
     },
@@ -2196,7 +2398,7 @@ function validateImportProductRow(sourceRow, index, context = {}) {
 }
 
 function buildImportCategoryKey(title, parentId = '') {
-  return `${String(parentId || '').trim().toLowerCase()}::${String(title || '').trim().toLowerCase()}`;
+  return `${normalizeEntityCompareKey(parentId)}::${normalizeEntityCompareKey(title)}`;
 }
 
 function resolveImportContext(rawContext, categories = []) {
@@ -2399,38 +2601,136 @@ function parseProductImportFile(file, context = {}) {
   return rawRows.map((row, index) => validateImportProductRow(row, index, context));
 }
 
-function createImportPreviewSummary(rows, categories = []) {
-  const validRows = rows.filter((row) => row.canImport);
-  const existingCategoryKeys = new Set(categories.map((category) => buildImportCategoryKey(category?.title, category?.parentId || '')).filter(Boolean));
-  const rootCategoryIdByTitle = new Map(
-    categories
-      .filter((category) => !String(category?.parentId || '').trim())
-      .map((category) => [String(category?.title || '').trim().toLowerCase(), String(category?.id || '').trim()]),
-  );
-  const missingCategoryKeys = new Set();
+function buildImportProductCategoryKey(title, categoryId) {
+  return `${normalizeEntityCompareKey(categoryId)}::${normalizeEntityCompareKey(title)}`;
+}
+
+function resolveExistingProductSku(product) {
+  const direct = String(product?.sku || '').trim();
+  if (direct) return direct;
+  const specs = Array.isArray(product?.specs) ? product.specs : [];
+  for (const item of specs) {
+    const text = typeof item === 'string'
+      ? item
+      : `${String(item?.label || '').trim()}: ${String(item?.value || '').trim()}`;
+    const match = String(text || '').match(/^(артикул|sku|код)\s*:\s*(.+)$/i);
+    if (match?.[2]) return String(match[2]).trim();
+  }
+  return '';
+}
+
+function buildPreparedImportRows(rows, categories = [], products = [], context = {}) {
+  const existingCategoryByKey = new Map();
+  const rootCategoryByTitle = new Map();
+  const simulatedCategories = [];
+  const existingProductBySku = new Map();
+  const existingProductByTitleCategory = new Map();
+
+  categories.forEach((category) => {
+    const item = { ...category };
+    simulatedCategories.push(item);
+    const key = buildImportCategoryKey(item?.title, item?.parentId || '');
+    if (key && !existingCategoryByKey.has(key)) existingCategoryByKey.set(key, item);
+    if (!String(item?.parentId || '').trim()) rootCategoryByTitle.set(normalizeEntityCompareKey(item?.title), item);
+  });
+
+  products.forEach((product) => {
+    const skuKey = normalizeImportSkuKey(resolveExistingProductSku(product));
+    if (skuKey && !existingProductBySku.has(skuKey)) existingProductBySku.set(skuKey, product);
+    const fallbackKey = buildImportProductCategoryKey(product?.title, product?.categoryId);
+    if (fallbackKey && !existingProductByTitleCategory.has(fallbackKey)) existingProductByTitleCategory.set(fallbackKey, product);
+  });
+
+  let createdRootCategories = 0;
+  let createdSubcategories = 0;
   let warningRows = 0;
   let imageRows = 0;
-  rows.forEach((row) => {
-    if (row.warnings.length) warningRows += 1;
-    if (row.normalized?.imageUrl) imageRows += 1;
-    if (!row.canImport) return;
-    const rootTitle = String(row.normalized?.category || '').trim();
-    const childTitle = String(row.normalized?.subcategory || '').trim();
-    const rootKey = buildImportCategoryKey(rootTitle, '');
-    if (rootTitle && !existingCategoryKeys.has(rootKey)) missingCategoryKeys.add(rootKey);
-    if (childTitle) {
-      const parentId = rootCategoryIdByTitle.get(rootTitle.toLowerCase()) || rootTitle.toLowerCase();
-      const childKey = buildImportCategoryKey(childTitle, parentId);
-      if (!existingCategoryKeys.has(childKey)) missingCategoryKeys.add(childKey);
+  let createCount = 0;
+  let updateCount = 0;
+
+  const preparedRows = rows.map((row, index) => {
+    const validated = validateImportProductRow(row?.source || row, Number(row?.rowNumber || index + 2) - 2, context);
+    if (validated.warnings.length) warningRows += 1;
+    if (Array.isArray(validated.normalized?.imageUrls) && validated.normalized.imageUrls.length) imageRows += 1;
+    if (!validated.canImport) {
+      return {
+        ...validated,
+        operation: 'error',
+        matchedProductId: '',
+        targetCategoryId: '',
+        targetCategoryPath: [validated.normalized?.category, validated.normalized?.subcategory].filter(Boolean),
+      };
     }
+
+    const rootTitle = String(validated.normalized?.category || '').trim();
+    const childTitle = String(validated.normalized?.subcategory || '').trim();
+    const rootKey = buildImportCategoryKey(rootTitle, '');
+    let rootCategory = null;
+    if (context.scope === 'category' && String(context.categoryId || '').trim()) {
+      rootCategory = simulatedCategories.find((item) => String(item?.id || '').trim() === String(context.categoryId).trim()) || null;
+    }
+    if (!rootCategory) rootCategory = existingCategoryByKey.get(rootKey) || rootCategoryByTitle.get(normalizeEntityCompareKey(rootTitle)) || null;
+    if (!rootCategory) {
+      rootCategory = {
+        id: `__import_root_${createdRootCategories + 1}`,
+        title: rootTitle,
+        image: '',
+        groupId: normalizeCategoryGroupId(context?.groupId || ''),
+      };
+      simulatedCategories.push(rootCategory);
+      existingCategoryByKey.set(rootKey, rootCategory);
+      rootCategoryByTitle.set(normalizeEntityCompareKey(rootTitle), rootCategory);
+      createdRootCategories += 1;
+    }
+
+    let targetCategory = rootCategory;
+    if (childTitle) {
+      const childKey = buildImportCategoryKey(childTitle, rootCategory.id);
+      targetCategory = existingCategoryByKey.get(childKey) || null;
+      if (!targetCategory) {
+        targetCategory = {
+          id: `__import_child_${createdSubcategories + 1}`,
+          title: childTitle,
+          image: '',
+          groupId: normalizeCategoryGroupId(rootCategory.groupId || context?.groupId || ''),
+          parentId: rootCategory.id,
+        };
+        simulatedCategories.push(targetCategory);
+        existingCategoryByKey.set(childKey, targetCategory);
+        createdSubcategories += 1;
+      }
+    }
+
+    const skuKey = normalizeImportSkuKey(validated.normalized?.sku);
+    const fallbackKey = buildImportProductCategoryKey(validated.normalized?.title, targetCategory.id);
+    const matchedProduct = (skuKey && existingProductBySku.get(skuKey)) || existingProductByTitleCategory.get(fallbackKey) || null;
+    const operation = matchedProduct ? 'update' : 'create';
+    if (operation === 'update') updateCount += 1;
+    else createCount += 1;
+
+    return {
+      ...validated,
+      operation,
+      matchedProductId: String(matchedProduct?.id || ''),
+      targetCategoryId: String(targetCategory?.id || ''),
+      targetCategoryPath: [rootCategory?.title, childTitle || (targetCategory?.id !== rootCategory?.id ? targetCategory?.title : '')].filter(Boolean),
+    };
   });
+
   return {
-    totalRows: rows.length,
-    readyToImport: validRows.length,
-    invalidRows: rows.length - validRows.length,
-    warningRows,
-    categoriesToCreate: missingCategoryKeys.size,
-    imageRows,
+    rows: preparedRows,
+    summary: {
+      totalRows: preparedRows.length,
+      readyToImport: preparedRows.filter((item) => item.canImport).length,
+      invalidRows: preparedRows.filter((item) => !item.canImport).length,
+      warningRows,
+      imageRows,
+      createCount,
+      updateCount,
+      categoriesToCreate: createdRootCategories + createdSubcategories,
+      rootCategoriesToCreate: createdRootCategories,
+      subcategoriesToCreate: createdSubcategories,
+    },
   };
 }
 
@@ -2463,14 +2763,16 @@ function deriveImageExtensionFromResponse(imageUrl, contentType) {
 }
 
 async function downloadImportImage(storeId, imageUrl) {
-  const response = await fetch(imageUrl, { redirect: 'follow' });
+  const resolvedRef = resolveImportImageReference(storeId, imageUrl);
+  if (resolvedRef.mode === 'local') return resolvedRef.value;
+  const response = await fetch(resolvedRef.value, { redirect: 'follow' });
   if (!response.ok) throw new Error(`IMAGE_FETCH_${response.status}`);
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   if (!contentType.startsWith('image/')) throw new Error('IMAGE_INVALID_CONTENT_TYPE');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('IMAGE_EMPTY');
   if (bytes.length > 8 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
-  const ext = deriveImageExtensionFromResponse(imageUrl, contentType);
+  const ext = deriveImageExtensionFromResponse(resolvedRef.value, contentType);
   const storeUploadsDir = path.join(UPLOADS_DIR, storeId);
   fs.mkdirSync(storeUploadsDir, { recursive: true });
   const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
@@ -2498,12 +2800,23 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
 
   const nextCategories = [...categories];
   const nextProducts = [...products];
+  const nextProductsById = new Map(nextProducts.map((product) => [String(product?.id || ''), product]));
+  const nextProductsBySku = new Map();
+  const nextProductsByTitleCategory = new Map();
+  nextProducts.forEach((product) => {
+    const skuKey = normalizeImportSkuKey(resolveExistingProductSku(product));
+    if (skuKey && !nextProductsBySku.has(skuKey)) nextProductsBySku.set(skuKey, product);
+    const fallbackKey = buildImportProductCategoryKey(product?.title, product?.categoryId);
+    if (fallbackKey && !nextProductsByTitleCategory.has(fallbackKey)) nextProductsByTitleCategory.set(fallbackKey, product);
+  });
+  const prepared = buildPreparedImportRows(previewRows, categories, products, { ...context, storeId });
   const importedRows = [];
   const skippedRows = [];
   const warnings = [];
+  let createdCount = 0;
+  let updatedCount = 0;
 
-  for (const rawRow of previewRows) {
-    const validated = validateImportProductRow(rawRow?.source || rawRow, Number(rawRow?.rowNumber || 2) - 2, context);
+  for (const validated of prepared.rows) {
     if (!validated.canImport) {
       skippedRows.push({ rowNumber: validated.rowNumber, errors: validated.errors });
       continue;
@@ -2543,36 +2856,74 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
       }
     }
 
-    let primaryImage = PRODUCT_IMPORT_PLACEHOLDER_IMAGE;
-    if (validated.normalized.imageUrl) {
+    const importedImages = [];
+    const imageRefs = Array.isArray(validated.normalized.imageUrls) ? validated.normalized.imageUrls : [];
+    for (const imageRef of imageRefs) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        primaryImage = await downloadImportImage(storeId, validated.normalized.imageUrl);
+        const imagePath = await downloadImportImage(storeId, imageRef);
+        if (imagePath && !importedImages.includes(imagePath)) importedImages.push(imagePath);
       } catch {
         warnings.push({
           rowNumber: validated.rowNumber,
-          message: 'Не удалось скачать изображение, товар создан без изображения',
+          message: `Не удалось загрузить изображение "${imageRef}", оно пропущено`,
         });
       }
     }
+    const finalImages = importedImages.length
+      ? importedImages
+      : (validated.operation === 'update' ? [] : [PRODUCT_IMPORT_PLACEHOLDER_IMAGE]);
 
-    nextProducts.push({
-      id: nextImportEntityId('product', usedProductIds),
-      title: validated.normalized.title,
-      price: validated.normalized.price,
-      oldPrice: validated.normalized.oldPrice,
-      sku: '',
-      shortDescription: validated.normalized.description,
-      description: validated.normalized.description,
-      specs: [],
-      images: [primaryImage || PRODUCT_IMPORT_PLACEHOLDER_IMAGE],
-      categoryId: targetCategory.id,
-      badge: '',
-      tags: [],
-      active: validated.normalized.active,
-      stock: validated.normalized.stock,
-      importImageUrl: validated.normalized.imageUrl,
-    });
+    const skuKey = normalizeImportSkuKey(validated.normalized.sku);
+    const fallbackKey = buildImportProductCategoryKey(validated.normalized.title, targetCategory.id);
+    const runtimeMatchedProduct = (
+      (validated.matchedProductId && nextProductsById.get(validated.matchedProductId))
+      || (skuKey && nextProductsBySku.get(skuKey))
+      || nextProductsByTitleCategory.get(fallbackKey)
+      || null
+    );
+
+    if (runtimeMatchedProduct) {
+      const existingProduct = runtimeMatchedProduct;
+      existingProduct.title = validated.normalized.title;
+      existingProduct.price = validated.normalized.price;
+      existingProduct.oldPrice = validated.normalized.oldPrice;
+      existingProduct.sku = validated.normalized.sku || existingProduct.sku || '';
+      existingProduct.shortDescription = validated.normalized.description;
+      existingProduct.description = validated.normalized.description;
+      existingProduct.specs = validated.normalized.characteristics.length ? validated.normalized.characteristics : (Array.isArray(existingProduct.specs) ? existingProduct.specs : []);
+      existingProduct.categoryId = targetCategory.id;
+      existingProduct.active = validated.normalized.active;
+      existingProduct.stock = validated.normalized.stock;
+      existingProduct.importImageUrl = imageRefs[0] || existingProduct.importImageUrl || '';
+      if (finalImages.length) existingProduct.images = finalImages;
+      if (skuKey) nextProductsBySku.set(skuKey, existingProduct);
+      nextProductsByTitleCategory.set(buildImportProductCategoryKey(existingProduct.title, existingProduct.categoryId), existingProduct);
+      updatedCount += 1;
+    } else {
+      const createdProduct = {
+        id: nextImportEntityId('product', usedProductIds),
+        title: validated.normalized.title,
+        price: validated.normalized.price,
+        oldPrice: validated.normalized.oldPrice,
+        sku: validated.normalized.sku || '',
+        shortDescription: validated.normalized.description,
+        description: validated.normalized.description,
+        specs: validated.normalized.characteristics,
+        images: finalImages,
+        categoryId: targetCategory.id,
+        badge: '',
+        tags: [],
+        active: validated.normalized.active,
+        stock: validated.normalized.stock,
+        importImageUrl: imageRefs[0] || '',
+      };
+      nextProducts.push(createdProduct);
+      nextProductsById.set(createdProduct.id, createdProduct);
+      if (skuKey) nextProductsBySku.set(skuKey, createdProduct);
+      nextProductsByTitleCategory.set(buildImportProductCategoryKey(createdProduct.title, createdProduct.categoryId), createdProduct);
+      createdCount += 1;
+    }
     importedRows.push(validated.rowNumber);
   }
 
@@ -2585,6 +2936,8 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
 
   return {
     importedCount: importedRows.length,
+    createdCount,
+    updatedCount,
     skippedCount: skippedRows.length,
     createdCategories: nextCategories.length - categories.length,
     warnings,
@@ -4402,15 +4755,15 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
 app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, productImportUploadMiddleware, (req, res) => {
   try {
     const context = resolveImportContext(req.body, listCategories(req.storeId));
-    const previewRows = parseProductImportFile(req.file, context);
-    const summary = createImportPreviewSummary(previewRows, listCategories(req.storeId));
+    const previewRows = parseProductImportFile(req.file, { ...context, storeId: req.storeId });
+    const prepared = buildPreparedImportRows(previewRows, listCategories(req.storeId), listProducts(req.storeId), { ...context, storeId: req.storeId });
     return res.json({
       ok: true,
       storeId: req.storeId,
       fileName: String(req.file?.originalname || ''),
       context,
-      summary,
-      rows: previewRows,
+      summary: prepared.summary,
+      rows: prepared.rows,
     });
   } catch (error) {
     const statusCode = Number(error?.statusCode || 400);

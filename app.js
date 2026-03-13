@@ -2170,7 +2170,7 @@ function getImportScopeOptions(scope) {
       categoryId: String(currentCategory?.id || ''),
       categoryTitle: String(currentCategory?.title || ''),
       previewHint: currentCategory
-        ? `Поддерживаются CSV/XLSX до 5 МБ. Все товары будут добавлены в категорию «${currentCategory.title}».`
+        ? `Поддерживаются CSV/XLS/XLSX до 5 МБ. Все товары будут добавлены в категорию «${currentCategory.title}».`
         : 'Сначала откройте категорию, затем импортируйте файл в нее.',
       idleStatus: currentCategory
         ? `Загрузите файл для категории «${currentCategory.title}».`
@@ -2182,8 +2182,8 @@ function getImportScopeOptions(scope) {
     categoryId: '',
     categoryTitle: '',
     groupId: String(state.currentGroup || 'apparel').trim() || 'apparel',
-    previewHint: 'Поддерживаются CSV/XLSX до 5 МБ. Поле category создает раздел, subcategory можно не заполнять.',
-    idleStatus: 'Загрузите CSV/XLSX. Разделы и подразделы создадутся автоматически из файла.',
+    previewHint: 'Поддерживаются CSV/XLS/XLSX до 5 МБ. Поля category и subcategory создают структуру каталога.',
+    idleStatus: 'Загрузите CSV/XLS/XLSX. Разделы и подразделы создадутся автоматически из файла.',
   };
 }
 
@@ -2216,7 +2216,10 @@ function buildProductImportSummaryHtml(summary) {
       <div class="products-import-summary-item"><strong>${summary.totalRows || 0}</strong><span>строк</span></div>
       <div class="products-import-summary-item"><strong>${summary.readyToImport || 0}</strong><span>готово</span></div>
       <div class="products-import-summary-item"><strong>${summary.invalidRows || 0}</strong><span>с ошибками</span></div>
-      <div class="products-import-summary-item"><strong>${summary.categoriesToCreate || 0}</strong><span>новых категорий</span></div>
+      <div class="products-import-summary-item"><strong>${summary.createCount || 0}</strong><span>создать</span></div>
+      <div class="products-import-summary-item"><strong>${summary.updateCount || 0}</strong><span>обновить</span></div>
+      <div class="products-import-summary-item"><strong>${summary.rootCategoriesToCreate || 0}</strong><span>разделов</span></div>
+      <div class="products-import-summary-item"><strong>${summary.subcategoriesToCreate || 0}</strong><span>подразделов</span></div>
       <div class="products-import-summary-item"><strong>${summary.imageRows || 0}</strong><span>фото по ссылке</span></div>
     </div>
   `;
@@ -2279,12 +2282,15 @@ function renderProductImportPanel(scope = 'category') {
         <article class="products-import-row ${row.canImport ? 'is-valid' : 'is-invalid'}">
           <div class="products-import-row-head">
             <strong>Строка ${row.rowNumber}</strong>
-            <span>${row.canImport ? 'Готово' : 'Ошибка'}</span>
+            <span>${row.canImport ? (row.operation === 'update' ? 'Обновление' : 'Создание') : 'Ошибка'}</span>
           </div>
           <div class="products-import-row-grid">
             <div><span>Товар</span><strong>${escapeHtml(row.normalized?.title || '—')}</strong></div>
-            <div><span>Категория</span><strong>${escapeHtml([row.normalized?.category || '', row.normalized?.subcategory || ''].filter(Boolean).join(' / ') || '—')}</strong></div>
+            <div><span>Категория</span><strong>${escapeHtml((row.targetCategoryPath || [row.normalized?.category || '', row.normalized?.subcategory || ''].filter(Boolean)).join(' / ') || '—')}</strong></div>
             <div><span>Цена</span><strong>${Number.isFinite(Number(row.normalized?.price)) ? `${formatPrice(Number(row.normalized.price))} ₽` : '—'}</strong></div>
+            <div><span>Артикул</span><strong>${escapeHtml(row.normalized?.sku || '—')}</strong></div>
+            <div><span>Характеристики</span><strong>${Array.isArray(row.normalized?.characteristics) && row.normalized.characteristics.length ? escapeHtml(String(row.normalized.characteristics.length)) : '—'}</strong></div>
+            <div><span>Фото</span><strong>${Array.isArray(row.normalized?.imageUrls) ? row.normalized.imageUrls.length : 0}</strong></div>
           </div>
           ${row.errors?.length ? `<div class="products-import-row-note is-error">${row.errors.map((item) => escapeHtml(item)).join('<br />')}</div>` : ''}
           ${row.warnings?.length ? `<div class="products-import-row-note is-warning">${row.warnings.map((item) => escapeHtml(item)).join('<br />')}</div>` : ''}
@@ -2316,7 +2322,7 @@ async function previewProductImportFile(scope = 'category') {
     importState.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
     importState.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
     const summary = importState.summary || {};
-    importState.status = `Файл проверен: готово ${summary.readyToImport || 0}, ошибок ${summary.invalidRows || 0}, новых категорий ${summary.categoriesToCreate || 0}. Нажмите «Импортировать».`;
+    importState.status = `Файл проверен: создать ${summary.createCount || 0}, обновить ${summary.updateCount || 0}, ошибок ${summary.invalidRows || 0}. Нажмите «Импортировать».`;
   } catch (error) {
     resetProductImportState(scope, { keepFile: true });
     importState.status = `Ошибка проверки: ${error.message || 'unknown'}`;
@@ -2363,8 +2369,8 @@ async function importProductsFromPreview(scope = 'category') {
     if (state.currentProduct) renderProductView();
     const result = payload.result || {};
     const warningCount = Array.isArray(result.warnings) ? result.warnings.length : 0;
-    importState.status = `Импорт завершен: добавлено ${result.importedCount || 0}, пропущено ${result.skippedCount || 0}, предупреждений ${warningCount}.`;
-    reportStatus(`Импортировано товаров: ${result.importedCount || 0}`);
+    importState.status = `Импорт завершен: создано ${result.createdCount || 0}, обновлено ${result.updatedCount || 0}, пропущено ${result.skippedCount || 0}, предупреждений ${warningCount}.`;
+    reportStatus(`Импорт товаров: создано ${result.createdCount || 0}, обновлено ${result.updatedCount || 0}`);
     resetProductImportState(scope);
   } catch (error) {
     importState.status = `Ошибка импорта: ${error.message || 'unknown'}`;
