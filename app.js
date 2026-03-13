@@ -1997,6 +1997,48 @@ function adminConfigureProductPromo(product) {
   });
 }
 
+function getAdminMoveTargetCategories(product) {
+  const currentCategoryId = String(product?.categoryId || '');
+  return state.categories
+    .filter((category) => String(category?.id || '').trim())
+    .filter((category) => String(category.id) !== currentCategoryId);
+}
+
+function adminMoveProductToCategory(product) {
+  if (!product) return;
+  const targetCategories = getAdminMoveTargetCategories(product);
+  if (!targetCategories.length) {
+    reportStatus('Нет другой категории для переноса товара');
+    return;
+  }
+  const currentCategory = state.categories.find((category) => String(category.id) === String(product.categoryId || ''));
+  adminOpenActionSheet(`Перенести: ${product.title || product.id}`, targetCategories.map((category) => ({
+    id: String(category.id),
+    label: category.title || category.id,
+  }))).then((targetCategoryId) => {
+    if (!targetCategoryId) return;
+    const targetCategory = state.categories.find((category) => String(category.id) === String(targetCategoryId));
+    if (!targetCategory) {
+      reportStatus('Категория для переноса не найдена');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Перенести товар "${product.title || product.id}" из "${currentCategory?.title || 'текущей категории'}" в "${targetCategory.title || targetCategory.id}"?`,
+    );
+    if (!confirmed) return;
+    product.categoryId = targetCategory.id;
+    if (targetCategory.groupId) state.currentGroup = targetCategory.groupId;
+    state.currentCategoryIds = null;
+    state.currentCategory = targetCategory.id;
+    if (ui.productsTitle) ui.productsTitle.textContent = targetCategory.title || 'Каталог';
+    adminSaveDraft(true);
+    renderProducts();
+    if (state.currentScreen === 'product') renderProductView();
+    if (state.currentScreen === 'categories') renderCategories();
+    reportStatus(`Товар перенесен в категорию "${targetCategory.title || targetCategory.id}"`);
+  });
+}
+
 function adminAddStoreTemplate() {
   if (!Array.isArray(state.stores)) state.stores = [];
   const next = state.stores.length + 1;
@@ -2669,6 +2711,7 @@ function adminBindProducts() {
     const openProductMenu = () => {
       adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
         { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
+        { id: 'move-category', label: 'Перенести в другую категорию' },
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
         { id: 'edit-description', label: 'Редактировать описание' },
@@ -2678,6 +2721,10 @@ function adminBindProducts() {
         if (!action) return;
         if (action === 'set-promo') {
           adminConfigureProductPromo(p);
+          return;
+        }
+        if (action === 'move-category') {
+          adminMoveProductToCategory(p);
           return;
         }
         if (action === 'edit-title') {
@@ -2751,12 +2798,17 @@ function adminBindProductView() {
     onDoubleTap: () => {
     adminOpenActionSheet(`Товар: ${p.title || p.id}`, [
       { id: 'set-promo', label: getProductPromoPercent(p) > 0 ? `Скидка: ${getProductPromoPercent(p)}%` : 'Добавить в акции' },
+      { id: 'move-category', label: 'Перенести в другую категорию' },
       { id: 'edit', label: 'Редактировать заголовок' },
       { id: 'delete', label: 'Удалить товар', danger: true },
     ]).then((action) => {
       if (!action) return;
       if (action === 'set-promo') {
         adminConfigureProductPromo(p);
+        return;
+      }
+      if (action === 'move-category') {
+        adminMoveProductToCategory(p);
         return;
       }
       if (action === 'edit') {
