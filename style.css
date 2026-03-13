@@ -4668,18 +4668,17 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 }
 
 .products-import-panel {
-  margin: 8px 0 10px;
+  margin: 6px 0 8px;
 }
 
 .products-import-card {
-  border: 1px solid var(--stroke);
-  border-radius: 14px;
-  background: color-mix(in oklab, var(--panel) 92%, transparent);
-  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  box-shadow: none;
+  gap: 6px;
 }
 
 .products-import-head {
@@ -4690,7 +4689,7 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 }
 
 .products-import-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--text);
 }
@@ -4698,15 +4697,15 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 .products-import-text,
 .products-import-status,
 .products-import-more {
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--muted);
 }
 
 .products-import-sample-link {
   align-self: flex-start;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
@@ -4714,47 +4713,55 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 
 .products-import-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
 }
 
 .products-import-file {
-  width: 100%;
-  min-width: 0;
-  border: 1px dashed var(--stroke);
-  border-radius: 12px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  font-size: 12px;
+  display: none;
 }
 
-.products-import-file::file-selector-button {
-  margin-right: 8px;
-  border: 0;
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-weight: 700;
-  color: #fff;
+.products-import-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in oklab, var(--accent) 36%, var(--stroke));
   background: linear-gradient(140deg, var(--accent), var(--accent-dark));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.products-import-file-name {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.products-import-file-name.is-empty {
+  color: var(--muted);
 }
 
 .products-import-button {
-  min-height: 38px;
+  min-height: 34px;
   white-space: nowrap;
-  padding-inline: 12px;
+  padding-inline: 10px;
   font-size: 12px;
 }
 
 .products-import-preview {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.products-import-empty {
-  margin: 0;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .products-import-summary {

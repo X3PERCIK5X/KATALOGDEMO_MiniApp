@@ -2063,6 +2063,7 @@ function getImportScopeUi(scope) {
     return {
       panel: ui.catalogImportPanel,
       file: ui.catalogImportFile,
+      fileName: document.getElementById('catalogImportFileName'),
       previewButton: ui.catalogImportPreviewButton,
       submitButton: ui.catalogImportSubmitButton,
       status: ui.catalogImportStatus,
@@ -2072,6 +2073,7 @@ function getImportScopeUi(scope) {
   return {
     panel: ui.productsImportPanel,
     file: ui.productsImportFile,
+    fileName: document.getElementById('productsImportFileName'),
     previewButton: ui.productsImportPreviewButton,
     submitButton: ui.productsImportSubmitButton,
     status: ui.productsImportStatus,
@@ -2110,6 +2112,7 @@ function resetProductImportState(scope, { keepFile = false } = {}) {
     importState.file = null;
     importState.fileName = '';
     if (importUi.file) importUi.file.value = '';
+    if (importUi.fileName) importUi.fileName.textContent = 'Не выбран';
   }
   importState.previewRows = [];
   importState.summary = null;
@@ -2154,29 +2157,31 @@ function renderProductImportPanel(scope = 'category') {
   );
 
   if (importUi.file) importUi.file.disabled = !canUseImport || importState.loading || importState.importing;
+  if (importUi.fileName) {
+    importUi.fileName.textContent = importState.fileName || 'Не выбран';
+    importUi.fileName.classList.toggle('is-empty', !importState.fileName);
+  }
   if (importUi.previewButton) {
     importUi.previewButton.disabled = !canUseImport || !importState.file || importState.loading || importState.importing;
-    importUi.previewButton.textContent = importState.loading ? 'Проверяем...' : 'Проверить файл';
+    importUi.previewButton.textContent = importState.loading ? 'Проверяем...' : 'Проверить';
   }
   if (importUi.submitButton) {
     importUi.submitButton.disabled = !canUseImport || !getProductImportReadyRows(scope).length || importState.loading || importState.importing;
     importUi.submitButton.textContent = importState.importing ? 'Импортируем...' : 'Импортировать';
   }
 
-  const baseStatus = canUseImport
-    ? (importState.status || scopeOptions.idleStatus)
-    : 'Импорт доступен только в подключенном SaaS-магазине с активной подпиской.';
-  if (importUi.status) importUi.status.textContent = baseStatus;
+  const defaultStatus = canUseImport ? '' : 'Импорт недоступен';
+  const statusText = importState.status || defaultStatus;
+  if (importUi.status) {
+    importUi.status.textContent = statusText;
+    importUi.status.classList.toggle('hidden', !statusText);
+  }
 
   if (!importUi.preview) return;
   const rows = Array.isArray(importState.previewRows) ? importState.previewRows : [];
   if (!rows.length) {
-    importUi.preview.innerHTML = `
-      <div class="empty-state products-import-empty">
-        <div class="empty-title">Файл еще не проверен</div>
-        <div class="empty-text">${escapeHtml(scopeOptions.previewHint)}</div>
-      </div>
-    `;
+    importUi.preview.innerHTML = '';
+    importUi.preview.classList.add('hidden');
     return;
   }
 
@@ -2205,6 +2210,7 @@ function renderProductImportPanel(scope = 'category') {
     </div>
     ${moreCount ? `<div class="products-import-more">Показаны первые ${previewLimit} строк из ${rows.length}. Остальные будут импортированы по тем же правилам.</div>` : ''}
   `;
+  importUi.preview.classList.remove('hidden');
 }
 
 async function previewProductImportFile(scope = 'category') {

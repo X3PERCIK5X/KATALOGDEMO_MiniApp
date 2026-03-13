@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-219" />
+    <link rel="stylesheet" href="/style.css?v=20260313-220" />
   </head>
   <body>
     <header class="header">
@@ -101,17 +101,19 @@
             <div class="products-import-head">
               <div>
                 <div class="products-import-title">Быстрый импорт каталога</div>
-                <div class="products-import-text">Загрузите CSV/XLSX. Категории создадутся автоматически по `category`.</div>
+                <div class="products-import-text">CSV/XLSX. Категории создадутся автоматически.</div>
               </div>
               <a class="products-import-sample-link" href="/sample_import.csv" download>Шаблон</a>
             </div>
             <div class="products-import-controls">
-              <input id="catalogImportFile" class="products-import-file" type="file" accept=".csv,.xlsx,.xls" />
+              <input id="catalogImportFile" class="products-import-file hidden" type="file" accept=".csv,.xlsx,.xls" />
+              <label for="catalogImportFile" class="products-import-pick">Файл</label>
+              <div id="catalogImportFileName" class="products-import-file-name">Не выбран</div>
               <button id="catalogImportPreviewButton" class="secondary-button products-import-button" type="button">Проверить</button>
               <button id="catalogImportSubmitButton" class="primary-button products-import-button" type="button" disabled>Импортировать</button>
             </div>
-            <div id="catalogImportStatus" class="status products-import-status"></div>
-            <div id="catalogImportPreview" class="products-import-preview"></div>
+            <div id="catalogImportStatus" class="status products-import-status hidden"></div>
+            <div id="catalogImportPreview" class="products-import-preview hidden"></div>
           </div>
         </div>
         <div id="categoriesGrid" class="category-grid"></div>
@@ -158,17 +160,19 @@
             <div class="products-import-head">
               <div>
                 <div class="products-import-title">Импорт в текущую категорию</div>
-                <div class="products-import-text">Загрузите файл для открытой категории. Все строки попадут именно сюда.</div>
+                <div class="products-import-text">CSV/XLSX. Все строки попадут в открытую категорию.</div>
               </div>
               <a class="products-import-sample-link" href="/sample_import.csv" download>Шаблон</a>
             </div>
             <div class="products-import-controls">
-              <input id="productsImportFile" class="products-import-file" type="file" accept=".csv,.xlsx,.xls" />
+              <input id="productsImportFile" class="products-import-file hidden" type="file" accept=".csv,.xlsx,.xls" />
+              <label for="productsImportFile" class="products-import-pick">Файл</label>
+              <div id="productsImportFileName" class="products-import-file-name">Не выбран</div>
               <button id="productsImportPreviewButton" class="secondary-button products-import-button" type="button">Проверить</button>
               <button id="productsImportSubmitButton" class="primary-button products-import-button" type="button" disabled>Импортировать</button>
             </div>
-            <div id="productsImportStatus" class="status products-import-status"></div>
-            <div id="productsImportPreview" class="products-import-preview"></div>
+            <div id="productsImportStatus" class="status products-import-status hidden"></div>
+            <div id="productsImportPreview" class="products-import-preview hidden"></div>
           </div>
         </div>
         <div class="filter-bar filter-bar-sticky">
@@ -840,7 +844,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-219"></script>
-    <script src="/app.js?v=20260313-219"></script>
+    <script src="/telegram.js?v=20260313-220"></script>
+    <script src="/app.js?v=20260313-220"></script>
   </body>
 </html>
