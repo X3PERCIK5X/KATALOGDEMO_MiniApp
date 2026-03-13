@@ -4732,8 +4732,7 @@ function normalizePaymentStatus(value) {
 
 function workflowStatusLabel(value) {
   const status = normalizeWorkflowStatus(value);
-  if (status === 'accepted') return 'Принят';
-  if (status === 'shipped') return 'Отправлен';
+  if (status === 'accepted' || status === 'shipped') return 'Принят';
   if (status === 'completed') return 'Завершен';
   return 'Новый';
 }
@@ -4850,7 +4849,28 @@ async function fetchAdminOrders() {
   }
 }
 
-function renderAdminOrderList(target, orders = []) {
+function getAdminOrderActionButtons(order, bucket) {
+  const orderId = escapeHtml(String(order?.id || ''));
+  if (bucket === 'new') {
+    return `
+      <button class="primary-button compact-button" type="button" data-order-status="accepted" data-order-id="${orderId}">Принять</button>
+    `;
+  }
+  if (bucket === 'active') {
+    return `
+      <button class="primary-button compact-button" type="button" data-order-status="completed" data-order-id="${orderId}">Завершить</button>
+      <button class="secondary-button compact-button" type="button" data-order-status="new" data-order-id="${orderId}" data-order-cancel="1">Отменить</button>
+    `;
+  }
+  if (bucket === 'completed') {
+    return `
+      <button class="secondary-button compact-button" type="button" data-order-status="accepted" data-order-id="${orderId}" data-order-cancel="1">Отменить</button>
+    `;
+  }
+  return '';
+}
+
+function renderAdminOrderList(target, orders = [], bucket = 'new') {
   if (!target) return;
   if (!orders.length) {
     target.innerHTML = '<div class="text-card">Заказов в этом разделе пока нет.</div>';
@@ -4863,9 +4883,7 @@ function renderAdminOrderList(target, orders = []) {
           Заказ №${orderDisplayNumber(order, index)}
         </button>
         <div class="admin-fulfillment-actions">
-          <button class="secondary-button compact-button" type="button" data-order-status="accepted" data-order-id="${escapeHtml(String(order.id || ''))}">Принять</button>
-          <button class="secondary-button compact-button" type="button" data-order-status="shipped" data-order-id="${escapeHtml(String(order.id || ''))}">Отправлен</button>
-          <button class="primary-button compact-button" type="button" data-order-status="completed" data-order-id="${escapeHtml(String(order.id || ''))}">Завершить</button>
+          ${getAdminOrderActionButtons(order, bucket)}
         </div>
       </div>
       <div class="admin-fulfillment-body hidden">
@@ -4917,6 +4935,10 @@ function bindAdminOrderListInteractions(target, bucket) {
       const orderId = String(statusBtn.dataset.orderId || '').trim();
       const nextStatus = String(statusBtn.dataset.orderStatus || '').trim();
       if (!orderId || !nextStatus) return;
+      if (statusBtn.dataset.orderCancel === '1') {
+        const confirmed = window.confirm('Подтвердите отмену изменения статуса заказа.');
+        if (!confirmed) return;
+      }
       statusBtn.disabled = true;
       const ok = await updateAdminOrderStatus(orderId, nextStatus);
       if (ok) await renderAdminOrdersByBucket(bucket);
@@ -4945,15 +4967,15 @@ async function renderAdminOrdersByBucket(bucket) {
   const orders = await fetchAdminOrders();
   const buckets = splitAdminOrdersByBucket(orders);
   if (bucket === 'new') {
-    renderAdminOrderList(ui.ordersNewList, buckets.new);
+    renderAdminOrderList(ui.ordersNewList, buckets.new, 'new');
     bindAdminOrderListInteractions(ui.ordersNewList, 'new');
   }
   if (bucket === 'active') {
-    renderAdminOrderList(ui.ordersActiveList, buckets.active);
+    renderAdminOrderList(ui.ordersActiveList, buckets.active, 'active');
     bindAdminOrderListInteractions(ui.ordersActiveList, 'active');
   }
   if (bucket === 'completed') {
-    renderAdminOrderList(ui.ordersCompletedList, buckets.completed);
+    renderAdminOrderList(ui.ordersCompletedList, buckets.completed, 'completed');
     bindAdminOrderListInteractions(ui.ordersCompletedList, 'completed');
   }
   await renderAdminOrdersOverview();
