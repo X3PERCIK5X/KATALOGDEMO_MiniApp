@@ -1899,19 +1899,78 @@ function persistStoreDataset(storeId, row, { config, settings, categories, produ
 }
 
 function normalizeImportFieldName(value) {
-  const base = String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  const base = String(value || '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '');
   const map = {
     title: 'title',
+    name: 'title',
+    product: 'title',
+    product_name: 'title',
+    product_title: 'title',
+    naimenovanie: 'title',
+    nazvanie: 'title',
+    название: 'title',
+    наименование: 'title',
+    товар: 'title',
     description: 'description',
+    short_description: 'description',
+    opisanie: 'description',
+    описание: 'description',
+    комментарий: 'description',
+    comment: 'description',
     price: 'price',
+    cost: 'price',
+    цена: 'price',
+    стоимость: 'price',
     old_price: 'old_price',
     oldprice: 'old_price',
+    old_cost: 'old_price',
+    старая_цена: 'old_price',
+    цена_до_скидки: 'old_price',
     category: 'category',
+    section: 'category',
+    group: 'category',
+    категория: 'category',
+    раздел: 'category',
+    группа: 'category',
     image_url: 'image_url',
+    image_link: 'image_url',
+    image_src: 'image_url',
+    photo: 'image_url',
+    photo_url: 'image_url',
+    photo_link: 'image_url',
+    picture: 'image_url',
+    picture_url: 'image_url',
+    img: 'image_url',
+    img_url: 'image_url',
+    url_image: 'image_url',
+    url_photo: 'image_url',
+    ссылка_на_фото: 'image_url',
+    ссылка_на_изображение: 'image_url',
+    ссылка_на_картинку: 'image_url',
+    фото: 'image_url',
+    фото_url: 'image_url',
+    изображение: 'image_url',
+    картинка: 'image_url',
     imageurl: 'image_url',
     image: 'image_url',
     active: 'active',
+    enabled: 'active',
+    visible: 'active',
+    активен: 'active',
+    опубликован: 'active',
+    доступен: 'active',
     stock: 'stock',
+    quantity: 'stock',
+    qty: 'stock',
+    count: 'stock',
+    остаток: 'stock',
+    количество: 'stock',
+    наличие: 'stock',
   };
   return map[base] || base;
 }
@@ -2041,6 +2100,40 @@ function resolveImportContext(rawContext, categories = []) {
   };
 }
 
+function getWorksheetCellDisplayValue(cell) {
+  if (!cell) return '';
+  if (cell.l?.Target) return String(cell.l.Target || '').trim();
+  if (typeof cell.w === 'string' && cell.w.trim()) return cell.w.trim();
+  if (cell.v == null) return '';
+  return String(cell.v).trim();
+}
+
+function worksheetToImportRows(worksheet) {
+  const ref = String(worksheet?.['!ref'] || '').trim();
+  if (!ref) return [];
+  const range = XLSX.utils.decode_range(ref);
+  const headers = [];
+  for (let col = range.s.c; col <= range.e.c; col += 1) {
+    const cellRef = XLSX.utils.encode_cell({ r: range.s.r, c: col });
+    headers.push(getWorksheetCellDisplayValue(worksheet[cellRef]));
+  }
+  const rows = [];
+  for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {
+    const row = {};
+    let hasAnyValue = false;
+    for (let col = range.s.c; col <= range.e.c; col += 1) {
+      const header = headers[col - range.s.c];
+      if (!String(header || '').trim()) continue;
+      const cellRef = XLSX.utils.encode_cell({ r: rowIndex, c: col });
+      const rawValue = getWorksheetCellDisplayValue(worksheet[cellRef]);
+      if (String(rawValue || '').trim()) hasAnyValue = true;
+      row[header] = rawValue;
+    }
+    if (hasAnyValue) rows.push(row);
+  }
+  return rows;
+}
+
 function parseProductImportFile(file, context = {}) {
   if (!file || !file.buffer?.length) {
     const error = new Error('IMPORT_FILE_REQUIRED');
@@ -2074,7 +2167,7 @@ function parseProductImportFile(file, context = {}) {
     throw error;
   }
   const worksheet = workbook.Sheets[firstSheet];
-  const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false, blankrows: false });
+  const rawRows = worksheetToImportRows(worksheet);
   if (!Array.isArray(rawRows) || !rawRows.length) {
     const error = new Error('IMPORT_FILE_EMPTY');
     error.statusCode = 400;
