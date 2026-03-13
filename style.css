@@ -4592,6 +4592,11 @@ html[data-theme="light"] .admin-edit-actions {
   justify-content: center;
 }
 
+.admin-inline-delete {
+  background: linear-gradient(135deg, #5b1f2c, #922a4a);
+  color: #fff;
+}
+
 body.admin-mode .admin-inline-plus {
   display: inline-flex !important;
 }
@@ -4661,7 +4666,7 @@ body.admin-mode #screen-products .screen-head > h2 {
 body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-admin-controls="product"] {
   grid-area: controls;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) repeat(3, var(--admin-icon-btn-size));
+  grid-template-columns: minmax(0, 1fr) repeat(4, var(--admin-icon-btn-size));
   gap: 6px;
   width: 100%;
   margin-left: 0;
@@ -4766,7 +4771,7 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 
 .products-import-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
 }
 

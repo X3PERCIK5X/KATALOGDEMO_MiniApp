@@ -1937,6 +1937,16 @@ function normalizeImportFieldName(value) {
     категория: 'category',
     раздел: 'category',
     группа: 'category',
+    subcategory: 'subcategory',
+    sub_category: 'subcategory',
+    subsection: 'subcategory',
+    subgroup: 'subcategory',
+    child_category: 'subcategory',
+    child_section: 'subcategory',
+    подкатегория: 'subcategory',
+    подраздел: 'subcategory',
+    подгруппа: 'subcategory',
+    вложенная_категория: 'subcategory',
     image_url: 'image_url',
     image_link: 'image_url',
     image_src: 'image_url',
@@ -1972,7 +1982,17 @@ function normalizeImportFieldName(value) {
     количество: 'stock',
     наличие: 'stock',
   };
-  return map[base] || base;
+  if (map[base]) return map[base];
+  if (/^old_/.test(base) && /price|cost|цен/.test(base)) return 'old_price';
+  if (/sub.*category|sub.*section|подкатег|подраздел|подгруп/.test(base)) return 'subcategory';
+  if (/category|section|group|категор|раздел|групп/.test(base)) return 'category';
+  if (/image|photo|picture|img|изображ|картин|фото/.test(base)) return 'image_url';
+  if (/price|cost|цена|стоимост/.test(base)) return 'price';
+  if (/description|opis|описан|комментар/.test(base)) return 'description';
+  if (/stock|qty|quantity|count|остат|колич|налич/.test(base)) return 'stock';
+  if (/active|enabled|visible|актив|доступ|опублик/.test(base)) return 'active';
+  if (/title|name|product|товар|назван|наименован/.test(base)) return 'title';
+  return base;
 }
 
 function normalizeCategoryGroupId(value) {
@@ -1987,6 +2007,22 @@ function normalizeImportObject(row) {
     out[normalizedKey] = value;
   });
   return out;
+}
+
+function looksLikeImageUrl(value) {
+  const raw = String(value || '').trim();
+  if (!isValidHttpUrl(raw)) return false;
+  return /\.(jpe?g|png|webp|gif|svg)(\?|#|$)/i.test(raw)
+    || /image|img|photo|picture|cdn|uploads/i.test(raw);
+}
+
+function resolveImportImageUrl(normalized) {
+  const direct = String(normalized.image_url || '').trim();
+  if (direct) return direct;
+  for (const value of Object.values(normalized || {})) {
+    if (looksLikeImageUrl(value)) return String(value || '').trim();
+  }
+  return '';
 }
 
 function parseImportNumber(value) {
@@ -2027,8 +2063,10 @@ function validateImportProductRow(sourceRow, index, context = {}) {
   const oldPriceRaw = String(normalized.old_price ?? '').trim();
   const oldPriceParsed = oldPriceRaw ? parseImportNumber(oldPriceRaw) : { ok: true, value: 0 };
   const rawCategory = String(normalized.category || '').trim();
+  const rawSubcategory = String(normalized.subcategory || '').trim();
   let category = rawCategory;
-  const imageUrl = String(normalized.image_url || '').trim();
+  let subcategory = rawSubcategory;
+  const imageUrl = resolveImportImageUrl(normalized);
   const active = parseImportBoolean(normalized.active);
   const stock = parseImportInteger(normalized.stock, 0);
 
@@ -2040,6 +2078,7 @@ function validateImportProductRow(sourceRow, index, context = {}) {
       warnings.push(`Категория из файла заменена на текущую категорию "${context.categoryTitle}"`);
     }
     category = context.categoryTitle;
+    subcategory = rawSubcategory;
   } else if (!category) {
     category = 'Без категории';
     warnings.push('Категория не указана, будет создан раздел "Без категории"');
@@ -2055,6 +2094,7 @@ function validateImportProductRow(sourceRow, index, context = {}) {
       price: String(normalized.price ?? ''),
       old_price: oldPriceRaw,
       category: category || '',
+      subcategory: subcategory || '',
       image_url: imageUrl,
       active: String(normalized.active ?? ''),
       stock: String(normalized.stock ?? ''),
@@ -2065,6 +2105,7 @@ function validateImportProductRow(sourceRow, index, context = {}) {
       price: priceParsed.ok ? priceParsed.value : 0,
       oldPrice: oldPriceParsed.ok ? oldPriceParsed.value : 0,
       category,
+      subcategory,
       imageUrl: isValidHttpUrl(imageUrl) ? imageUrl : '',
       active,
       stock,
@@ -2073,6 +2114,10 @@ function validateImportProductRow(sourceRow, index, context = {}) {
     warnings,
     canImport: errors.length === 0,
   };
+}
+
+function buildImportCategoryKey(title, parentId = '') {
+  return `${String(parentId || '').trim().toLowerCase()}::${String(title || '').trim().toLowerCase()}`;
 }
 
 function resolveImportContext(rawContext, categories = []) {
@@ -2183,15 +2228,28 @@ function parseProductImportFile(file, context = {}) {
 
 function createImportPreviewSummary(rows, categories = []) {
   const validRows = rows.filter((row) => row.canImport);
-  const existingCategoryKeys = new Set(categories.map((category) => String(category?.title || '').trim().toLowerCase()).filter(Boolean));
+  const existingCategoryKeys = new Set(categories.map((category) => buildImportCategoryKey(category?.title, category?.parentId || '')).filter(Boolean));
+  const rootCategoryIdByTitle = new Map(
+    categories
+      .filter((category) => !String(category?.parentId || '').trim())
+      .map((category) => [String(category?.title || '').trim().toLowerCase(), String(category?.id || '').trim()]),
+  );
   const missingCategoryKeys = new Set();
   let warningRows = 0;
   let imageRows = 0;
   rows.forEach((row) => {
     if (row.warnings.length) warningRows += 1;
     if (row.normalized?.imageUrl) imageRows += 1;
-    const key = String(row.normalized?.category || '').trim().toLowerCase();
-    if (row.canImport && key && !existingCategoryKeys.has(key)) missingCategoryKeys.add(key);
+    if (!row.canImport) return;
+    const rootTitle = String(row.normalized?.category || '').trim();
+    const childTitle = String(row.normalized?.subcategory || '').trim();
+    const rootKey = buildImportCategoryKey(rootTitle, '');
+    if (rootTitle && !existingCategoryKeys.has(rootKey)) missingCategoryKeys.add(rootKey);
+    if (childTitle) {
+      const parentId = rootCategoryIdByTitle.get(rootTitle.toLowerCase()) || rootTitle.toLowerCase();
+      const childKey = buildImportCategoryKey(childTitle, parentId);
+      if (!existingCategoryKeys.has(childKey)) missingCategoryKeys.add(childKey);
+    }
   });
   return {
     totalRows: rows.length,
@@ -2256,7 +2314,8 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
   const usedProductIds = new Set();
 
   categories.forEach((category) => {
-    const key = String(category?.title || '').trim().toLowerCase();
+    const parentId = String(category?.parentId || '').trim();
+    const key = buildImportCategoryKey(category?.title, parentId);
     if (key && !existingCategoryByKey.has(key)) existingCategoryByKey.set(key, category);
     if (category?.id) usedCategoryIds.add(String(category.id));
   });
@@ -2276,17 +2335,39 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
       skippedRows.push({ rowNumber: validated.rowNumber, errors: validated.errors });
       continue;
     }
-    const categoryKey = String(validated.normalized.category || '').trim().toLowerCase();
-    let category = existingCategoryByKey.get(categoryKey) || null;
-    if (!category) {
-      category = {
+    const rootCategoryTitle = String(validated.normalized.category || '').trim();
+    const subcategoryTitle = String(validated.normalized.subcategory || '').trim();
+    const rootCategoryKey = buildImportCategoryKey(rootCategoryTitle, '');
+    let rootCategory = (context?.scope === 'category' && String(context?.categoryId || '').trim())
+      ? categories.find((category) => String(category?.id || '').trim() === String(context.categoryId).trim()) || null
+      : null;
+    if (!rootCategory) rootCategory = existingCategoryByKey.get(rootCategoryKey) || null;
+    if (!rootCategory) {
+      rootCategory = {
         id: nextImportEntityId('category', usedCategoryIds),
-        title: validated.normalized.category,
+        title: rootCategoryTitle,
         image: '',
         groupId: normalizeCategoryGroupId(context?.groupId || ''),
       };
-      existingCategoryByKey.set(categoryKey, category);
-      nextCategories.push(category);
+      existingCategoryByKey.set(rootCategoryKey, rootCategory);
+      nextCategories.push(rootCategory);
+    }
+
+    let targetCategory = rootCategory;
+    if (subcategoryTitle) {
+      const childCategoryKey = buildImportCategoryKey(subcategoryTitle, rootCategory.id);
+      targetCategory = existingCategoryByKey.get(childCategoryKey) || null;
+      if (!targetCategory) {
+        targetCategory = {
+          id: nextImportEntityId('category', usedCategoryIds),
+          title: subcategoryTitle,
+          image: '',
+          groupId: normalizeCategoryGroupId(rootCategory.groupId || context?.groupId || ''),
+          parentId: rootCategory.id,
+        };
+        existingCategoryByKey.set(childCategoryKey, targetCategory);
+        nextCategories.push(targetCategory);
+      }
     }
 
     let primaryImage = PRODUCT_IMPORT_PLACEHOLDER_IMAGE;
@@ -2312,7 +2393,7 @@ async function importProductsForStore(storeId, row, previewRows, context = {}) {
       description: validated.normalized.description,
       specs: [],
       images: [primaryImage || PRODUCT_IMPORT_PLACEHOLDER_IMAGE],
-      categoryId: category.id,
+      categoryId: targetCategory.id,
       badge: '',
       tags: [],
       active: validated.normalized.active,

@@ -81,6 +81,7 @@ const state = {
     selectionMode: false,
     selectedType: '',
     selectedId: '',
+    selectedIds: [],
     ui: {},
   },
   saas: {
@@ -246,6 +247,7 @@ const ui = {
   adminMoveDownButton: document.getElementById('adminMoveDownButton'),
   adminMoveLeftButton: document.getElementById('adminMoveLeftButton'),
   adminMoveRightButton: document.getElementById('adminMoveRightButton'),
+  adminDeleteSelectedButton: document.getElementById('adminDeleteSelectedButton'),
   adminSaveDraftButton: document.getElementById('adminSaveDraftButton'),
   adminPublishButton: document.getElementById('adminPublishButton'),
   storeAddButton: document.getElementById('storeAddButton'),
@@ -771,6 +773,42 @@ function openCategoryBundle(ids, title) {
   ui.productsTitle.textContent = title || 'Каталог';
   renderProducts();
   setScreen('products');
+}
+
+function getChildCategoryIds(parentId) {
+  const pid = String(parentId || '').trim();
+  if (!pid) return [];
+  return state.categories
+    .filter((category) => String(category?.parentId || '').trim() === pid)
+    .map((category) => String(category.id || '').trim())
+    .filter(Boolean);
+}
+
+function collectCategoryBranchIds(categoryId) {
+  const rootId = String(categoryId || '').trim();
+  if (!rootId) return [];
+  const visited = new Set();
+  const result = [];
+  const walk = (id) => {
+    const normalizedId = String(id || '').trim();
+    if (!normalizedId || visited.has(normalizedId)) return;
+    visited.add(normalizedId);
+    result.push(normalizedId);
+    getChildCategoryIds(normalizedId).forEach(walk);
+  };
+  walk(rootId);
+  return result;
+}
+
+function openCategoryEntry(categoryId) {
+  const branchIds = collectCategoryBranchIds(categoryId);
+  if (!branchIds.length) return;
+  const category = state.categories.find((item) => String(item?.id || '') === String(categoryId || '')) || null;
+  if (branchIds.length > 1) {
+    openCategoryBundle(branchIds, category?.title || 'Каталог');
+    return;
+  }
+  openCategoryById(categoryId);
 }
 
 function openGlobalSearch(query) {
@@ -2143,8 +2181,8 @@ function getImportScopeOptions(scope) {
     categoryId: '',
     categoryTitle: '',
     groupId: String(state.currentGroup || 'apparel').trim() || 'apparel',
-    previewHint: 'Поддерживаются CSV и XLSX до 5 МБ. Категории создаются автоматически по полю category.',
-    idleStatus: 'Загрузите CSV или XLSX. Система создаст категории из файла и распределит товары по разделам.',
+    previewHint: 'Поддерживаются CSV/XLSX до 5 МБ. Поле category создает раздел, subcategory можно не заполнять.',
+    idleStatus: 'Загрузите CSV/XLSX. Разделы и подразделы создадутся автоматически из файла.',
   };
 }
 
@@ -2178,6 +2216,7 @@ function buildProductImportSummaryHtml(summary) {
       <div class="products-import-summary-item"><strong>${summary.readyToImport || 0}</strong><span>готово</span></div>
       <div class="products-import-summary-item"><strong>${summary.invalidRows || 0}</strong><span>с ошибками</span></div>
       <div class="products-import-summary-item"><strong>${summary.categoriesToCreate || 0}</strong><span>новых категорий</span></div>
+      <div class="products-import-summary-item"><strong>${summary.imageRows || 0}</strong><span>фото по ссылке</span></div>
     </div>
   `;
 }
@@ -2243,7 +2282,7 @@ function renderProductImportPanel(scope = 'category') {
           </div>
           <div class="products-import-row-grid">
             <div><span>Товар</span><strong>${escapeHtml(row.normalized?.title || '—')}</strong></div>
-            <div><span>Категория</span><strong>${escapeHtml(row.normalized?.category || '—')}</strong></div>
+            <div><span>Категория</span><strong>${escapeHtml([row.normalized?.category || '', row.normalized?.subcategory || ''].filter(Boolean).join(' / ') || '—')}</strong></div>
             <div><span>Цена</span><strong>${Number.isFinite(Number(row.normalized?.price)) ? `${formatPrice(Number(row.normalized.price))} ₽` : '—'}</strong></div>
           </div>
           ${row.errors?.length ? `<div class="products-import-row-note is-error">${row.errors.map((item) => escapeHtml(item)).join('<br />')}</div>` : ''}
@@ -2565,7 +2604,7 @@ function adminBindCategories() {
     const categoryId = card.dataset.category;
     const category = state.categories.find((c) => c.id === categoryId);
     if (!category) return;
-    const openCategory = () => openCategoryById(category.id);
+    const openCategory = () => openCategoryEntry(category.id);
     const openCategoryMenu = () => {
       adminOpenActionSheet(`Категория: ${category.title}`, [
         { id: 'edit-title', label: 'Редактировать заголовок' },
@@ -2591,8 +2630,10 @@ function adminBindCategories() {
           return;
         }
         if (action === 'delete') {
-          state.categories = state.categories.filter((c) => c.id !== category.id);
-          state.products = state.products.filter((p) => p.categoryId !== category.id);
+          const confirmed = window.confirm(`Удалить категорию "${category.title}" вместе с товарами без возможности восстановления?`);
+          if (!confirmed) return;
+          deleteCategoriesAndProducts(collectCategoryBranchIds(category.id));
+          adminSaveDraft(true);
           renderCategories();
         }
       });
@@ -2762,7 +2803,13 @@ function adminBindProducts() {
           return;
         }
         if (action === 'delete') {
+          const confirmed = window.confirm(`Удалить товар "${p.title || p.id}" без возможности восстановления?`);
+          if (!confirmed) return;
           state.products = state.products.filter((x) => x.id !== p.id);
+          adminSaveDraft(true);
+          renderPromos();
+          renderHomePopular();
+          renderCategories();
           renderProducts();
         }
       });
@@ -2820,8 +2867,14 @@ function adminBindProductView() {
         return;
       }
       if (action === 'delete') {
+        const confirmed = window.confirm(`Удалить товар "${p.title || p.id}" без возможности восстановления?`);
+        if (!confirmed) return;
         state.products = state.products.filter((x) => x.id !== p.id);
         state.currentProduct = null;
+        adminSaveDraft(true);
+        renderPromos();
+        renderHomePopular();
+        renderCategories();
         renderProducts();
         goBack();
       }
@@ -2983,7 +3036,8 @@ function applyAdminModeUi() {
     const scope = String(btn.dataset.adminSelectToggle || '');
     const active = state.admin.enabled && state.admin.selectionMode && scope === state.admin.selectedType;
     btn.classList.toggle('active', active);
-    btn.textContent = active ? 'Выделение: вкл' : 'Выделить';
+    if (active && scope === 'product' && hasSelectedProducts()) btn.textContent = `Выбрано: ${getSelectedProductIds().length}`;
+    else btn.textContent = active ? 'Выделение: вкл' : 'Выделить';
     btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
   });
   const moveButtons = Array.from(document.querySelectorAll('[data-admin-move]'));
@@ -2993,7 +3047,8 @@ function applyAdminModeUi() {
       return;
     }
     const scope = String(btn.dataset.adminMoveScope || '');
-    if (!(state.admin.enabled && state.admin.selectionMode && !!state.admin.selectedId && scope === state.admin.selectedType)) {
+    const hasSelection = scope === 'product' ? hasSelectedProducts() : !!state.admin.selectedId;
+    if (!(state.admin.enabled && state.admin.selectionMode && hasSelection && scope === state.admin.selectedType)) {
       btn.disabled = true;
       return;
     }
@@ -3005,6 +3060,15 @@ function applyAdminModeUi() {
     }
     btn.disabled = false;
   });
+  if (ui.adminDeleteSelectedButton) {
+    ui.adminDeleteSelectedButton.disabled = !(
+      state.admin.enabled
+      && subscriptionAllowsAdminFeatures()
+      && state.admin.selectionMode
+      && state.admin.selectedType === 'product'
+      && hasSelectedProducts()
+    );
+  }
   const addButtons = Array.from(document.querySelectorAll('[data-admin-add]'));
   addButtons.forEach((btn) => {
     btn.disabled = state.admin.enabled && !subscriptionAllowsAdminFeatures();
@@ -4323,14 +4387,21 @@ function updateBadges() {
   ui.favoritesCount.textContent = state.favorites.size;
 }
 
+function categoryHasVisibleProducts(categoryId) {
+  const branchIds = collectCategoryBranchIds(categoryId);
+  if (!branchIds.length) return false;
+  const branchSet = new Set(branchIds);
+  return state.products.some((product) => branchSet.has(String(product.categoryId || '')));
+}
+
 function getVisibleCategories() {
   if (state.admin.enabled) {
     if (state.currentGroup) return state.categories.filter((c) => c.groupId === state.currentGroup);
     return state.categories.slice();
   }
   const available = new Set(state.products.map((p) => p.categoryId));
-  const filtered = state.categories.filter((c) => c.groupId === state.currentGroup && (available.size === 0 || available.has(c.id)));
-  return filtered.length ? filtered : state.categories.filter((c) => available.has(c.id));
+  const filtered = state.categories.filter((c) => c.groupId === state.currentGroup && (available.size === 0 || categoryHasVisibleProducts(c.id)));
+  return filtered.length ? filtered : state.categories.filter((c) => categoryHasVisibleProducts(c.id));
 }
 
 function getVisibleProducts() {
@@ -4343,6 +4414,19 @@ function getVisibleProducts() {
 function adminClearSelection() {
   state.admin.selectedType = '';
   state.admin.selectedId = '';
+  state.admin.selectedIds = [];
+}
+
+function getSelectedProductIds() {
+  if (state.admin.selectedType !== 'product') return [];
+  if (Array.isArray(state.admin.selectedIds) && state.admin.selectedIds.length) {
+    return state.admin.selectedIds.filter(Boolean);
+  }
+  return state.admin.selectedId ? [state.admin.selectedId] : [];
+}
+
+function hasSelectedProducts() {
+  return getSelectedProductIds().length > 0;
 }
 
 function adminToggleSelectionMode(scope = '') {
@@ -4351,6 +4435,7 @@ function adminToggleSelectionMode(scope = '') {
   if (state.admin.selectionMode && scope) {
     state.admin.selectedType = scope;
     state.admin.selectedId = '';
+    state.admin.selectedIds = [];
   }
   applyAdminModeUi();
   if (state.currentScreen === 'categories') renderCategories();
@@ -4362,8 +4447,22 @@ function adminToggleSelectionMode(scope = '') {
 
 function adminSelectItem(type, id) {
   if (!state.admin.selectionMode) return;
+  if (type === 'product') {
+    state.admin.selectedType = type;
+    const current = new Set(Array.isArray(state.admin.selectedIds) ? state.admin.selectedIds : []);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    state.admin.selectedIds = Array.from(current);
+    state.admin.selectedId = current.has(id)
+      ? id
+      : (state.admin.selectedIds[state.admin.selectedIds.length - 1] || '');
+    applyAdminModeUi();
+    renderProducts();
+    return;
+  }
   state.admin.selectedType = type;
   state.admin.selectedId = id;
+  state.admin.selectedIds = [];
   applyAdminModeUi();
   if (type === 'category') renderCategories();
   if (type === 'product') renderProducts();
@@ -4371,8 +4470,41 @@ function adminSelectItem(type, id) {
   if (type === 'image') renderProductView();
 }
 
+function deleteCategoriesAndProducts(categoryIds = []) {
+  const ids = new Set((categoryIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+  if (!ids.size) return;
+  state.categories = state.categories.filter((category) => !ids.has(String(category.id || '').trim()));
+  state.products = state.products.filter((product) => !ids.has(String(product.categoryId || '').trim()));
+}
+
+function adminDeleteSelectedProducts() {
+  const selectedIds = getSelectedProductIds();
+  if (!selectedIds.length) {
+    reportStatus('Сначала выберите товары для удаления');
+    return;
+  }
+  const confirmed = window.confirm(
+    selectedIds.length === 1
+      ? 'Удалить выбранный товар без возможности восстановления?'
+      : `Удалить выбранные товары (${selectedIds.length}) без возможности восстановления?`,
+  );
+  if (!confirmed) return;
+  const selectedSet = new Set(selectedIds);
+  const removedCurrentProduct = selectedSet.has(String(state.currentProduct || ''));
+  state.products = state.products.filter((product) => !selectedSet.has(String(product.id || '')));
+  if (removedCurrentProduct) state.currentProduct = null;
+  adminClearSelection();
+  adminSaveDraft(true);
+  renderPromos();
+  renderCategories();
+  renderProducts();
+  renderHomePopular();
+  if (removedCurrentProduct && state.currentScreen === 'product') goBack();
+  reportStatus(selectedIds.length === 1 ? 'Товар удален' : `Удалено товаров: ${selectedIds.length}`);
+}
+
 function adminMoveSelected(direction) {
-  if (!state.admin.selectionMode || !state.admin.selectedType || !state.admin.selectedId) {
+  if (!state.admin.selectionMode || !state.admin.selectedType || (!state.admin.selectedId && !hasSelectedProducts())) {
     reportStatus('Сначала включите "Выделить" и выберите элемент');
     return;
   }
@@ -4401,21 +4533,51 @@ function adminMoveSelected(direction) {
   if (state.admin.selectedType === 'product') {
     const visible = getVisibleProducts();
     const ids = visible.map((item) => item.id);
-    const fromIdx = ids.indexOf(state.admin.selectedId);
-    if (fromIdx < 0) return;
+    const selectedIds = getSelectedProductIds().filter((id) => ids.includes(id));
+    if (!selectedIds.length) return;
+    const selectedSet = new Set(selectedIds);
+    const orderedSelected = ids.filter((id) => selectedSet.has(id));
     const step = (direction === 'up' || direction === 'left') ? -1 : 1;
-    const toIdx = Math.max(0, Math.min(ids.length - 1, fromIdx + step));
-    if (toIdx === fromIdx) return;
-    const toId = ids[toIdx];
-    const absFrom = state.products.findIndex((item) => item.id === state.admin.selectedId);
-    const absTo = state.products.findIndex((item) => item.id === toId);
-    if (absFrom < 0 || absTo < 0) return;
-    const tmp = state.products[absFrom];
-    state.products[absFrom] = state.products[absTo];
-    state.products[absTo] = tmp;
+    const remaining = ids.filter((id) => !selectedSet.has(id));
+    let nextVisibleOrder = ids.slice();
+    if (step < 0) {
+      const firstIndex = ids.indexOf(orderedSelected[0]);
+      if (firstIndex <= 0) return;
+      const neighborId = ids[firstIndex - 1];
+      if (selectedSet.has(neighborId)) return;
+      const insertAt = remaining.indexOf(neighborId);
+      if (insertAt < 0) return;
+      nextVisibleOrder = [
+        ...remaining.slice(0, insertAt),
+        ...orderedSelected,
+        ...remaining.slice(insertAt),
+      ];
+    } else {
+      const lastIndex = ids.indexOf(orderedSelected[orderedSelected.length - 1]);
+      if (lastIndex < 0 || lastIndex >= ids.length - 1) return;
+      const neighborId = ids[lastIndex + 1];
+      if (selectedSet.has(neighborId)) return;
+      const insertAt = remaining.indexOf(neighborId);
+      if (insertAt < 0) return;
+      nextVisibleOrder = [
+        ...remaining.slice(0, insertAt + 1),
+        ...orderedSelected,
+        ...remaining.slice(insertAt + 1),
+      ];
+    }
+    const productById = new Map(state.products.map((product) => [String(product.id || ''), product]));
+    const visiblePositions = [];
+    state.products.forEach((product, index) => {
+      if (ids.includes(String(product.id || ''))) visiblePositions.push(index);
+    });
+    const nextProducts = state.products.slice();
+    visiblePositions.forEach((position, index) => {
+      nextProducts[position] = productById.get(String(nextVisibleOrder[index] || '')) || nextProducts[position];
+    });
+    state.products = nextProducts;
     adminSaveDraft(true);
     renderProducts();
-    reportStatus('Порядок товаров обновлен');
+    reportStatus(selectedIds.length > 1 ? 'Порядок выбранных товаров обновлен' : 'Порядок товара обновлен');
     return;
   }
 
@@ -4469,7 +4631,9 @@ function renderCategories() {
     return;
   }
   const categoryCards = list.map((c) => {
-    const firstProduct = state.products.find((p) => p.categoryId === c.id);
+    const branchIds = collectCategoryBranchIds(c.id);
+    const branchSet = new Set(branchIds);
+    const firstProduct = state.products.find((p) => branchSet.has(String(p.categoryId || '')));
     const fallbackProductImage = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : '';
     const image = String(c.image || '').trim() || fallbackProductImage;
     const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && state.admin.selectedId === c.id
@@ -4496,10 +4660,11 @@ function renderCategories() {
 }
 
 function buildProductCards(list, options = {}) {
+  const selectedProducts = new Set(getSelectedProductIds());
   return list.map((p) => {
     const priceView = getProductPriceView(p);
     return `
-    <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && state.admin.selectedId === p.id ? ' admin-selected-target' : ''}" data-open="${p.id}">
+    <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && selectedProducts.has(p.id) ? ' admin-selected-target' : ''}" data-open="${p.id}">
       ${priceView.badgeHtml}
       <button class="card-icon favorite ${state.favorites.has(p.id) ? 'active' : ''}" data-favorite="${p.id}" aria-label="В избранное">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -7026,6 +7191,7 @@ function bindEvents() {
     else {
       state.admin.selectedType = scope;
       state.admin.selectedId = '';
+      state.admin.selectedIds = [];
       applyAdminModeUi();
       if (state.currentScreen === 'categories') renderCategories();
       if (state.currentScreen === 'products') renderProducts();
@@ -7052,6 +7218,11 @@ function bindEvents() {
     e.stopPropagation();
     const action = String(actionBtn.dataset.adminImageAction || '');
     if (action === 'delete') adminDeleteSelectedImage();
+  });
+
+  on(ui.adminDeleteSelectedButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    adminDeleteSelectedProducts();
   });
 
   on(document, 'click', (e) => {
@@ -7178,7 +7349,7 @@ function bindEvents() {
     }
     const btn = e.target.closest('[data-category]');
     if (!btn) return;
-    openCategoryById(btn.dataset.category);
+    openCategoryEntry(btn.dataset.category);
   });
 
   on(ui.storesList, 'click', (e) => {
