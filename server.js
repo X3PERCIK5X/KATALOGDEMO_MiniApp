@@ -1908,49 +1908,90 @@ function normalizeImportFieldName(value) {
   const map = {
     title: 'title',
     name: 'title',
+    item: 'title',
+    item_name: 'title',
+    item_title: 'title',
     product: 'title',
+    productname: 'title',
     product_name: 'title',
     product_title: 'title',
+    product_title_name: 'title',
     naimenovanie: 'title',
     nazvanie: 'title',
     название: 'title',
     наименование: 'title',
+    название_товара: 'title',
+    наименование_товара: 'title',
+    товарное_наименование: 'title',
+    товарное_название: 'title',
     товар: 'title',
     description: 'description',
+    details: 'description',
+    detail: 'description',
     short_description: 'description',
     opisanie: 'description',
     описание: 'description',
+    описание_товара: 'description',
+    краткое_описание: 'description',
+    полное_описание: 'description',
     комментарий: 'description',
     comment: 'description',
     price: 'price',
+    regular_price: 'price',
+    retail_price: 'price',
+    sale_price: 'price',
     cost: 'price',
     цена: 'price',
     стоимость: 'price',
+    цена_товара: 'price',
+    розничная_цена: 'price',
+    базовая_цена: 'price',
     old_price: 'old_price',
     oldprice: 'old_price',
     old_cost: 'old_price',
     старая_цена: 'old_price',
     цена_до_скидки: 'old_price',
+    старая_стоимость: 'old_price',
+    зачеркнутая_цена: 'old_price',
     category: 'category',
+    category_1: 'category',
+    category1: 'category',
     section: 'category',
     group: 'category',
     категория: 'category',
+    категория_1: 'category',
+    категория1: 'category',
     раздел: 'category',
+    раздел_1: 'category',
+    раздел1: 'category',
     группа: 'category',
     subcategory: 'subcategory',
+    sub_category_2: 'subcategory',
+    subcategory_2: 'subcategory',
+    subcategory2: 'subcategory',
     sub_category: 'subcategory',
     subsection: 'subcategory',
     subgroup: 'subcategory',
     child_category: 'subcategory',
     child_section: 'subcategory',
     подкатегория: 'subcategory',
+    подкатегория_2: 'subcategory',
+    подкатегория2: 'subcategory',
     подраздел: 'subcategory',
+    подраздел_2: 'subcategory',
+    подраздел2: 'subcategory',
     подгруппа: 'subcategory',
     вложенная_категория: 'subcategory',
+    категория_2: 'subcategory',
+    категория2: 'subcategory',
+    раздел_2: 'subcategory',
+    раздел2: 'subcategory',
     image_url: 'image_url',
     image_link: 'image_url',
     image_src: 'image_url',
+    image_link_url: 'image_url',
     photo: 'image_url',
+    photo_src: 'image_url',
     photo_url: 'image_url',
     photo_link: 'image_url',
     picture: 'image_url',
@@ -1959,12 +2000,16 @@ function normalizeImportFieldName(value) {
     img_url: 'image_url',
     url_image: 'image_url',
     url_photo: 'image_url',
+    ссылка: 'image_url',
+    ссылка_на_файл: 'image_url',
     ссылка_на_фото: 'image_url',
     ссылка_на_изображение: 'image_url',
     ссылка_на_картинку: 'image_url',
     фото: 'image_url',
     фото_url: 'image_url',
+    фото_товара: 'image_url',
     изображение: 'image_url',
+    изображение_url: 'image_url',
     картинка: 'image_url',
     imageurl: 'image_url',
     image: 'image_url',
@@ -1983,6 +2028,8 @@ function normalizeImportFieldName(value) {
     наличие: 'stock',
   };
   if (map[base]) return map[base];
+  if (/^(category|section|group|категория|раздел|группа)_?1$/.test(base)) return 'category';
+  if (/^(category|section|group|категория|раздел|группа)_?2$/.test(base)) return 'subcategory';
   if (/^old_/.test(base) && /price|cost|цен/.test(base)) return 'old_price';
   if (/sub.*category|sub.*section|подкатег|подраздел|подгруп/.test(base)) return 'subcategory';
   if (/category|section|group|категор|раздел|групп/.test(base)) return 'category';
@@ -2153,6 +2200,67 @@ function getWorksheetCellDisplayValue(cell) {
   return String(cell.v).trim();
 }
 
+function detectCsvDelimiter(text) {
+  const sample = String(text || '').split(/\r?\n/).slice(0, 5).join('\n');
+  const delimiters = [',', ';', '\t', '|'];
+  const counts = delimiters.map((delimiter) => ({
+    delimiter,
+    count: (sample.match(new RegExp(`\\${delimiter === '\t' ? 't' : delimiter}`, 'g')) || []).length,
+  }));
+  counts.sort((a, b) => b.count - a.count);
+  return counts[0]?.count > 0 ? counts[0].delimiter : ',';
+}
+
+function parseCsvLine(line, delimiter) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsvRows(csvText) {
+  const normalizedText = String(csvText || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const delimiter = detectCsvDelimiter(normalizedText);
+  const lines = normalizedText.split('\n').filter((line) => String(line || '').trim());
+  if (!lines.length) return [];
+  const headers = parseCsvLine(lines[0], delimiter).map((value) => String(value || '').trim());
+  if (!headers.some(Boolean)) return [];
+  const rows = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const cells = parseCsvLine(lines[index], delimiter);
+    const row = {};
+    let hasAnyValue = false;
+    headers.forEach((header, headerIndex) => {
+      if (!header) return;
+      const value = String(cells[headerIndex] || '').trim();
+      if (value) hasAnyValue = true;
+      row[header] = value;
+    });
+    if (hasAnyValue) rows.push(row);
+  }
+  return rows;
+}
+
 function worksheetToImportRows(worksheet) {
   const ref = String(worksheet?.['!ref'] || '').trim();
   if (!ref) return [];
@@ -2193,10 +2301,11 @@ function parseProductImportFile(file, context = {}) {
     throw error;
   }
   let workbook;
+  let rawRows = [];
   try {
     if (ext === '.csv') {
-      const csvText = Buffer.from(file.buffer).toString('utf8').replace(/^\uFEFF/, '');
-      workbook = XLSX.read(csvText, { type: 'string', raw: false, codepage: 65001 });
+      const csvText = Buffer.from(file.buffer).toString('utf8');
+      rawRows = parseCsvRows(csvText);
     } else {
       workbook = XLSX.read(file.buffer, { type: 'buffer', raw: false });
     }
@@ -2205,14 +2314,16 @@ function parseProductImportFile(file, context = {}) {
     error.statusCode = 400;
     throw error;
   }
-  const firstSheet = workbook.SheetNames[0];
-  if (!firstSheet) {
-    const error = new Error('IMPORT_FILE_EMPTY');
-    error.statusCode = 400;
-    throw error;
+  if (ext !== '.csv') {
+    const firstSheet = workbook.SheetNames[0];
+    if (!firstSheet) {
+      const error = new Error('IMPORT_FILE_EMPTY');
+      error.statusCode = 400;
+      throw error;
+    }
+    const worksheet = workbook.Sheets[firstSheet];
+    rawRows = worksheetToImportRows(worksheet);
   }
-  const worksheet = workbook.Sheets[firstSheet];
-  const rawRows = worksheetToImportRows(worksheet);
   if (!Array.isArray(rawRows) || !rawRows.length) {
     const error = new Error('IMPORT_FILE_EMPTY');
     error.statusCode = 400;
