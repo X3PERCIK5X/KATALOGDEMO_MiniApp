@@ -1953,7 +1953,7 @@ function parseImportInteger(value, fallback = 0) {
   return Math.max(0, Math.round(parsed.value));
 }
 
-function validateImportProductRow(sourceRow, index) {
+function validateImportProductRow(sourceRow, index, context = {}) {
   const rowNumber = index + 2;
   const normalized = normalizeImportObject(sourceRow);
   const errors = [];
@@ -1963,15 +1963,21 @@ function validateImportProductRow(sourceRow, index) {
   const priceParsed = parseImportNumber(normalized.price);
   const oldPriceRaw = String(normalized.old_price ?? '').trim();
   const oldPriceParsed = oldPriceRaw ? parseImportNumber(oldPriceRaw) : { ok: true, value: 0 };
-  let category = String(normalized.category || '').trim();
+  const rawCategory = String(normalized.category || '').trim();
+  let category = rawCategory;
   const imageUrl = String(normalized.image_url || '').trim();
   const active = parseImportBoolean(normalized.active);
   const stock = parseImportInteger(normalized.stock, 0);
 
   if (!title) errors.push('Не заполнено поле title');
   if (!priceParsed.ok) errors.push('Поле price должно быть числом');
-  if (typeof category !== 'string') errors.push('Поле category должно быть строкой');
-  if (!category) {
+  if (typeof rawCategory !== 'string') errors.push('Поле category должно быть строкой');
+  if (context.scope === 'category' && context.categoryTitle) {
+    if (rawCategory && rawCategory !== context.categoryTitle) {
+      warnings.push(`Категория из файла заменена на текущую категорию "${context.categoryTitle}"`);
+    }
+    category = context.categoryTitle;
+  } else if (!category) {
     category = 'Без категории';
     warnings.push('Категория не указана, будет создан раздел "Без категории"');
   }
@@ -2006,7 +2012,24 @@ function validateImportProductRow(sourceRow, index) {
   };
 }
 
-function parseProductImportFile(file) {
+function resolveImportContext(rawContext, categories = []) {
+  const scope = String(rawContext?.scope || '').trim().toLowerCase() === 'category' ? 'category' : 'catalog';
+  if (scope !== 'category') return { scope: 'catalog', categoryId: '', categoryTitle: '' };
+  const categoryId = String(rawContext?.categoryId || '').trim();
+  const category = categories.find((item) => String(item?.id || '').trim() === categoryId) || null;
+  if (!category) {
+    const error = new Error('IMPORT_CATEGORY_NOT_FOUND');
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    scope: 'category',
+    categoryId,
+    categoryTitle: String(category.title || '').trim(),
+  };
+}
+
+function parseProductImportFile(file, context = {}) {
   if (!file || !file.buffer?.length) {
     const error = new Error('IMPORT_FILE_REQUIRED');
     error.statusCode = 400;
@@ -2050,7 +2073,7 @@ function parseProductImportFile(file) {
     error.statusCode = 400;
     throw error;
   }
-  return rawRows.map((row, index) => validateImportProductRow(row, index));
+  return rawRows.map((row, index) => validateImportProductRow(row, index, context));
 }
 
 function createImportPreviewSummary(rows, categories = []) {
@@ -2120,7 +2143,7 @@ async function downloadImportImage(storeId, imageUrl) {
   return `/uploads/${storeId}/${finalName}`;
 }
 
-async function importProductsForStore(storeId, row, previewRows) {
+async function importProductsForStore(storeId, row, previewRows, context = {}) {
   const categories = listCategories(storeId);
   const products = listProducts(storeId);
   const existingCategoryByKey = new Map();
@@ -2143,7 +2166,7 @@ async function importProductsForStore(storeId, row, previewRows) {
   const warnings = [];
 
   for (const rawRow of previewRows) {
-    const validated = validateImportProductRow(rawRow?.source || rawRow, Number(rawRow?.rowNumber || 2) - 2);
+    const validated = validateImportProductRow(rawRow?.source || rawRow, Number(rawRow?.rowNumber || 2) - 2, context);
     if (!validated.canImport) {
       skippedRows.push({ rowNumber: validated.rowNumber, errors: validated.errors });
       continue;
@@ -4019,12 +4042,14 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
 
 app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, productImportUploadMiddleware, (req, res) => {
   try {
-    const previewRows = parseProductImportFile(req.file);
+    const context = resolveImportContext(req.body, listCategories(req.storeId));
+    const previewRows = parseProductImportFile(req.file, context);
     const summary = createImportPreviewSummary(previewRows, listCategories(req.storeId));
     return res.json({
       ok: true,
       storeId: req.storeId,
       fileName: String(req.file?.originalname || ''),
+      context,
       summary,
       rows: previewRows,
     });
@@ -4039,11 +4064,13 @@ app.post('/api/stores/:storeId/admin/import-products', authMiddleware, storePara
     const previewRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     if (!previewRows.length) return res.status(400).json({ error: 'IMPORT_ROWS_REQUIRED' });
     if (previewRows.length > PRODUCT_IMPORT_MAX_ROWS) return res.status(400).json({ error: 'IMPORT_TOO_MANY_ROWS' });
-    const result = await importProductsForStore(req.storeId, req.store, previewRows);
+    const context = resolveImportContext(req.body, listCategories(req.storeId));
+    const result = await importProductsForStore(req.storeId, req.store, previewRows, context);
     const dataset = rowToDataset(getStoreRow(req.storeId));
     return res.json({
       ok: true,
       storeId: req.storeId,
+      context,
       result,
       dataset,
     });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-216" />
+    <link rel="stylesheet" href="/style.css?v=20260313-217" />
   </head>
   <body>
     <header class="header">
@@ -96,6 +96,24 @@
             <button class="admin-inline-plus" data-admin-add="category" type="button" aria-label="Добавить категорию">+</button>
           </div>
         </div>
+        <div id="catalogImportPanel" class="products-import-panel hidden">
+          <div class="products-import-card">
+            <div class="products-import-head">
+              <div>
+                <div class="products-import-title">Быстрый импорт каталога</div>
+                <div class="products-import-text">Один файл для всего магазина: категории создаются автоматически, товары распределяются по полю category.</div>
+              </div>
+              <a class="products-import-sample-link" href="/sample_import.csv" download>Пример CSV</a>
+            </div>
+            <div class="products-import-controls">
+              <input id="catalogImportFile" class="products-import-file" type="file" accept=".csv,.xlsx,.xls" />
+              <button id="catalogImportPreviewButton" class="secondary-button products-import-button" type="button">Проверить файл</button>
+              <button id="catalogImportSubmitButton" class="primary-button products-import-button" type="button" disabled>Импортировать</button>
+            </div>
+            <div id="catalogImportStatus" class="status products-import-status"></div>
+            <div id="catalogImportPreview" class="products-import-preview"></div>
+          </div>
+        </div>
         <div id="categoriesGrid" class="category-grid"></div>
       </section>
 
@@ -139,8 +157,8 @@
           <div class="products-import-card">
             <div class="products-import-head">
               <div>
-                <div class="products-import-title">Импорт товаров</div>
-                <div class="products-import-text">CSV/XLSX: title, description, price, old_price, category, image_url, active, stock.</div>
+                <div class="products-import-title">Импорт в текущую категорию</div>
+                <div class="products-import-text">Для дополнительных файлов по разделам. Все строки попадут в открытую категорию, даже если в файле указано другое category.</div>
               </div>
               <a class="products-import-sample-link" href="/sample_import.csv" download>Пример CSV</a>
             </div>
@@ -822,7 +840,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-216"></script>
-    <script src="/app.js?v=20260313-216"></script>
+    <script src="/telegram.js?v=20260313-217"></script>
+    <script src="/app.js?v=20260313-217"></script>
   </body>
 </html>
