@@ -231,6 +231,8 @@ const ui = {
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
   profileManagerButton: document.getElementById('profileManagerButton'),
+  profileStatsSection: document.getElementById('profileStatsSection'),
+  profileOpenStatsButton: document.getElementById('profileOpenStatsButton'),
   adminProfilePanel: document.getElementById('adminProfilePanel'),
   adminStoreIdValue: document.getElementById('adminStoreIdValue'),
   adminReloadStoresButton: document.getElementById('adminReloadStoresButton'),
@@ -256,6 +258,15 @@ const ui = {
   profileBotConnectionsList: document.getElementById('profileBotConnectionsList'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   profileHistorySection: document.getElementById('profileHistorySection'),
+  ordersOpenNewButton: document.getElementById('ordersOpenNewButton'),
+  ordersOpenActiveButton: document.getElementById('ordersOpenActiveButton'),
+  ordersOpenCompletedButton: document.getElementById('ordersOpenCompletedButton'),
+  ordersNewPreview: document.getElementById('ordersNewPreview'),
+  ordersActivePreview: document.getElementById('ordersActivePreview'),
+  ordersCompletedPreview: document.getElementById('ordersCompletedPreview'),
+  ordersNewList: document.getElementById('ordersNewList'),
+  ordersActiveList: document.getElementById('ordersActiveList'),
+  ordersCompletedList: document.getElementById('ordersCompletedList'),
   statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
   statsOpenOrdersButton: document.getElementById('statsOpenOrdersButton'),
   statsRevenuePreview: document.getElementById('statsRevenuePreview'),
@@ -839,7 +850,10 @@ function setScreen(name) {
   ui.screens.forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   if (name === 'profile') {
     renderProfile();
-    if (!state.admin.enabled) renderOrders();
+    if (!state.admin.enabled) {
+      renderOrders();
+      void syncCustomerOrdersFromServer().then(() => renderOrders());
+    }
   }
   if (name === 'bot') {
     renderBotSettings();
@@ -854,6 +868,18 @@ function setScreen(name) {
   }
   if (name === 'settings-store') {
     renderStoreSettingsSection();
+  }
+  if (name === 'orders') {
+    void renderAdminOrdersOverview();
+  }
+  if (name === 'orders-new') {
+    void renderAdminOrdersByBucket('new');
+  }
+  if (name === 'orders-active') {
+    void renderAdminOrdersByBucket('active');
+  }
+  if (name === 'orders-completed') {
+    void renderAdminOrdersByBucket('completed');
   }
   if (name === 'stats') {
     void renderAdminStatsOverview();
@@ -1025,16 +1051,19 @@ function updateBottomNav(screen) {
     'settings-bots': ui.botButton,
     'settings-checkout': ui.botButton,
     'settings-store': ui.botButton,
-    stats: ui.statsButton,
-    'stats-revenue': ui.statsButton,
-    'stats-orders': ui.statsButton,
-    orders: ui.profileButton,
+    orders: ui.statsButton,
+    'orders-new': ui.statsButton,
+    'orders-active': ui.statsButton,
+    'orders-completed': ui.statsButton,
+    stats: ui.profileButton,
+    'stats-revenue': ui.profileButton,
+    'stats-orders': ui.profileButton,
     favorites: ui.favoritesButton,
     menu: ui.menuButton,
   };
   const defaultButton = ui.homeButton;
   const activeButton = map[screen] || defaultButton;
-  [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton, ui.botButton, ui.statsButton].forEach((btn) => {
+  [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton, ui.botButton, ui.statsButton, ui.ordersButton].forEach((btn) => {
     if (!btn) return;
     btn.classList.toggle('active', btn === activeButton);
   });
@@ -3504,6 +3533,14 @@ function scopedStorageKey(baseKey) {
   return `${baseKey}_${getStorageScopeStoreId()}`;
 }
 
+function getOrderHistoryStorageKey() {
+  const storeScope = getStorageScopeStoreId();
+  const telegramId = String(getTelegramId() || '').trim()
+    || (String(state.saas.userId || '').startsWith('tg:') ? String(state.saas.userId).slice(3).trim() : '');
+  const userScope = telegramId || 'guest';
+  return `demo_catalog_orders_${storeScope}_${userScope}`;
+}
+
 function canUseLegacyStorageFallback() {
   const scope = getStorageScopeStoreId();
   return scope === 'GLOBAL' || scope === '111111';
@@ -3682,7 +3719,7 @@ function loadStorage() {
   state.selectedCart = new Set(safeParse(readScopedStorage('demo_catalog_cart_selected', '[]'), []));
   state.selectedFavorites = new Set(safeParse(readScopedStorage('demo_catalog_fav_selected', '[]'), []));
   state.profile = safeParse(readScopedStorage('demo_catalog_profile', '{}'), {});
-  state.orders = safeParse(readScopedStorage('demo_catalog_orders', '[]'), []);
+  state.orders = safeParse(localStorage.getItem(getOrderHistoryStorageKey()) || readScopedStorage('demo_catalog_orders', '[]'), []);
   state.promoCode = normalizePromoCode(readScopedStorage('demo_catalog_promo_code', ''));
   state.promoPercent = Number(readScopedStorage('demo_catalog_promo_percent', '0') || 0) || 0;
   state.promoAmount = Number(readScopedStorage('demo_catalog_promo_amount', '0') || 0) || 0;
@@ -3706,7 +3743,7 @@ function saveStorage() {
     localStorage.setItem(scopedStorageKey('demo_catalog_cart_selected'), JSON.stringify(Array.from(state.selectedCart)));
     localStorage.setItem(scopedStorageKey('demo_catalog_fav_selected'), JSON.stringify(Array.from(state.selectedFavorites)));
     localStorage.setItem(scopedStorageKey('demo_catalog_profile'), JSON.stringify(state.profile));
-    localStorage.setItem(scopedStorageKey('demo_catalog_orders'), JSON.stringify(state.orders));
+    localStorage.setItem(getOrderHistoryStorageKey(), JSON.stringify(state.orders));
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_code'), state.promoCode || '');
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_percent'), String(state.promoPercent || 0));
     localStorage.setItem(scopedStorageKey('demo_catalog_promo_amount'), String(state.promoAmount || 0));
@@ -4675,40 +4712,251 @@ function renderCart() {
   }
 }
 
+function normalizeWorkflowStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'completed' || raw === 'done' || raw === 'finished') return 'completed';
+  if (raw === 'shipped' || raw === 'sent' || raw === 'delivery' || raw === 'in_delivery') return 'shipped';
+  if (raw === 'accepted' || raw === 'processing' || raw === 'in_progress' || raw === 'accepted_by_store') return 'accepted';
+  if (raw === 'new' || raw === 'created' || raw === 'pending') return 'new';
+  return 'new';
+}
+
+function normalizePaymentStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw === 'paid' || raw === 'payment_success' || raw === 'success' || raw === 'succeeded' || raw === 'confirmed') return 'paid';
+  if (raw === 'pending' || raw === 'payment_pending' || raw === 'created' || raw === 'authorized') return 'pending';
+  if (raw === 'failed' || raw === 'payment_failed' || raw === 'fail' || raw === 'canceled' || raw === 'cancelled' || raw === 'expired') return 'failed';
+  return raw;
+}
+
+function workflowStatusLabel(value) {
+  const status = normalizeWorkflowStatus(value);
+  if (status === 'accepted') return 'Принят';
+  if (status === 'shipped') return 'Отправлен';
+  if (status === 'completed') return 'Завершен';
+  return 'Новый';
+}
+
+function paymentStatusLabel(value) {
+  const status = normalizePaymentStatus(value);
+  if (status === 'paid') return 'Оплачен';
+  if (status === 'pending') return 'Ожидает оплату';
+  if (status === 'failed') return 'Оплата не прошла';
+  return '';
+}
+
+function orderDisplayNumber(order, fallbackIndex = 0) {
+  const direct = Number(order?.orderNumber || order?.number || 0);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const rawId = String(order?.id || '');
+  if (/^\d+$/.test(rawId)) return Number(rawId);
+  return fallbackIndex + 1;
+}
+
+function orderTotalLabel(order) {
+  return order?.totalDisplay || (Number.isFinite(Number(order?.total)) ? `${formatPrice(Number(order.total))} ₽` : 'По запросу');
+}
+
+function sortOrdersDesc(list = []) {
+  return list.slice().sort((a, b) => Number(new Date(b?.createdAt || 0)) - Number(new Date(a?.createdAt || 0)));
+}
+
+async function syncCustomerOrdersFromServer() {
+  const telegramUserId = String(getTelegramId() || '').trim();
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!telegramUserId || !storeId) return state.orders;
+  try {
+    const payload = await saasRequest(`/stores/${encodeURIComponent(storeId)}/orders/history?telegramUserId=${encodeURIComponent(telegramUserId)}`);
+    if (Array.isArray(payload?.orders)) {
+      state.orders = payload.orders.map((order) => ({
+        ...order,
+        status: normalizeWorkflowStatus(order?.status),
+        paymentStatus: normalizePaymentStatus(order?.paymentStatus),
+      }));
+      saveStorage();
+    }
+  } catch {
+    // fallback to local storage if server is temporarily unavailable
+  }
+  return state.orders;
+}
+
 function renderOrders() {
   if (state.admin.enabled) {
     if (ui.ordersList) ui.ordersList.innerHTML = '';
     return;
   }
   if (ui.profileOrdersTitle) ui.profileOrdersTitle.textContent = 'История заказов';
-  if (!state.orders.length) {
+  const orders = sortOrdersDesc(state.orders || []);
+  if (!orders.length) {
     ui.ordersList.innerHTML = '<div class="text-card">История заказов пуста.</div>';
     return;
   }
-  ui.ordersList.innerHTML = state.orders.slice().reverse().map((o) => `
-    <div class="order-card" data-order-id="${o.id}">
-      <div class="order-head">
-        <div class="order-title">Заявка №${o.id}</div>
-        <div class="order-date">${new Date(o.createdAt).toLocaleString('ru-RU')}</div>
+  ui.ordersList.innerHTML = orders.map((o, index) => {
+    const workflow = workflowStatusLabel(o.status);
+    const payment = paymentStatusLabel(o.paymentStatus);
+    return `
+      <div class="order-card" data-order-id="${escapeHtml(String(o.id || ''))}">
+        <div class="order-head">
+          <div class="order-title">Заказ №${orderDisplayNumber(o, index)}</div>
+          <div class="order-date">${new Date(o.createdAt).toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="order-summary">
+          <div class="order-total">Сумма: ${orderTotalLabel(o)}</div>
+          <button class="order-repeat" type="button">Повторить</button>
+        </div>
+        <div class="order-status">Статус: ${workflow}${payment ? ` • ${payment}` : ''}</div>
+        <button class="order-toggle" type="button">Состав заказа</button>
+        <div class="order-items hidden">
+          <ul>
+            ${(Array.isArray(o.items) ? o.items : []).map((i) => `
+              <li>
+                <span class="order-item-title">${escapeHtml(String(i?.title || 'Товар'))}</span>
+                <span class="order-item-qty">× ${Number(i?.qty || 1)}</span>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
       </div>
-      <div class="order-summary">
-        <div class="order-total">Сумма: ${o.totalDisplay || (Number.isFinite(Number(o.total)) ? `${formatPrice(Number(o.total))} ₽` : 'По запросу')}</div>
-        <button class="order-repeat" type="button">Повторить</button>
+    `;
+  }).join('');
+}
+
+function splitAdminOrdersByBucket(orders = []) {
+  const sorted = sortOrdersDesc(orders);
+  return {
+    new: sorted.filter((order) => normalizeWorkflowStatus(order?.status) === 'new'),
+    active: sorted.filter((order) => {
+      const status = normalizeWorkflowStatus(order?.status);
+      return status === 'accepted' || status === 'shipped';
+    }),
+    completed: sorted.filter((order) => normalizeWorkflowStatus(order?.status) === 'completed'),
+  };
+}
+
+async function fetchAdminOrders() {
+  if (!state.admin.enabled || !state.saas.storeId || !state.saas.token) return [];
+  try {
+    const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/orders`, { auth: true });
+    return Array.isArray(payload?.orders) ? payload.orders.map((order) => ({
+      ...order,
+      status: normalizeWorkflowStatus(order?.status),
+      paymentStatus: normalizePaymentStatus(order?.paymentStatus),
+    })) : [];
+  } catch (error) {
+    reportStatus(`Не удалось загрузить заказы: ${error.message}`);
+    return [];
+  }
+}
+
+function renderAdminOrderList(target, orders = []) {
+  if (!target) return;
+  if (!orders.length) {
+    target.innerHTML = '<div class="text-card">Заказов в этом разделе пока нет.</div>';
+    return;
+  }
+  target.innerHTML = orders.map((order, index) => `
+    <article class="admin-fulfillment-card" data-admin-fulfillment-order="${escapeHtml(String(order.id || ''))}">
+      <div class="admin-fulfillment-head">
+        <button class="admin-fulfillment-toggle" type="button" data-order-toggle="${escapeHtml(String(order.id || ''))}">
+          Заказ №${orderDisplayNumber(order, index)}
+        </button>
+        <div class="admin-fulfillment-actions">
+          <button class="secondary-button compact-button" type="button" data-order-status="accepted" data-order-id="${escapeHtml(String(order.id || ''))}">Принять</button>
+          <button class="secondary-button compact-button" type="button" data-order-status="shipped" data-order-id="${escapeHtml(String(order.id || ''))}">Отправлен</button>
+          <button class="primary-button compact-button" type="button" data-order-status="completed" data-order-id="${escapeHtml(String(order.id || ''))}">Завершить</button>
+        </div>
       </div>
-      <div class="order-status">Статус: ${o.status || 'Отправлено'}</div>
-      <button class="order-toggle" type="button">Состав заказа</button>
-      <div class="order-items hidden">
-        <ul>
-          ${o.items.map((i) => `
-            <li>
-              <span class="order-item-title">${i.title}</span>
-              <span class="order-item-qty">× ${i.qty}</span>
-            </li>
+      <div class="admin-fulfillment-body hidden">
+        <div class="admin-order-meta">Статус: ${workflowStatusLabel(order.status)}${paymentStatusLabel(order.paymentStatus) ? ` • ${paymentStatusLabel(order.paymentStatus)}` : ''}</div>
+        <div class="admin-order-meta">Дата: ${new Date(order.createdAt).toLocaleString('ru-RU')}</div>
+        <div class="admin-order-meta">Сумма: ${orderTotalLabel(order)}</div>
+        <div class="admin-order-meta">Клиент: ${escapeHtml(String(order.customer?.name || '—'))}</div>
+        <div class="admin-order-meta">Телефон: ${escapeHtml(String(order.customer?.phone || '—'))}</div>
+        <div class="admin-order-meta">Email: ${escapeHtml(String(order.customer?.email || '—'))}</div>
+        <div class="admin-order-meta">Telegram ID: ${escapeHtml(String(order.customer?.telegramId || order.telegramUserId || '—'))}</div>
+        ${order.customer?.deliveryAddress ? `<div class="admin-order-meta">Адрес: ${escapeHtml(String(order.customer.deliveryAddress))}</div>` : ''}
+        ${order.customer?.comment ? `<div class="admin-order-meta">Комментарий: ${escapeHtml(String(order.customer.comment))}</div>` : ''}
+        <div class="admin-order-items-list">
+          ${(Array.isArray(order.items) ? order.items : []).map((item) => `
+            <div class="admin-order-item-row">
+              <span>${escapeHtml(String(item?.title || 'Товар'))}</span>
+              <strong>× ${Number(item?.qty || 1)}</strong>
+            </div>
           `).join('')}
-        </ul>
+        </div>
       </div>
-    </div>
+    </article>
   `).join('');
+}
+
+async function updateAdminOrderStatus(orderId, nextStatus) {
+  if (!state.admin.enabled || !state.saas.storeId || !state.saas.token || !orderId) return false;
+  try {
+    await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'PATCH',
+      auth: true,
+      body: { status: nextStatus },
+    });
+    return true;
+  } catch (error) {
+    reportStatus(`Не удалось обновить статус заказа: ${error.message}`);
+    return false;
+  }
+}
+
+function bindAdminOrderListInteractions(target, bucket) {
+  if (!target || target.dataset.boundAdminOrders === '1') return;
+  target.dataset.boundAdminOrders = '1';
+  target.addEventListener('click', async (event) => {
+    const statusBtn = event.target.closest('[data-order-status]');
+    if (statusBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const orderId = String(statusBtn.dataset.orderId || '').trim();
+      const nextStatus = String(statusBtn.dataset.orderStatus || '').trim();
+      if (!orderId || !nextStatus) return;
+      statusBtn.disabled = true;
+      const ok = await updateAdminOrderStatus(orderId, nextStatus);
+      if (ok) await renderAdminOrdersByBucket(bucket);
+      else statusBtn.disabled = false;
+      return;
+    }
+    const toggleBtn = event.target.closest('[data-order-toggle]');
+    if (!toggleBtn) return;
+    const card = event.target.closest('[data-admin-fulfillment-order]');
+    const body = card?.querySelector('.admin-fulfillment-body');
+    if (body) body.classList.toggle('hidden');
+  });
+}
+
+async function renderAdminOrdersOverview() {
+  if (!state.admin.enabled) return;
+  const orders = await fetchAdminOrders();
+  const buckets = splitAdminOrdersByBucket(orders);
+  if (ui.ordersNewPreview) ui.ordersNewPreview.textContent = String(buckets.new.length);
+  if (ui.ordersActivePreview) ui.ordersActivePreview.textContent = String(buckets.active.length);
+  if (ui.ordersCompletedPreview) ui.ordersCompletedPreview.textContent = String(buckets.completed.length);
+}
+
+async function renderAdminOrdersByBucket(bucket) {
+  if (!state.admin.enabled) return;
+  const orders = await fetchAdminOrders();
+  const buckets = splitAdminOrdersByBucket(orders);
+  if (bucket === 'new') {
+    renderAdminOrderList(ui.ordersNewList, buckets.new);
+    bindAdminOrderListInteractions(ui.ordersNewList, 'new');
+  }
+  if (bucket === 'active') {
+    renderAdminOrderList(ui.ordersActiveList, buckets.active);
+    bindAdminOrderListInteractions(ui.ordersActiveList, 'active');
+  }
+  if (bucket === 'completed') {
+    renderAdminOrderList(ui.ordersCompletedList, buckets.completed);
+    bindAdminOrderListInteractions(ui.ordersCompletedList, 'completed');
+  }
+  await renderAdminOrdersOverview();
 }
 
 function adminMonthKey(dateValue) {
@@ -4921,11 +5169,11 @@ async function renderAdminSalesAnalytics() {
   });
   ui.ordersList.querySelectorAll('[data-admin-order]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const id = Number(btn.dataset.adminOrder);
-      const order = orders.find((x) => Number(x.id) === id);
+      const id = String(btn.dataset.adminOrder || '').trim();
+      const order = orders.find((x) => String(x.id || '').trim() === id);
       if (!order) return;
       adminOpenReportModal(
-        `Заказ №${order.id}`,
+        `Заказ №${orderDisplayNumber(order)}`,
         `
           <div><strong>Клиент:</strong> ${escapeHtml(order.customer?.name || '—')}</div>
           <div><strong>Телефон:</strong> ${escapeHtml(order.customer?.phone || '—')}</div>
@@ -5033,11 +5281,11 @@ async function renderAdminStatsOrders() {
 
   ui.statsOrdersList.querySelectorAll('[data-admin-order]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const id = Number(btn.dataset.adminOrder);
-      const order = orders.find((x) => Number(x.id) === id);
+      const id = String(btn.dataset.adminOrder || '').trim();
+      const order = orders.find((x) => String(x.id || '').trim() === id);
       if (!order) return;
       adminOpenReportModal(
-        `Заказ №${order.id}`,
+        `Заказ №${orderDisplayNumber(order)}`,
         `
           <div><strong>Клиент:</strong> ${escapeHtml(order.customer?.name || '—')}</div>
           <div><strong>Телефон:</strong> ${escapeHtml(order.customer?.phone || '—')}</div>
@@ -5287,6 +5535,9 @@ function renderProfile() {
   renderProfileBotConnectSection();
   if (ui.profileSubscriptionSection) {
     ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (ui.profileStatsSection) {
+    ui.profileStatsSection.classList.toggle('hidden', !state.admin.enabled);
   }
   if (ui.profileOrderChatSection) {
     ui.profileOrderChatSection.classList.toggle('hidden', !state.admin.enabled);
@@ -6773,14 +7024,10 @@ function bindEvents() {
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
   on(ui.ordersButton, 'click', () => {
-    if (state.admin.enabled) {
-      void refreshSubscriptionStatus().then(() => {
-        applyAdminModeUi();
-        renderProfile();
-      });
-    } else {
-      renderProfile();
+    renderProfile();
+    if (!state.admin.enabled) {
       renderOrders();
+      void syncCustomerOrdersFromServer().then(() => renderOrders());
     }
     setScreen('profile');
   });
@@ -6802,11 +7049,35 @@ function bindEvents() {
     renderBotSettings();
     setScreen('bot');
   });
-  on(ui.statsButton, 'click', () => {
+  on(ui.profileOpenStatsButton, 'click', () => {
     if (!state.admin.enabled) return;
     if (!requireAdminFeatureAccess()) return;
     void renderAdminStatsOverview();
     setScreen('stats');
+  });
+  on(ui.statsButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminOrdersOverview();
+    setScreen('orders');
+  });
+  on(ui.ordersOpenNewButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminOrdersByBucket('new');
+    setScreen('orders-new');
+  });
+  on(ui.ordersOpenActiveButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminOrdersByBucket('active');
+    setScreen('orders-active');
+  });
+  on(ui.ordersOpenCompletedButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminOrdersByBucket('completed');
+    setScreen('orders-completed');
   });
   on(ui.statsOpenRevenueButton, 'click', () => {
     if (!state.admin.enabled) return;
@@ -7027,7 +7298,8 @@ function bindEvents() {
         totalDisplay: formatSummaryTotal(summary),
       },
       telegramUserId: telegramId || null,
-      status: 'Счёт отправлен',
+      status: 'new',
+      paymentStatus: '',
       promo: state.promoCode ? {
         code: state.promoCode,
         type: state.promoKind === 'custom_fixed' ? 'fixed' : 'percent',
@@ -7060,7 +7332,14 @@ function bindEvents() {
       }
       if (!sendOk) throw new Error('SEND_FAILED');
 
-      state.orders.push(order);
+      if (serverOrderResult?.orderId) order.id = serverOrderResult.orderId;
+      if (Number(serverOrderResult?.orderNumber || 0) > 0) order.orderNumber = Number(serverOrderResult.orderNumber);
+      order.status = normalizeWorkflowStatus(serverOrderResult?.status || order.status);
+      order.paymentStatus = normalizePaymentStatus(serverOrderResult?.paymentStatus || order.paymentStatus);
+
+      const existingOrderIndex = state.orders.findIndex((item) => String(item?.id || '').trim() === String(order.id || '').trim());
+      if (existingOrderIndex >= 0) state.orders.splice(existingOrderIndex, 1, order);
+      else state.orders.push(order);
       mappedItems.forEach((item) => {
         if (!item?.id) return;
         if (!state.productStats[item.id] || typeof state.productStats[item.id] !== 'object') {
@@ -7085,6 +7364,7 @@ function bindEvents() {
       state.promoKind = '';
       state.profile = profile;
       saveStorage();
+      void syncCustomerOrdersFromServer();
       saasTrackEvent('create_order', { payload: { orderId: order.id, total: summary.sum } });
       const payment = resolveOrderPaymentResult(serverOrderResult);
       const subscriptionLocked = String(serverOrderResult?.notification?.reason || '') === 'SUBSCRIPTION_INACTIVE';
@@ -7220,8 +7500,8 @@ function bindEvents() {
     ui.ordersList.addEventListener('click', (e) => {
       const card = e.target.closest('.order-card');
       if (!card) return;
-      const orderId = Number(card.dataset.orderId);
-      const order = state.orders.find((o) => o.id === orderId);
+      const orderId = String(card.dataset.orderId || '').trim();
+      const order = state.orders.find((o) => String(o.id || '').trim() === orderId);
       if (!order) return;
 
       if (e.target.closest('.order-toggle')) {

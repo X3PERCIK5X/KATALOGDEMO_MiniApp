@@ -295,6 +295,12 @@ function ensureSessionsColumn(columnName, ddl) {
   if (!exists) db.exec(`ALTER TABLE sessions ADD COLUMN ${ddl}`);
 }
 
+function ensureOrdersColumn(columnName, ddl) {
+  const rows = db.prepare('PRAGMA table_info(orders)').all();
+  const exists = rows.some((r) => String(r.name) === columnName);
+  if (!exists) db.exec(`ALTER TABLE orders ADD COLUMN ${ddl}`);
+}
+
 ensureStoresColumn('owner_user_id', "owner_user_id TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_token_enc', "bot_token_enc TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_username', "bot_username TEXT NOT NULL DEFAULT ''");
@@ -311,6 +317,9 @@ ensureStoresColumn('yookassa_shop_id', "yookassa_shop_id TEXT NOT NULL DEFAULT '
 ensureStoresColumn('yookassa_secret_enc', "yookassa_secret_enc TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('payment_return_url', "payment_return_url TEXT NOT NULL DEFAULT ''");
 ensureSessionsColumn('user_id', "user_id TEXT NOT NULL DEFAULT ''");
+ensureOrdersColumn('order_number', 'order_number INTEGER NOT NULL DEFAULT 0');
+ensureOrdersColumn('workflow_status', "workflow_status TEXT NOT NULL DEFAULT 'new'");
+ensureOrdersColumn('payment_status', "payment_status TEXT NOT NULL DEFAULT ''");
 
 function readJsonFallback(filePath, fallback) {
   try {
@@ -1134,6 +1143,85 @@ function getCachedOrderPayment(storeId, orderId, provider) {
   `).get(storeId, orderId, provider);
 }
 
+function normalizeOrderWorkflowStatus(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'completed' || value === 'done' || value === 'finished') return 'completed';
+  if (value === 'shipped' || value === 'sent' || value === 'delivery' || value === 'in_delivery') return 'shipped';
+  if (value === 'accepted' || value === 'processing' || value === 'in_progress' || value === 'accepted_by_store') return 'accepted';
+  if (value === 'new' || value === 'created' || value === 'pending') return 'new';
+  return 'new';
+}
+
+function normalizeOrderPaymentStatus(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (!value) return '';
+  if (value === 'payment_success' || value === 'paid' || value === 'succeeded' || value === 'success' || value === 'confirmed') return 'paid';
+  if (value === 'payment_pending' || value === 'pending' || value === 'created' || value === 'authorized') return 'pending';
+  if (value === 'payment_failed' || value === 'failed' || value === 'fail' || value === 'canceled' || value === 'cancelled' || value === 'expired') return 'failed';
+  return value;
+}
+
+function getNextOrderNumber(storeId) {
+  const row = db.prepare('SELECT MAX(order_number) AS max_number FROM orders WHERE store_id = ?').get(storeId);
+  const current = Number(row?.max_number || 0);
+  return Number.isFinite(current) ? current + 1 : 1;
+}
+
+function buildOrderSequenceMap(rows = []) {
+  const ordered = rows.slice().sort((a, b) => {
+    const byDate = Number(new Date(String(a.created_at || 0))) - Number(new Date(String(b.created_at || 0)));
+    if (byDate !== 0) return byDate;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+  const used = new Set(ordered
+    .map((row) => Number(row?.order_number || 0))
+    .filter((num) => Number.isFinite(num) && num > 0));
+  let next = 1;
+  const map = new Map();
+  ordered.forEach((row) => {
+    const existing = Number(row?.order_number || 0);
+    if (Number.isFinite(existing) && existing > 0) {
+      map.set(String(row.id || ''), existing);
+      return;
+    }
+    while (used.has(next)) next += 1;
+    map.set(String(row.id || ''), next);
+    used.add(next);
+    next += 1;
+  });
+  return map;
+}
+
+function hydrateOrderRow(row, sequenceMap = new Map()) {
+  const payload = safeJsonParse(row?.payload_json, {});
+  const customer = safeJsonParse(row?.customer_json, {});
+  const rawItems = Array.isArray(payload?.items) ? payload.items : [];
+  const workflowStatus = normalizeOrderWorkflowStatus(row?.workflow_status || row?.status || payload?.workflowStatus || payload?.status);
+  const paymentStatus = normalizeOrderPaymentStatus(row?.payment_status || payload?.paymentStatus || (
+    /^payment_/i.test(String(row?.status || '')) || /paid|succeed|fail|cancel|expire/i.test(String(row?.status || ''))
+      ? row?.status
+      : ''
+  ));
+  const total = Number(row?.total_amount || payload?.total || 0);
+  const fallbackNumber = Number(sequenceMap.get(String(row?.id || '')) || 0);
+  const orderNumber = Number(row?.order_number || 0) > 0 ? Number(row.order_number) : fallbackNumber;
+  return {
+    id: String(row?.id || ''),
+    orderNumber,
+    telegramUserId: String(row?.telegram_user_id || customer?.telegramId || payload?.telegramUserId || '').trim(),
+    status: workflowStatus,
+    paymentStatus,
+    total: Number.isFinite(total) ? total : 0,
+    totalDisplay: payload?.totalDisplay || '',
+    currency: String(row?.currency || 'RUB').trim().toUpperCase() || 'RUB',
+    customer,
+    items: rawItems,
+    payload,
+    createdAt: String(row?.created_at || ''),
+    updatedAt: String(row?.updated_at || ''),
+  };
+}
+
 function saveOrderPaymentRecord({
   storeId,
   orderId,
@@ -1170,8 +1258,8 @@ function saveOrderPaymentRecord({
     ts,
     ts,
   );
-  db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
-    .run('payment_pending', ts, orderId, storeId);
+  db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
+    .run(normalizeOrderPaymentStatus(status || 'pending') || 'pending', ts, orderId, storeId);
 }
 
 function fillPaymentTemplate(template, values) {
@@ -3754,6 +3842,7 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   });
 
   const orderId = String(incoming?.id || `ORD-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`);
+  const orderNumber = getNextOrderNumber(req.storeId);
   const computedTotal = items.reduce((acc, it) => {
     if (it.isRequestPrice) return acc;
     return acc + (Number(it.price || 0) * Number(it.qty || 1));
@@ -3765,19 +3854,21 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   const telegramUserId = String(
     incoming?.telegramUserId || customer?.telegramId || req.body?.telegramUserId || ''
   ).trim();
-  const status = String(incoming?.status || 'created').trim();
+  const workflowStatus = normalizeOrderWorkflowStatus(incoming?.status || incoming?.workflowStatus || 'new');
   const createdAt = String(incoming?.createdAt || nowIso());
   const ts = nowIso();
 
   const saveOrderTx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO orders (id, store_id, telegram_user_id, status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'RUB', ?, ?, ?, ?)
+      INSERT INTO orders (id, store_id, telegram_user_id, order_number, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, '', ?, 'RUB', ?, ?, ?, ?)
     `).run(
       orderId,
       req.storeId,
       telegramUserId,
-      status,
+      orderNumber,
+      workflowStatus,
+      workflowStatus,
       total,
       JSON.stringify(customer),
       JSON.stringify(incoming),
@@ -3851,7 +3942,10 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   return res.json({
     ok: true,
     orderId,
+    orderNumber,
     total,
+    status: workflowStatus,
+    paymentStatus: payment.ok ? normalizeOrderPaymentStatus(payment?.provider ? 'pending' : '') : '',
     orderMode,
     notification: notify,
     payment,
@@ -3860,6 +3954,22 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
       channelType: orderRequestChannel?.channelType || 'telegram_chat',
     },
   });
+});
+
+app.get('/api/stores/:storeId/orders/history', storeParamMiddleware, (req, res) => {
+  if (Number(req.store.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
+  const telegramUserId = String(req.query?.telegramUserId || '').trim();
+  if (!telegramUserId) return res.status(400).json({ error: 'TELEGRAM_USER_ID_REQUIRED' });
+  const rows = db.prepare(`
+    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    FROM orders
+    WHERE store_id = ? AND telegram_user_id = ?
+    ORDER BY created_at DESC
+    LIMIT 200
+  `).all(req.storeId, telegramUserId);
+  const sequenceMap = buildOrderSequenceMap(rows);
+  const orders = rows.map((row) => hydrateOrderRow(row, sequenceMap));
+  return res.json({ ok: true, storeId: req.storeId, telegramUserId, orders });
 });
 
 function updateOrderPaymentFromCallback({
@@ -3920,9 +4030,9 @@ function updateOrderPaymentFromCallback({
   const failedStatuses = new Set(['failed', 'fail', 'canceled', 'cancelled', 'rejected', 'declined', 'expired']);
   const success = successStatuses.has(statusCode);
   const canceled = failedStatuses.has(statusCode);
-  const orderStatus = success ? 'payment_success' : (canceled ? 'payment_failed' : 'payment_pending');
-  db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
-    .run(orderStatus, ts, resolvedOrderId, normalizedStoreId);
+  const paymentStatus = success ? 'paid' : (canceled ? 'failed' : 'pending');
+  db.prepare('UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ? AND store_id = ?')
+    .run(paymentStatus, ts, resolvedOrderId, normalizedStoreId);
 
   const eventType = success ? 'payment_success' : (canceled ? 'payment_fail' : 'payment_pending');
   db.prepare(`
@@ -4022,29 +4132,48 @@ app.post('/api/stores/:storeId/payments/alfabank/webhook', storeParamMiddleware,
 });
 
 app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
-  const orders = db.prepare(`
-    SELECT id, telegram_user_id, status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+  const rows = db.prepare(`
+    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
     FROM orders
     WHERE store_id = ?
     ORDER BY created_at DESC
     LIMIT 500
-  `).all(req.storeId).map((row) => ({
-    id: row.id,
-    telegramUserId: row.telegram_user_id,
-    status: row.status,
-    total: Number(row.total_amount || 0),
-    currency: row.currency || 'RUB',
-    customer: safeJsonParse(row.customer_json, {}),
-    payload: safeJsonParse(row.payload_json, {}),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  `).all(req.storeId);
+  const sequenceMap = buildOrderSequenceMap(rows);
+  const orders = rows.map((row) => hydrateOrderRow(row, sequenceMap));
   return res.json({ ok: true, storeId: req.storeId, orders });
+});
+
+app.patch('/api/stores/:storeId/admin/orders/:orderId/status', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const orderId = String(req.params.orderId || '').trim();
+  const nextStatus = normalizeOrderWorkflowStatus(req.body?.status || '');
+  if (!orderId) return res.status(400).json({ error: 'ORDER_ID_REQUIRED' });
+  const current = db.prepare(`
+    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    FROM orders
+    WHERE store_id = ? AND id = ?
+    LIMIT 1
+  `).get(req.storeId, orderId);
+  if (!current) return res.status(404).json({ error: 'ORDER_NOT_FOUND' });
+  const ts = nowIso();
+  db.prepare('UPDATE orders SET status = ?, workflow_status = ?, updated_at = ? WHERE store_id = ? AND id = ?')
+    .run(nextStatus, nextStatus, ts, req.storeId, orderId);
+  const updated = db.prepare(`
+    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    FROM orders
+    WHERE store_id = ? AND id = ?
+    LIMIT 1
+  `).get(req.storeId, orderId);
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    order: hydrateOrderRow(updated, buildOrderSequenceMap([updated])),
+  });
 });
 
 app.get('/api/stores/:storeId/admin/metrics', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const ordersTotal = Number(db.prepare('SELECT COUNT(*) AS c FROM orders WHERE store_id = ?').get(req.storeId)?.c || 0);
-  const paidTotal = Number(db.prepare("SELECT COUNT(*) AS c FROM orders WHERE store_id = ? AND status IN ('paid','payment_success')").get(req.storeId)?.c || 0);
+  const paidTotal = Number(db.prepare("SELECT COUNT(DISTINCT order_id) AS c FROM order_payments WHERE store_id = ? AND status IN ('paid','payment_success','success','succeeded','confirmed')").get(req.storeId)?.c || 0);
   const beginCheckout = Number(db.prepare("SELECT COUNT(*) AS c FROM events WHERE store_id = ? AND event_type = 'begin_checkout'").get(req.storeId)?.c || 0);
   const topProducts = db.prepare(`
     SELECT oi.product_id, oi.title, SUM(oi.qty) AS qty, SUM(oi.price * oi.qty) AS revenue

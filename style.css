@@ -4348,6 +4348,68 @@ body.admin-mode [contenteditable="true"],
   padding: 10px 12px;
 }
 
+.admin-fulfillment-card {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  display: grid;
+  gap: 12px;
+}
+
+.admin-fulfillment-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-fulfillment-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.admin-fulfillment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-fulfillment-body {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-order-items-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.admin-order-item-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
 .admin-month-title {
   font-size: 15px;
   font-weight: 700;

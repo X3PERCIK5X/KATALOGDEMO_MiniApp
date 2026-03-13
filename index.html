@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-211" />
+    <link rel="stylesheet" href="/style.css?v=20260313-212" />
   </head>
   <body>
     <header class="header">
@@ -343,6 +343,11 @@
           <div id="subscriptionStatus" class="status"></div>
           <button id="subscriptionPayButton" class="primary-button" type="button">Оплатить</button>
         </div>
+        <div id="profileStatsSection" class="profile-subscription-card hidden">
+          <div class="section-title">Статистика магазина</div>
+          <p class="feedback-note">Выручка, продажи и список заказов текущего магазина открываются отдельным экраном.</p>
+          <button id="profileOpenStatsButton" class="primary-button" type="button">Открыть статистику</button>
+        </div>
         <div id="profileHistorySection">
           <div class="home-section-title">История заказов</div>
           <div id="ordersList" class="orders-list"></div>
@@ -524,8 +529,56 @@
         </div>
       </section>
 
+      <section id="screen-orders" class="screen">
+        <div class="screen-head">
+          <h2>Заказы</h2>
+        </div>
+        <div class="stats-nav-list">
+          <button id="ordersOpenNewButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Новые</div>
+            <div id="ordersNewPreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Новые заказы, которые еще не завершены</div>
+          </button>
+          <button id="ordersOpenActiveButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">В работе</div>
+            <div id="ordersActivePreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Принятые и отправленные заказы</div>
+          </button>
+          <button id="ordersOpenCompletedButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Завершенные</div>
+            <div id="ordersCompletedPreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Завершенные заказы магазина</div>
+          </button>
+        </div>
+      </section>
+
+      <section id="screen-orders-new" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="orders" aria-label="Назад">←</button>
+          <h2>Новые заказы</h2>
+        </div>
+        <div id="ordersNewList" class="orders-list"></div>
+      </section>
+
+      <section id="screen-orders-active" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="orders" aria-label="Назад">←</button>
+          <h2>Заказы в работе</h2>
+        </div>
+        <div id="ordersActiveList" class="orders-list"></div>
+      </section>
+
+      <section id="screen-orders-completed" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="orders" aria-label="Назад">←</button>
+          <h2>Завершенные заказы</h2>
+        </div>
+        <div id="ordersCompletedList" class="orders-list"></div>
+      </section>
+
       <section id="screen-stats" class="screen">
         <div class="screen-head">
+          <button class="back-button icon-only" data-back="profile" aria-label="Назад">←</button>
           <h2>Статистика</h2>
         </div>
         <div class="stats-nav-list">
@@ -710,20 +763,22 @@
         </svg>
         <span>Настройки</span>
       </button>
-      <button id="statsButton" class="bottom-item nav-hidden" type="button" aria-label="Статистика">
+      <button id="statsButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 20h16" />
-          <path d="M7 16V9" />
-          <path d="M12 16V5" />
-          <path d="M17 16v-3" />
+          <path d="M9 6h11" />
+          <path d="M9 12h11" />
+          <path d="M9 18h11" />
+          <path d="M4 6h.01" />
+          <path d="M4 12h.01" />
+          <path d="M4 18h.01" />
         </svg>
-        <span>Статистика</span>
+        <span>Заказы</span>
       </button>
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-211"></script>
-    <script src="/app.js?v=20260313-211"></script>
+    <script src="/telegram.js?v=20260313-212"></script>
+    <script src="/app.js?v=20260313-212"></script>
   </body>
 </html>
