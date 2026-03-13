@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260313-213" />
+    <link rel="stylesheet" href="/style.css?v=20260313-214" />
   </head>
   <body>
     <header class="header">
@@ -549,6 +549,11 @@
             <div id="ordersCompletedPreview" class="admin-analytics-value">—</div>
             <div class="admin-analytics-meta">Завершенные заказы магазина</div>
           </button>
+          <button id="ordersOpenCanceledButton" class="admin-analytics-card" type="button">
+            <div class="admin-analytics-label">Отмененные</div>
+            <div id="ordersCanceledPreview" class="admin-analytics-value">—</div>
+            <div class="admin-analytics-meta">Отмененные заказы магазина</div>
+          </button>
         </div>
       </section>
 
@@ -574,6 +579,14 @@
           <h2>Завершенные заказы</h2>
         </div>
         <div id="ordersCompletedList" class="orders-list"></div>
+      </section>
+
+      <section id="screen-orders-canceled" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="orders" aria-label="Назад">←</button>
+          <h2>Отмененные заказы</h2>
+        </div>
+        <div id="ordersCanceledList" class="orders-list"></div>
       </section>
 
       <section id="screen-stats" class="screen">
@@ -778,7 +791,7 @@
     </nav>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="/telegram.js?v=20260313-213"></script>
-    <script src="/app.js?v=20260313-213"></script>
+    <script src="/telegram.js?v=20260313-214"></script>
+    <script src="/app.js?v=20260313-214"></script>
   </body>
 </html>

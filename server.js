@@ -1145,6 +1145,7 @@ function getCachedOrderPayment(storeId, orderId, provider) {
 
 function normalizeOrderWorkflowStatus(raw) {
   const value = String(raw || '').trim().toLowerCase();
+  if (value === 'canceled' || value === 'cancelled' || value === 'canceled_by_store' || value === 'cancelled_by_store') return 'canceled';
   if (value === 'completed' || value === 'done' || value === 'finished') return 'completed';
   if (value === 'shipped' || value === 'sent' || value === 'delivery' || value === 'in_delivery') return 'shipped';
   if (value === 'accepted' || value === 'processing' || value === 'in_progress' || value === 'accepted_by_store') return 'accepted';

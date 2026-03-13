@@ -261,12 +261,15 @@ const ui = {
   ordersOpenNewButton: document.getElementById('ordersOpenNewButton'),
   ordersOpenActiveButton: document.getElementById('ordersOpenActiveButton'),
   ordersOpenCompletedButton: document.getElementById('ordersOpenCompletedButton'),
+  ordersOpenCanceledButton: document.getElementById('ordersOpenCanceledButton'),
   ordersNewPreview: document.getElementById('ordersNewPreview'),
   ordersActivePreview: document.getElementById('ordersActivePreview'),
   ordersCompletedPreview: document.getElementById('ordersCompletedPreview'),
+  ordersCanceledPreview: document.getElementById('ordersCanceledPreview'),
   ordersNewList: document.getElementById('ordersNewList'),
   ordersActiveList: document.getElementById('ordersActiveList'),
   ordersCompletedList: document.getElementById('ordersCompletedList'),
+  ordersCanceledList: document.getElementById('ordersCanceledList'),
   statsOpenRevenueButton: document.getElementById('statsOpenRevenueButton'),
   statsOpenOrdersButton: document.getElementById('statsOpenOrdersButton'),
   statsRevenuePreview: document.getElementById('statsRevenuePreview'),
@@ -881,6 +884,9 @@ function setScreen(name) {
   if (name === 'orders-completed') {
     void renderAdminOrdersByBucket('completed');
   }
+  if (name === 'orders-canceled') {
+    void renderAdminOrdersByBucket('canceled');
+  }
   if (name === 'stats') {
     void renderAdminStatsOverview();
   }
@@ -1055,6 +1061,7 @@ function updateBottomNav(screen) {
     'orders-new': ui.statsButton,
     'orders-active': ui.statsButton,
     'orders-completed': ui.statsButton,
+    'orders-canceled': ui.statsButton,
     stats: ui.profileButton,
     'stats-revenue': ui.profileButton,
     'stats-orders': ui.profileButton,
@@ -4714,6 +4721,7 @@ function renderCart() {
 
 function normalizeWorkflowStatus(value) {
   const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'canceled' || raw === 'cancelled' || raw === 'canceled_by_store' || raw === 'cancelled_by_store') return 'canceled';
   if (raw === 'completed' || raw === 'done' || raw === 'finished') return 'completed';
   if (raw === 'shipped' || raw === 'sent' || raw === 'delivery' || raw === 'in_delivery') return 'shipped';
   if (raw === 'accepted' || raw === 'processing' || raw === 'in_progress' || raw === 'accepted_by_store') return 'accepted';
@@ -4732,6 +4740,7 @@ function normalizePaymentStatus(value) {
 
 function workflowStatusLabel(value) {
   const status = normalizeWorkflowStatus(value);
+  if (status === 'canceled') return 'Отменен';
   if (status === 'accepted' || status === 'shipped') return 'Принят';
   if (status === 'completed') return 'Завершен';
   return 'Новый';
@@ -4831,6 +4840,7 @@ function splitAdminOrdersByBucket(orders = []) {
       return status === 'accepted' || status === 'shipped';
     }),
     completed: sorted.filter((order) => normalizeWorkflowStatus(order?.status) === 'completed'),
+    canceled: sorted.filter((order) => normalizeWorkflowStatus(order?.status) === 'canceled'),
   };
 }
 
@@ -4854,17 +4864,24 @@ function getAdminOrderActionButtons(order, bucket) {
   if (bucket === 'new') {
     return `
       <button class="primary-button compact-button" type="button" data-order-status="accepted" data-order-id="${orderId}">Принять</button>
+      <button class="secondary-button compact-button" type="button" data-order-status="canceled" data-order-id="${orderId}" data-order-cancel-order="1">Отменить заказ</button>
     `;
   }
   if (bucket === 'active') {
     return `
       <button class="primary-button compact-button" type="button" data-order-status="completed" data-order-id="${orderId}">Завершить</button>
       <button class="secondary-button compact-button" type="button" data-order-status="new" data-order-id="${orderId}" data-order-cancel="1">Отменить</button>
+      <button class="secondary-button compact-button" type="button" data-order-status="canceled" data-order-id="${orderId}" data-order-cancel-order="1">Отменить заказ</button>
     `;
   }
   if (bucket === 'completed') {
     return `
       <button class="secondary-button compact-button" type="button" data-order-status="accepted" data-order-id="${orderId}" data-order-cancel="1">Отменить</button>
+    `;
+  }
+  if (bucket === 'canceled') {
+    return `
+      <button class="secondary-button compact-button" type="button" data-order-status="new" data-order-id="${orderId}" data-order-cancel="1">Вернуть в новые</button>
     `;
   }
   return '';
@@ -4935,7 +4952,10 @@ function bindAdminOrderListInteractions(target, bucket) {
       const orderId = String(statusBtn.dataset.orderId || '').trim();
       const nextStatus = String(statusBtn.dataset.orderStatus || '').trim();
       if (!orderId || !nextStatus) return;
-      if (statusBtn.dataset.orderCancel === '1') {
+      if (statusBtn.dataset.orderCancelOrder === '1') {
+        const confirmedCancelOrder = window.confirm('Подтвердите отмену заказа. Заказ перейдет в раздел отмененных.');
+        if (!confirmedCancelOrder) return;
+      } else if (statusBtn.dataset.orderCancel === '1') {
         const confirmed = window.confirm('Подтвердите отмену изменения статуса заказа.');
         if (!confirmed) return;
       }
@@ -4960,6 +4980,7 @@ async function renderAdminOrdersOverview() {
   if (ui.ordersNewPreview) ui.ordersNewPreview.textContent = String(buckets.new.length);
   if (ui.ordersActivePreview) ui.ordersActivePreview.textContent = String(buckets.active.length);
   if (ui.ordersCompletedPreview) ui.ordersCompletedPreview.textContent = String(buckets.completed.length);
+  if (ui.ordersCanceledPreview) ui.ordersCanceledPreview.textContent = String(buckets.canceled.length);
 }
 
 async function renderAdminOrdersByBucket(bucket) {
@@ -4977,6 +4998,10 @@ async function renderAdminOrdersByBucket(bucket) {
   if (bucket === 'completed') {
     renderAdminOrderList(ui.ordersCompletedList, buckets.completed, 'completed');
     bindAdminOrderListInteractions(ui.ordersCompletedList, 'completed');
+  }
+  if (bucket === 'canceled') {
+    renderAdminOrderList(ui.ordersCanceledList, buckets.canceled, 'canceled');
+    bindAdminOrderListInteractions(ui.ordersCanceledList, 'canceled');
   }
   await renderAdminOrdersOverview();
 }
@@ -7100,6 +7125,12 @@ function bindEvents() {
     if (!requireAdminFeatureAccess()) return;
     void renderAdminOrdersByBucket('completed');
     setScreen('orders-completed');
+  });
+  on(ui.ordersOpenCanceledButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminOrdersByBucket('canceled');
+    setScreen('orders-canceled');
   });
   on(ui.statsOpenRevenueButton, 'click', () => {
     if (!state.admin.enabled) return;
