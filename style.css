@@ -4668,29 +4668,29 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 }
 
 .products-import-panel {
-  margin: 10px 0 14px;
+  margin: 8px 0 10px;
 }
 
 .products-import-card {
   border: 1px solid var(--stroke);
-  border-radius: 18px;
-  background: linear-gradient(160deg, var(--panel-2), var(--panel));
-  padding: 14px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--panel) 92%, transparent);
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  gap: 8px;
+  box-shadow: none;
 }
 
 .products-import-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
 }
 
 .products-import-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
   color: var(--text);
 }
@@ -4698,23 +4698,24 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 .products-import-text,
 .products-import-status,
 .products-import-more {
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--muted);
 }
 
 .products-import-sample-link {
   align-self: flex-start;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .products-import-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) repeat(2, auto);
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -4722,31 +4723,34 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   width: 100%;
   min-width: 0;
   border: 1px dashed var(--stroke);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
+  font-size: 12px;
 }
 
 .products-import-file::file-selector-button {
-  margin-right: 10px;
+  margin-right: 8px;
   border: 0;
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-radius: 8px;
+  padding: 6px 10px;
   font-weight: 700;
   color: #fff;
   background: linear-gradient(140deg, var(--accent), var(--accent-dark));
 }
 
 .products-import-button {
-  min-height: 46px;
+  min-height: 38px;
   white-space: nowrap;
+  padding-inline: 12px;
+  font-size: 12px;
 }
 
 .products-import-preview {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .products-import-empty {
@@ -4756,26 +4760,26 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 .products-import-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .products-import-summary-item {
   border: 1px solid var(--stroke);
-  border-radius: 14px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .products-import-summary-item strong {
-  font-size: 18px;
+  font-size: 15px;
   color: var(--text);
 }
 
 .products-import-summary-item span {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -4787,12 +4791,12 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 
 .products-import-row {
   border: 1px solid var(--stroke);
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.03);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .products-import-row.is-valid {
@@ -4806,8 +4810,8 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 .products-import-row-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 12px;
   color: var(--text);
 }
 
@@ -4829,15 +4833,15 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 }
 
 .products-import-row-grid strong {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text);
   word-break: break-word;
 }
 
 .products-import-row-note {
-  border-radius: 12px;
-  padding: 10px;
-  font-size: 12px;
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
