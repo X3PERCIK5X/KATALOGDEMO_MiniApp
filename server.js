@@ -7,6 +7,7 @@ import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
+import XLSX from 'xlsx';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -33,6 +34,9 @@ const SUBSCRIPTION_PAYMENT_URL_365 = String(process.env.SUBSCRIPTION_PAYMENT_URL
 const YOOKASSA_SHOP_ID = String(process.env.YOOKASSA_SHOP_ID || '').trim();
 const YOOKASSA_SECRET_KEY = String(process.env.YOOKASSA_SECRET_KEY || '').trim();
 const SUBSCRIPTION_RETURN_URL = String(process.env.SUBSCRIPTION_RETURN_URL || '').trim();
+const PRODUCT_IMPORT_MAX_FILE_SIZE = 5 * 1024 * 1024;
+const PRODUCT_IMPORT_MAX_ROWS = 1000;
+const PRODUCT_IMPORT_PLACEHOLDER_IMAGE = 'assets/placeholder.svg';
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -1867,6 +1871,345 @@ const replaceProductsTx = db.transaction((storeId, products) => {
   });
 });
 
+function persistStoreDataset(storeId, row, { config, settings, categories, products }) {
+  const nextConfig = config && typeof config === 'object'
+    ? config
+    : safeJsonParse(row?.config_json || '{}', {});
+  const nextSettings = settings && typeof settings === 'object'
+    ? sanitizeSettingsPatch(settings)
+    : safeJsonParse(row?.settings_json || '{}', {});
+  const nextCategories = Array.isArray(categories) ? categories : listCategories(storeId);
+  const nextProducts = Array.isArray(products) ? products : listProducts(storeId);
+
+  replaceCategoriesTx(storeId, nextCategories);
+  replaceProductsTx(storeId, nextProducts);
+
+  db.prepare(`
+    UPDATE stores
+    SET config_json = ?, settings_json = ?, categories_json = ?, products_json = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(
+    JSON.stringify(nextConfig),
+    JSON.stringify(nextSettings),
+    JSON.stringify(nextCategories),
+    JSON.stringify(nextProducts),
+    nowIso(),
+    storeId,
+  );
+}
+
+function normalizeImportFieldName(value) {
+  const base = String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  const map = {
+    title: 'title',
+    description: 'description',
+    price: 'price',
+    old_price: 'old_price',
+    oldprice: 'old_price',
+    category: 'category',
+    image_url: 'image_url',
+    imageurl: 'image_url',
+    image: 'image_url',
+    active: 'active',
+    stock: 'stock',
+  };
+  return map[base] || base;
+}
+
+function normalizeImportObject(row) {
+  const out = {};
+  Object.entries(row || {}).forEach(([key, value]) => {
+    const normalizedKey = normalizeImportFieldName(key);
+    if (!normalizedKey) return;
+    out[normalizedKey] = value;
+  });
+  return out;
+}
+
+function parseImportNumber(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { ok: false, value: 0 };
+  const normalized = raw
+    .replace(/\s+/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^0-9.-]/g, '');
+  if (!normalized || normalized === '-' || normalized === '.') return { ok: false, value: 0 };
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return { ok: false, value: 0 };
+  return { ok: true, value: parsed };
+}
+
+function parseImportBoolean(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return true;
+  if (['true', '1', 'yes', 'y', 'да', 'active'].includes(raw)) return true;
+  if (['false', '0', 'no', 'n', 'нет', 'inactive'].includes(raw)) return false;
+  return true;
+}
+
+function parseImportInteger(value, fallback = 0) {
+  const parsed = parseImportNumber(value);
+  if (!parsed.ok) return fallback;
+  return Math.max(0, Math.round(parsed.value));
+}
+
+function validateImportProductRow(sourceRow, index) {
+  const rowNumber = index + 2;
+  const normalized = normalizeImportObject(sourceRow);
+  const errors = [];
+  const warnings = [];
+  const title = String(normalized.title || '').trim();
+  const description = String(normalized.description || '').trim();
+  const priceParsed = parseImportNumber(normalized.price);
+  const oldPriceRaw = String(normalized.old_price ?? '').trim();
+  const oldPriceParsed = oldPriceRaw ? parseImportNumber(oldPriceRaw) : { ok: true, value: 0 };
+  let category = String(normalized.category || '').trim();
+  const imageUrl = String(normalized.image_url || '').trim();
+  const active = parseImportBoolean(normalized.active);
+  const stock = parseImportInteger(normalized.stock, 0);
+
+  if (!title) errors.push('Не заполнено поле title');
+  if (!priceParsed.ok) errors.push('Поле price должно быть числом');
+  if (typeof category !== 'string') errors.push('Поле category должно быть строкой');
+  if (!category) {
+    category = 'Без категории';
+    warnings.push('Категория не указана, будет создан раздел "Без категории"');
+  }
+  if (oldPriceRaw && !oldPriceParsed.ok) warnings.push('Поле old_price не распознано, будет сохранено как 0');
+  if (imageUrl && !isValidHttpUrl(imageUrl)) warnings.push('Поле image_url не является валидным URL, товар будет создан без изображения');
+
+  return {
+    rowNumber,
+    source: {
+      title,
+      description,
+      price: String(normalized.price ?? ''),
+      old_price: oldPriceRaw,
+      category: category || '',
+      image_url: imageUrl,
+      active: String(normalized.active ?? ''),
+      stock: String(normalized.stock ?? ''),
+    },
+    normalized: {
+      title,
+      description,
+      price: priceParsed.ok ? priceParsed.value : 0,
+      oldPrice: oldPriceParsed.ok ? oldPriceParsed.value : 0,
+      category,
+      imageUrl: isValidHttpUrl(imageUrl) ? imageUrl : '',
+      active,
+      stock,
+    },
+    errors,
+    warnings,
+    canImport: errors.length === 0,
+  };
+}
+
+function parseProductImportFile(file) {
+  if (!file || !file.buffer?.length) {
+    const error = new Error('IMPORT_FILE_REQUIRED');
+    error.statusCode = 400;
+    throw error;
+  }
+  const originalName = String(file.originalname || '').trim();
+  const ext = path.extname(originalName).toLowerCase();
+  if (!['.csv', '.xlsx', '.xls'].includes(ext)) {
+    const error = new Error('IMPORT_FILE_FORMAT_UNSUPPORTED');
+    error.statusCode = 400;
+    throw error;
+  }
+  let workbook;
+  try {
+    if (ext === '.csv') {
+      const csvText = Buffer.from(file.buffer).toString('utf8').replace(/^\uFEFF/, '');
+      workbook = XLSX.read(csvText, { type: 'string', raw: false, codepage: 65001 });
+    } else {
+      workbook = XLSX.read(file.buffer, { type: 'buffer', raw: false });
+    }
+  } catch {
+    const error = new Error('IMPORT_FILE_PARSE_FAILED');
+    error.statusCode = 400;
+    throw error;
+  }
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) {
+    const error = new Error('IMPORT_FILE_EMPTY');
+    error.statusCode = 400;
+    throw error;
+  }
+  const worksheet = workbook.Sheets[firstSheet];
+  const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false, blankrows: false });
+  if (!Array.isArray(rawRows) || !rawRows.length) {
+    const error = new Error('IMPORT_FILE_EMPTY');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (rawRows.length > PRODUCT_IMPORT_MAX_ROWS) {
+    const error = new Error('IMPORT_TOO_MANY_ROWS');
+    error.statusCode = 400;
+    throw error;
+  }
+  return rawRows.map((row, index) => validateImportProductRow(row, index));
+}
+
+function createImportPreviewSummary(rows, categories = []) {
+  const validRows = rows.filter((row) => row.canImport);
+  const existingCategoryKeys = new Set(categories.map((category) => String(category?.title || '').trim().toLowerCase()).filter(Boolean));
+  const missingCategoryKeys = new Set();
+  let warningRows = 0;
+  let imageRows = 0;
+  rows.forEach((row) => {
+    if (row.warnings.length) warningRows += 1;
+    if (row.normalized?.imageUrl) imageRows += 1;
+    const key = String(row.normalized?.category || '').trim().toLowerCase();
+    if (row.canImport && key && !existingCategoryKeys.has(key)) missingCategoryKeys.add(key);
+  });
+  return {
+    totalRows: rows.length,
+    readyToImport: validRows.length,
+    invalidRows: rows.length - validRows.length,
+    warningRows,
+    categoriesToCreate: missingCategoryKeys.size,
+    imageRows,
+  };
+}
+
+function nextImportEntityId(prefix, usedIds) {
+  let id = '';
+  do {
+    id = `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  } while (usedIds.has(id));
+  usedIds.add(id);
+  return id;
+}
+
+function deriveImageExtensionFromResponse(imageUrl, contentType) {
+  const byMime = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/gif': '.gif',
+    'image/svg+xml': '.svg',
+  };
+  const normalizedType = String(contentType || '').split(';')[0].trim().toLowerCase();
+  if (byMime[normalizedType]) return byMime[normalizedType];
+  try {
+    const parsed = new URL(imageUrl);
+    const ext = path.extname(parsed.pathname || '').toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'].includes(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  } catch {}
+  return '.jpg';
+}
+
+async function downloadImportImage(storeId, imageUrl) {
+  const response = await fetch(imageUrl, { redirect: 'follow' });
+  if (!response.ok) throw new Error(`IMAGE_FETCH_${response.status}`);
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.startsWith('image/')) throw new Error('IMAGE_INVALID_CONTENT_TYPE');
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.length) throw new Error('IMAGE_EMPTY');
+  if (bytes.length > 8 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
+  const ext = deriveImageExtensionFromResponse(imageUrl, contentType);
+  const storeUploadsDir = path.join(UPLOADS_DIR, storeId);
+  fs.mkdirSync(storeUploadsDir, { recursive: true });
+  const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+  const finalPath = path.join(storeUploadsDir, finalName);
+  fs.writeFileSync(finalPath, bytes);
+  return `/uploads/${storeId}/${finalName}`;
+}
+
+async function importProductsForStore(storeId, row, previewRows) {
+  const categories = listCategories(storeId);
+  const products = listProducts(storeId);
+  const existingCategoryByKey = new Map();
+  const usedCategoryIds = new Set();
+  const usedProductIds = new Set();
+
+  categories.forEach((category) => {
+    const key = String(category?.title || '').trim().toLowerCase();
+    if (key && !existingCategoryByKey.has(key)) existingCategoryByKey.set(key, category);
+    if (category?.id) usedCategoryIds.add(String(category.id));
+  });
+  products.forEach((product) => {
+    if (product?.id) usedProductIds.add(String(product.id));
+  });
+
+  const nextCategories = [...categories];
+  const nextProducts = [...products];
+  const importedRows = [];
+  const skippedRows = [];
+  const warnings = [];
+
+  for (const rawRow of previewRows) {
+    const validated = validateImportProductRow(rawRow?.source || rawRow, Number(rawRow?.rowNumber || 2) - 2);
+    if (!validated.canImport) {
+      skippedRows.push({ rowNumber: validated.rowNumber, errors: validated.errors });
+      continue;
+    }
+    const categoryKey = String(validated.normalized.category || '').trim().toLowerCase();
+    let category = existingCategoryByKey.get(categoryKey) || null;
+    if (!category) {
+      category = {
+        id: nextImportEntityId('category', usedCategoryIds),
+        title: validated.normalized.category,
+        image: '',
+        groupId: '',
+      };
+      existingCategoryByKey.set(categoryKey, category);
+      nextCategories.push(category);
+    }
+
+    let primaryImage = PRODUCT_IMPORT_PLACEHOLDER_IMAGE;
+    if (validated.normalized.imageUrl) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        primaryImage = await downloadImportImage(storeId, validated.normalized.imageUrl);
+      } catch {
+        warnings.push({
+          rowNumber: validated.rowNumber,
+          message: 'Не удалось скачать изображение, товар создан без изображения',
+        });
+      }
+    }
+
+    nextProducts.push({
+      id: nextImportEntityId('product', usedProductIds),
+      title: validated.normalized.title,
+      price: validated.normalized.price,
+      oldPrice: validated.normalized.oldPrice,
+      sku: '',
+      shortDescription: validated.normalized.description,
+      description: validated.normalized.description,
+      specs: [],
+      images: [primaryImage || PRODUCT_IMPORT_PLACEHOLDER_IMAGE],
+      categoryId: category.id,
+      badge: '',
+      tags: [],
+      active: validated.normalized.active,
+      stock: validated.normalized.stock,
+      importImageUrl: validated.normalized.imageUrl,
+    });
+    importedRows.push(validated.rowNumber);
+  }
+
+  persistStoreDataset(storeId, row, {
+    config: safeJsonParse(row?.config_json || '{}', {}),
+    settings: safeJsonParse(row?.settings_json || '{}', {}),
+    categories: nextCategories,
+    products: nextProducts,
+  });
+
+  return {
+    importedCount: importedRows.length,
+    skippedCount: skippedRows.length,
+    createdCategories: nextCategories.length - categories.length,
+    warnings,
+    skippedRows,
+  };
+}
+
 function upsertStoreUser(storeId, userId, role = 'owner') {
   const uid = String(userId || '').trim();
   if (!uid) return;
@@ -2129,6 +2472,22 @@ const upload = multer({
   dest: UPLOADS_DIR,
   limits: { fileSize: 8 * 1024 * 1024 },
 });
+
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PRODUCT_IMPORT_MAX_FILE_SIZE },
+});
+
+function productImportUploadMiddleware(req, res, next) {
+  const handler = importUpload.single('file');
+  handler(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'IMPORT_FILE_TOO_LARGE' });
+    }
+    return res.status(400).json({ error: 'IMPORT_FILE_INVALID' });
+  });
+}
 
 function authMiddleware(req, res, next) {
   const raw = String(req.headers.authorization || '');
@@ -3635,25 +3994,7 @@ app.put('/api/admin/data', authMiddleware, (req, res) => {
     return res.status(400).json({ error: 'INVALID_DATASET' });
   }
 
-  replaceCategoriesTx(req.auth.storeId, categories);
-  replaceProductsTx(req.auth.storeId, products);
-
-  const nextSettings = settings && typeof settings === 'object'
-    ? sanitizeSettingsPatch(settings)
-    : safeJsonParse(row.settings_json || '{}', {});
-
-  db.prepare(`
-    UPDATE stores
-    SET config_json = ?, settings_json = ?, categories_json = ?, products_json = ?, updated_at = ?
-    WHERE store_id = ?
-  `).run(
-    JSON.stringify(config),
-    JSON.stringify(nextSettings),
-    JSON.stringify(categories),
-    JSON.stringify(products),
-    nowIso(),
-    req.auth.storeId,
-  );
+  persistStoreDataset(req.auth.storeId, row, { config, settings, categories, products });
 
   return res.json({ ok: true, storeId: req.auth.storeId });
 });
@@ -3671,27 +4012,44 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
     return res.status(400).json({ error: 'INVALID_DATASET' });
   }
 
-  replaceCategoriesTx(req.storeId, categories);
-  replaceProductsTx(req.storeId, products);
-
-  const nextSettings = settings && typeof settings === 'object'
-    ? sanitizeSettingsPatch(settings)
-    : safeJsonParse(req.store.settings_json || '{}', {});
-
-  db.prepare(`
-    UPDATE stores
-    SET config_json = ?, settings_json = ?, categories_json = ?, products_json = ?, updated_at = ?
-    WHERE store_id = ?
-  `).run(
-    JSON.stringify(config),
-    JSON.stringify(nextSettings),
-    JSON.stringify(categories),
-    JSON.stringify(products),
-    nowIso(),
-    req.storeId,
-  );
+  persistStoreDataset(req.storeId, req.store, { config, settings, categories, products });
 
   return res.json({ ok: true, storeId: req.storeId });
+});
+
+app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, productImportUploadMiddleware, (req, res) => {
+  try {
+    const previewRows = parseProductImportFile(req.file);
+    const summary = createImportPreviewSummary(previewRows, listCategories(req.storeId));
+    return res.json({
+      ok: true,
+      storeId: req.storeId,
+      fileName: String(req.file?.originalname || ''),
+      summary,
+      rows: previewRows,
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode || 400);
+    return res.status(statusCode).json({ error: String(error?.message || 'IMPORT_PREVIEW_FAILED') });
+  }
+});
+
+app.post('/api/stores/:storeId/admin/import-products', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
+  try {
+    const previewRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!previewRows.length) return res.status(400).json({ error: 'IMPORT_ROWS_REQUIRED' });
+    if (previewRows.length > PRODUCT_IMPORT_MAX_ROWS) return res.status(400).json({ error: 'IMPORT_TOO_MANY_ROWS' });
+    const result = await importProductsForStore(req.storeId, req.store, previewRows);
+    const dataset = rowToDataset(getStoreRow(req.storeId));
+    return res.json({
+      ok: true,
+      storeId: req.storeId,
+      result,
+      dataset,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: String(error?.message || 'IMPORT_FAILED') });
+  }
 });
 
 app.get('/api/stores/:storeId/admin/payment-settings', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {

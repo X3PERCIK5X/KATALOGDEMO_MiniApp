@@ -54,6 +54,15 @@ const state = {
     extra: {},
     configured: false,
   },
+  productImport: {
+    file: null,
+    fileName: '',
+    previewRows: [],
+    summary: null,
+    status: '',
+    loading: false,
+    importing: false,
+  },
   admin: {
     enabled: false,
     tapDelay: 260,
@@ -150,6 +159,12 @@ const ui = {
   categoriesGrid: document.getElementById('categoriesGrid'),
   categoriesTitle: document.getElementById('categoriesTitle'),
   productsTitle: document.getElementById('productsTitle'),
+  productsImportPanel: document.getElementById('productsImportPanel'),
+  productsImportFile: document.getElementById('productsImportFile'),
+  productsImportPreviewButton: document.getElementById('productsImportPreviewButton'),
+  productsImportSubmitButton: document.getElementById('productsImportSubmitButton'),
+  productsImportStatus: document.getElementById('productsImportStatus'),
+  productsImportPreview: document.getElementById('productsImportPreview'),
   productsList: document.getElementById('productsList'),
   productView: document.getElementById('productView'),
   productTitle: document.getElementById('productTitle'),
@@ -2016,6 +2031,171 @@ async function adminPublishToCatalog() {
   }
 }
 
+function resetProductImportState({ keepFile = false } = {}) {
+  if (!keepFile) {
+    state.productImport.file = null;
+    state.productImport.fileName = '';
+    if (ui.productsImportFile) ui.productsImportFile.value = '';
+  }
+  state.productImport.previewRows = [];
+  state.productImport.summary = null;
+  state.productImport.loading = false;
+  state.productImport.importing = false;
+}
+
+function getProductImportReadyRows() {
+  return Array.isArray(state.productImport.previewRows)
+    ? state.productImport.previewRows.filter((row) => row && row.canImport)
+    : [];
+}
+
+function buildProductImportSummaryHtml(summary) {
+  if (!summary) return '';
+  return `
+    <div class="products-import-summary">
+      <div class="products-import-summary-item"><strong>${summary.totalRows || 0}</strong><span>строк</span></div>
+      <div class="products-import-summary-item"><strong>${summary.readyToImport || 0}</strong><span>готово</span></div>
+      <div class="products-import-summary-item"><strong>${summary.invalidRows || 0}</strong><span>с ошибками</span></div>
+      <div class="products-import-summary-item"><strong>${summary.categoriesToCreate || 0}</strong><span>новых категорий</span></div>
+    </div>
+  `;
+}
+
+function renderProductImportPanel() {
+  if (!ui.productsImportPanel) return;
+  const show = Boolean(state.admin.enabled);
+  ui.productsImportPanel.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const canUseImport = Boolean(
+    state.saas.enabled
+    && state.saas.storeId
+    && state.saas.token
+    && subscriptionAllowsAdminFeatures(),
+  );
+
+  if (ui.productsImportFile) ui.productsImportFile.disabled = !canUseImport || state.productImport.loading || state.productImport.importing;
+  if (ui.productsImportPreviewButton) {
+    ui.productsImportPreviewButton.disabled = !canUseImport || !state.productImport.file || state.productImport.loading || state.productImport.importing;
+    ui.productsImportPreviewButton.textContent = state.productImport.loading ? 'Проверяем...' : 'Проверить файл';
+  }
+  if (ui.productsImportSubmitButton) {
+    ui.productsImportSubmitButton.disabled = !canUseImport || !getProductImportReadyRows().length || state.productImport.loading || state.productImport.importing;
+    ui.productsImportSubmitButton.textContent = state.productImport.importing ? 'Импортируем...' : 'Импортировать';
+  }
+
+  const baseStatus = canUseImport
+    ? (state.productImport.status || 'Загрузите CSV или XLSX. Система проверит файл, покажет ошибки и создаст товары после подтверждения.')
+    : 'Импорт доступен только в подключенном SaaS-магазине с активной подпиской.';
+  if (ui.productsImportStatus) ui.productsImportStatus.textContent = baseStatus;
+
+  if (!ui.productsImportPreview) return;
+  const rows = Array.isArray(state.productImport.previewRows) ? state.productImport.previewRows : [];
+  if (!rows.length) {
+    ui.productsImportPreview.innerHTML = `
+      <div class="empty-state products-import-empty">
+        <div class="empty-title">Файл еще не проверен</div>
+        <div class="empty-text">Поддерживаются форматы CSV и XLSX до 5 МБ. Категории создаются автоматически.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const summaryHtml = buildProductImportSummaryHtml(state.productImport.summary);
+  const previewLimit = 20;
+  const visibleRows = rows.slice(0, previewLimit);
+  const moreCount = Math.max(0, rows.length - previewLimit);
+  ui.productsImportPreview.innerHTML = `
+    ${summaryHtml}
+    <div class="products-import-preview-list">
+      ${visibleRows.map((row) => `
+        <article class="products-import-row ${row.canImport ? 'is-valid' : 'is-invalid'}">
+          <div class="products-import-row-head">
+            <strong>Строка ${row.rowNumber}</strong>
+            <span>${row.canImport ? 'Готово' : 'Ошибка'}</span>
+          </div>
+          <div class="products-import-row-grid">
+            <div><span>Товар</span><strong>${escapeHtml(row.normalized?.title || '—')}</strong></div>
+            <div><span>Категория</span><strong>${escapeHtml(row.normalized?.category || '—')}</strong></div>
+            <div><span>Цена</span><strong>${Number.isFinite(Number(row.normalized?.price)) ? `${formatPrice(Number(row.normalized.price))} ₽` : '—'}</strong></div>
+          </div>
+          ${row.errors?.length ? `<div class="products-import-row-note is-error">${row.errors.map((item) => escapeHtml(item)).join('<br />')}</div>` : ''}
+          ${row.warnings?.length ? `<div class="products-import-row-note is-warning">${row.warnings.map((item) => escapeHtml(item)).join('<br />')}</div>` : ''}
+        </article>
+      `).join('')}
+    </div>
+    ${moreCount ? `<div class="products-import-more">Показаны первые ${previewLimit} строк из ${rows.length}. Остальные будут импортированы по тем же правилам.</div>` : ''}
+  `;
+}
+
+async function previewProductImportFile() {
+  if (!state.admin.enabled || !state.saas.storeId || !state.productImport.file) return;
+  if (!requireAdminFeatureAccess()) return;
+  state.productImport.loading = true;
+  state.productImport.previewRows = [];
+  state.productImport.summary = null;
+  state.productImport.status = `Проверяем файл ${state.productImport.fileName || ''}`.trim();
+  renderProductImportPanel();
+  try {
+    const form = new FormData();
+    form.append('file', state.productImport.file);
+    const payload = await saasRequestWithForm(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products/preview`, form, { auth: true });
+    state.productImport.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
+    state.productImport.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
+    const summary = state.productImport.summary || {};
+    state.productImport.status = `Проверка завершена: готово ${summary.readyToImport || 0}, ошибок ${summary.invalidRows || 0}, новых категорий ${summary.categoriesToCreate || 0}.`;
+  } catch (error) {
+    resetProductImportState({ keepFile: true });
+    state.productImport.status = `Ошибка проверки: ${error.message || 'unknown'}`;
+  } finally {
+    state.productImport.loading = false;
+    renderProductImportPanel();
+  }
+}
+
+async function importProductsFromPreview() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const readyRows = getProductImportReadyRows();
+  if (!readyRows.length) {
+    state.productImport.status = 'Нет строк, готовых к импорту.';
+    renderProductImportPanel();
+    return;
+  }
+  const confirmed = window.confirm(`Импортировать ${readyRows.length} товаров в магазин ${state.saas.storeId}?`);
+  if (!confirmed) return;
+  state.productImport.importing = true;
+  state.productImport.status = `Импортируем ${readyRows.length} товаров...`;
+  renderProductImportPanel();
+  try {
+    const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products`, {
+      method: 'POST',
+      auth: true,
+      body: { rows: state.productImport.previewRows },
+    });
+    if (payload.dataset) applyStoreDataset(payload.dataset);
+    renderHeaderStore();
+    renderStores();
+    renderHomeBanners();
+    renderHomeArticles();
+    renderHomePopular();
+    renderPromos();
+    renderCategories();
+    renderProducts();
+    if (state.currentProduct) renderProductView();
+    const result = payload.result || {};
+    const warningCount = Array.isArray(result.warnings) ? result.warnings.length : 0;
+    state.productImport.status = `Импорт завершен: добавлено ${result.importedCount || 0}, пропущено ${result.skippedCount || 0}, предупреждений ${warningCount}.`;
+    reportStatus(`Импортировано товаров: ${result.importedCount || 0}`);
+    resetProductImportState();
+  } catch (error) {
+    state.productImport.status = `Ошибка импорта: ${error.message || 'unknown'}`;
+  } finally {
+    state.productImport.importing = false;
+    renderProductImportPanel();
+  }
+}
+
 function adminRestoreDraft() {
   const raw = localStorage.getItem(getAdminDraftKey());
   if (!raw) return false;
@@ -2643,6 +2823,7 @@ function adminBuildPanel() {
 function applyAdminModeUi() {
   document.body.classList.toggle('admin-mode', state.admin.enabled);
   document.body.classList.toggle('subscription-locked', state.admin.enabled && !subscriptionAllowsAdminFeatures());
+  renderProductImportPanel();
   if (ui.adminHeaderActions) ui.adminHeaderActions.classList.toggle('hidden', !state.admin.enabled);
   if (ui.adminHeaderActions) {
     const locked = state.admin.enabled && !subscriptionAllowsAdminFeatures();
@@ -2794,6 +2975,8 @@ async function saasLoadStoresList() {
 async function saasSwitchStore(nextStoreId) {
   const normalized = String(nextStoreId || '').trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(normalized)) return false;
+  resetProductImportState();
+  state.productImport.status = '';
   state.saas.storeId = normalized;
   state.catalogBotConnections = [];
   state.catalogBotConnectionsStoreId = '';
@@ -4220,6 +4403,7 @@ function applyFilters(list, filter) {
 }
 
 function renderProducts() {
+  renderProductImportPanel();
   const list = getVisibleProducts();
   if (!list.length) {
     ui.productsList.innerHTML = `
@@ -6914,6 +7098,26 @@ function bindEvents() {
   on(ui.productsSort, 'change', () => {
     state.filters.products.sort = ui.productsSort.value;
     renderProducts();
+  });
+
+  on(ui.productsImportFile, 'change', () => {
+    const [file] = Array.from(ui.productsImportFile?.files || []);
+    state.productImport.file = file || null;
+    state.productImport.fileName = String(file?.name || '').trim();
+    state.productImport.previewRows = [];
+    state.productImport.summary = null;
+    state.productImport.status = file
+      ? `Выбран файл: ${state.productImport.fileName}`
+      : 'Файл не выбран.';
+    renderProductImportPanel();
+  });
+
+  on(ui.productsImportPreviewButton, 'click', () => {
+    void previewProductImportFile();
+  });
+
+  on(ui.productsImportSubmitButton, 'click', () => {
+    void importProductsFromPreview();
   });
 
   const applyProductsSearch = debounce((value, source) => {

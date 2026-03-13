@@ -4667,6 +4667,190 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   margin-left: 0;
 }
 
+.products-import-panel {
+  margin: 10px 0 14px;
+}
+
+.products-import-card {
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.products-import-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.products-import-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.products-import-text,
+.products-import-status,
+.products-import-more {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.products-import-sample-link {
+  align-self: flex-start;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.products-import-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.products-import-file {
+  width: 100%;
+  min-width: 0;
+  border: 1px dashed var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.products-import-file::file-selector-button {
+  margin-right: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(140deg, var(--accent), var(--accent-dark));
+}
+
+.products-import-button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.products-import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.products-import-empty {
+  margin: 0;
+}
+
+.products-import-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.products-import-summary-item {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.products-import-summary-item strong {
+  font-size: 18px;
+  color: var(--text);
+}
+
+.products-import-summary-item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.products-import-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.products-import-row {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.products-import-row.is-valid {
+  border-color: color-mix(in oklab, var(--accent) 36%, var(--stroke));
+}
+
+.products-import-row.is-invalid {
+  border-color: rgba(255, 96, 96, 0.45);
+}
+
+.products-import-row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.products-import-row-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.products-import-row-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.products-import-row-grid span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.products-import-row-grid strong {
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.products-import-row-note {
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.products-import-row-note.is-error {
+  background: rgba(255, 96, 96, 0.1);
+  color: #ffb3b3;
+}
+
+.products-import-row-note.is-warning {
+  background: rgba(255, 196, 0, 0.1);
+  color: #ffd77a;
+}
+
 body.admin-mode #screen-categories .admin-catalog-controls .admin-catalog-select,
 body.admin-mode #screen-products .admin-catalog-controls .admin-catalog-select,
 body.admin-mode #screen-categories .admin-catalog-controls .admin-inline-move,
@@ -4682,6 +4866,20 @@ body.admin-mode #screen-products .admin-catalog-controls .admin-inline-plus {
 
 body.admin-mode #screen-products .admin-catalog-controls .admin-catalog-select {
   font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .products-import-head,
+  .products-import-controls,
+  .products-import-row-grid,
+  .products-import-summary {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .products-import-controls {
+    gap: 10px;
+  }
 }
 
 body.subscription-locked .admin-catalog-controls,
