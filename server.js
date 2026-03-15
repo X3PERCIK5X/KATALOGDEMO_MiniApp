@@ -307,6 +307,12 @@ function ensureOrdersColumn(columnName, ddl) {
   if (!exists) db.exec(`ALTER TABLE orders ADD COLUMN ${ddl}`);
 }
 
+function ensureEventsColumn(columnName, ddl) {
+  const rows = db.prepare('PRAGMA table_info(events)').all();
+  const exists = rows.some((r) => String(r.name) === columnName);
+  if (!exists) db.exec(`ALTER TABLE events ADD COLUMN ${ddl}`);
+}
+
 ensureStoresColumn('owner_user_id', "owner_user_id TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_token_enc', "bot_token_enc TEXT NOT NULL DEFAULT ''");
 ensureStoresColumn('bot_username', "bot_username TEXT NOT NULL DEFAULT ''");
@@ -326,6 +332,18 @@ ensureSessionsColumn('user_id', "user_id TEXT NOT NULL DEFAULT ''");
 ensureOrdersColumn('order_number', 'order_number INTEGER NOT NULL DEFAULT 0');
 ensureOrdersColumn('workflow_status', "workflow_status TEXT NOT NULL DEFAULT 'new'");
 ensureOrdersColumn('payment_status', "payment_status TEXT NOT NULL DEFAULT ''");
+ensureOrdersColumn('customer_platform', "customer_platform TEXT NOT NULL DEFAULT 'telegram'");
+ensureOrdersColumn('customer_platform_user_id', "customer_platform_user_id TEXT NOT NULL DEFAULT ''");
+ensureOrdersColumn('customer_identity', "customer_identity TEXT NOT NULL DEFAULT ''");
+ensureEventsColumn('customer_platform', "customer_platform TEXT NOT NULL DEFAULT 'telegram'");
+ensureEventsColumn('customer_platform_user_id', "customer_platform_user_id TEXT NOT NULL DEFAULT ''");
+ensureEventsColumn('customer_identity', "customer_identity TEXT NOT NULL DEFAULT ''");
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_orders_store_customer_identity
+  ON orders(store_id, customer_identity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_store_customer_identity
+  ON events(store_id, customer_identity, created_at DESC);
+`);
 
 function readJsonFallback(filePath, fallback) {
   try {
@@ -1168,6 +1186,99 @@ function normalizeOrderPaymentStatus(raw) {
   return value;
 }
 
+function normalizeCustomerPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram' || value === 'tg' || value === 'telegram_bot') return 'telegram';
+  if (value === 'vk' || value === 'vkontakte' || value === 'vk_bot') return 'vk';
+  if (value === 'max' || value === 'mail' || value === 'mailru') return 'max';
+  if (value === 'whatsapp' || value === 'wa' || value === 'whats_app') return 'whatsapp';
+  if (value === 'instagram' || value === 'insta' || value === 'ig') return 'instagram';
+  if (value === 'web' || value === 'site' || value === 'browser') return 'web';
+  return value || 'web';
+}
+
+function normalizeCustomerPlatformUserId(raw) {
+  return String(raw || '').trim().slice(0, 190);
+}
+
+function buildCustomerIdentity(platform, platformUserId) {
+  const normalizedPlatform = normalizeCustomerPlatform(platform);
+  const normalizedUserId = normalizeCustomerPlatformUserId(platformUserId);
+  if (!normalizedUserId) return '';
+  return `${normalizedPlatform}:${normalizedUserId}`;
+}
+
+function resolveCustomerIdentity(input = {}, customer = {}) {
+  const directIdentity = String(
+    input?.customerIdentity
+    || customer?.customerIdentity
+    || customer?.identity
+    || ''
+  ).trim();
+  const directTelegramId = String(
+    input?.telegramUserId
+    || customer?.telegramId
+    || customer?.telegramUserId
+    || ''
+  ).trim();
+  const directVkId = String(input?.vkUserId || customer?.vkUserId || '').trim();
+  const directMaxId = String(input?.maxUserId || customer?.maxUserId || '').trim();
+  const directWhatsAppId = String(input?.whatsappUserId || input?.waUserId || customer?.whatsappUserId || customer?.waUserId || '').trim();
+  const directInstagramId = String(input?.instagramUserId || input?.igUserId || customer?.instagramUserId || customer?.igUserId || '').trim();
+  let platform = normalizeCustomerPlatform(
+    input?.customerPlatform
+    || input?.platform
+    || customer?.customerPlatform
+    || customer?.platform
+    || ''
+  );
+  let platformUserId = normalizeCustomerPlatformUserId(
+    input?.customerPlatformUserId
+    || input?.platformUserId
+    || input?.customerUserId
+    || customer?.customerPlatformUserId
+    || customer?.platformUserId
+    || customer?.customerUserId
+    || ''
+  );
+  if (directIdentity && directIdentity.includes(':')) {
+    const [identityPlatform, ...identityRest] = directIdentity.split(':');
+    if (!platformUserId) {
+      platform = normalizeCustomerPlatform(identityPlatform);
+      platformUserId = normalizeCustomerPlatformUserId(identityRest.join(':'));
+    }
+  }
+  if (!platformUserId) {
+    if (directTelegramId) {
+      platform = 'telegram';
+      platformUserId = directTelegramId;
+    } else if (directVkId) {
+      platform = 'vk';
+      platformUserId = directVkId;
+    } else if (directMaxId) {
+      platform = 'max';
+      platformUserId = directMaxId;
+    } else if (directWhatsAppId) {
+      platform = 'whatsapp';
+      platformUserId = directWhatsAppId;
+    } else if (directInstagramId) {
+      platform = 'instagram';
+      platformUserId = directInstagramId;
+    }
+  }
+  if (!platformUserId && platform === 'telegram' && directTelegramId) {
+    platformUserId = directTelegramId;
+  }
+  const customerIdentity = buildCustomerIdentity(platform, platformUserId);
+  const telegramUserId = platform === 'telegram' ? normalizeCustomerPlatformUserId(platformUserId || directTelegramId) : directTelegramId;
+  return {
+    customerPlatform: platform,
+    customerPlatformUserId: platformUserId,
+    customerIdentity,
+    telegramUserId,
+  };
+}
+
 function getNextOrderNumber(storeId) {
   const row = db.prepare('SELECT MAX(order_number) AS max_number FROM orders WHERE store_id = ?').get(storeId);
   const current = Number(row?.max_number || 0);
@@ -1212,10 +1323,20 @@ function hydrateOrderRow(row, sequenceMap = new Map()) {
   const total = Number(row?.total_amount || payload?.total || 0);
   const fallbackNumber = Number(sequenceMap.get(String(row?.id || '')) || 0);
   const orderNumber = Number(row?.order_number || 0) > 0 ? Number(row.order_number) : fallbackNumber;
+  const identity = resolveCustomerIdentity({
+    customerPlatform: row?.customer_platform,
+    customerPlatformUserId: row?.customer_platform_user_id,
+    customerIdentity: row?.customer_identity,
+    telegramUserId: row?.telegram_user_id,
+    ...payload,
+  }, customer);
   return {
     id: String(row?.id || ''),
     orderNumber,
-    telegramUserId: String(row?.telegram_user_id || customer?.telegramId || payload?.telegramUserId || '').trim(),
+    telegramUserId: identity.telegramUserId,
+    customerPlatform: identity.customerPlatform,
+    customerPlatformUserId: identity.customerPlatformUserId,
+    customerIdentity: identity.customerIdentity,
     status: workflowStatus,
     paymentStatus,
     total: Number.isFinite(total) ? total : 0,
@@ -1315,6 +1436,9 @@ async function createYookassaOrderPayment({
   amount,
   currency,
   telegramUserId = '',
+  customerPlatform = 'telegram',
+  customerPlatformUserId = '',
+  customerIdentity = '',
   req = null,
 }) {
   if (!integration.accountId || !integration.secretKey) {
@@ -1340,6 +1464,9 @@ async function createYookassaOrderPayment({
       store_id: storeId,
       order_id: orderId,
       telegram_user_id: String(telegramUserId || '').trim(),
+      customer_platform: normalizeCustomerPlatform(customerPlatform),
+      customer_platform_user_id: String(customerPlatformUserId || '').trim(),
+      customer_identity: String(customerIdentity || '').trim(),
     },
   };
   try {
@@ -1392,6 +1519,9 @@ async function createTbankOrderPayment({
   amount,
   currency,
   telegramUserId = '',
+  customerPlatform = 'telegram',
+  customerPlatformUserId = '',
+  customerIdentity = '',
   req = null,
 }) {
   if (!integration.accountId || !integration.secretKey) {
@@ -1439,6 +1569,9 @@ async function createTbankOrderPayment({
       payload: {
         response: payload,
         telegram_user_id: String(telegramUserId || '').trim(),
+        customer_platform: normalizeCustomerPlatform(customerPlatform),
+        customer_platform_user_id: String(customerPlatformUserId || '').trim(),
+        customer_identity: String(customerIdentity || '').trim(),
       },
     });
     return {
@@ -1572,6 +1705,9 @@ async function createCustomLinkOrderPayment({
   amount,
   currency,
   telegramUserId = '',
+  customerPlatform = 'telegram',
+  customerPlatformUserId = '',
+  customerIdentity = '',
 }) {
   const extra = normalizePaymentExtra(integration.extra);
   const templateUrl = String(extra?.templateUrl || '').trim();
@@ -1591,6 +1727,9 @@ async function createCustomLinkOrderPayment({
     currency,
     returnUrl: integration.returnUrl || '',
     telegramUserId: String(telegramUserId || '').trim(),
+    customerPlatform: normalizeCustomerPlatform(customerPlatform),
+    customerPlatformUserId: String(customerPlatformUserId || '').trim(),
+    customerIdentity: String(customerIdentity || '').trim(),
     accountId: String(integration.accountId || '').trim(),
   };
   const paymentUrl = fillPaymentTemplate(parsedTemplate.toString(), values);
@@ -1614,7 +1753,15 @@ async function createCustomLinkOrderPayment({
   };
 }
 
-async function createOrderPayment({ storeRow, orderRow, telegramUserId = '', req = null }) {
+async function createOrderPayment({
+  storeRow,
+  orderRow,
+  telegramUserId = '',
+  customerPlatform = 'telegram',
+  customerPlatformUserId = '',
+  customerIdentity = '',
+  req = null,
+}) {
   const integration = getStorePaymentIntegration(storeRow, { includeSecret: true, req });
   const provider = normalizePaymentProvider(integration.provider);
   if (!provider) return { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_NOT_CONFIGURED' };
@@ -1654,10 +1801,10 @@ async function createOrderPayment({ storeRow, orderRow, telegramUserId = '', req
 
   try {
     if (provider === 'yookassa') {
-      return await createYookassaOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, req });
+      return await createYookassaOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, customerPlatform, customerPlatformUserId, customerIdentity, req });
     }
     if (provider === 'tbank') {
-      return await createTbankOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, req });
+      return await createTbankOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, customerPlatform, customerPlatformUserId, customerIdentity, req });
     }
     if (provider === 'robokassa') {
       return await createRobokassaOrderPayment({ integration, storeId, orderId, amount, currency });
@@ -1666,7 +1813,7 @@ async function createOrderPayment({ storeRow, orderRow, telegramUserId = '', req
       return await createAlfabankOrderPayment({ integration, storeId, orderId, amount, currency, req });
     }
     if (provider === 'custom_link') {
-      return await createCustomLinkOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId });
+      return await createCustomLinkOrderPayment({ integration, storeId, orderId, amount, currency, telegramUserId, customerPlatform, customerPlatformUserId, customerIdentity });
     }
   } catch {}
   return { ok: false, provider, url: '', paymentId: '', error: 'PAYMENT_CREATE_FAILED' };
@@ -2490,6 +2637,8 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
 function buildOrderNotificationText(storeRow, orderPayload) {
   const customer = orderPayload.customer || {};
   const items = Array.isArray(orderPayload.items) ? orderPayload.items : [];
+  const identity = resolveCustomerIdentity(orderPayload, customer);
+  const customerLabel = identity.customerIdentity || identity.telegramUserId || '—';
   const itemsText = items.slice(0, 25).map((it) => {
     const title = String(it?.title || 'Товар');
     const qty = Number(it?.qty || 1);
@@ -2505,7 +2654,7 @@ function buildOrderNotificationText(storeRow, orderPayload) {
     `Имя: ${customer.name || '—'}`,
     `Телефон: ${customer.phone || '—'}`,
     `Email: ${customer.email || '—'}`,
-    `Telegram ID: ${customer.telegramId || orderPayload.telegramUserId || '—'}`,
+    `Клиент: ${customerLabel}`,
     customer.deliveryType ? `Получение: ${customer.deliveryType === 'delivery' ? 'Доставка' : 'Самовывоз'}` : '',
     customer.deliveryAddress ? `Адрес: ${customer.deliveryAddress}` : '',
     itemsText ? `\nТовары:\n${itemsText}` : '',
@@ -2515,6 +2664,7 @@ function buildOrderNotificationText(storeRow, orderPayload) {
 
 function buildOrderNotificationTemplateValues(storeRow, orderPayload, messageText = '') {
   const customer = orderPayload.customer || {};
+  const identity = resolveCustomerIdentity(orderPayload, customer);
   const totalRaw = Number(orderPayload.total || 0);
   const total = Number.isFinite(totalRaw) ? totalRaw : 0;
   return {
@@ -2525,7 +2675,10 @@ function buildOrderNotificationTemplateValues(storeRow, orderPayload, messageTex
     customer_name: String(customer?.name || '').trim(),
     customer_phone: String(customer?.phone || '').trim(),
     customer_email: String(customer?.email || '').trim(),
-    telegram_user_id: String(customer?.telegramId || orderPayload?.telegramUserId || '').trim(),
+    telegram_user_id: identity.telegramUserId,
+    customer_platform: identity.customerPlatform,
+    customer_platform_user_id: identity.customerPlatformUserId,
+    customer_identity: identity.customerIdentity,
     message: String(messageText || '').trim(),
   };
 }
@@ -3870,19 +4023,22 @@ app.post('/api/stores/:storeId/events', storeParamMiddleware, (req, res) => {
   if (Number(req.store.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
   const eventType = String(req.body?.eventType || '').trim();
   const productId = String(req.body?.productId || '').trim();
-  const telegramUserId = String(req.body?.telegramUserId || '').trim();
   const sessionId = String(req.body?.sessionId || '').trim();
   const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
+  const identity = resolveCustomerIdentity(req.body, payload);
 
   if (!eventType) return res.status(400).json({ error: 'EVENT_TYPE_REQUIRED' });
   db.prepare(`
-    INSERT INTO events (store_id, event_type, product_id, telegram_user_id, session_id, payload_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (store_id, event_type, product_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, session_id, payload_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.storeId,
     eventType,
     productId,
-    telegramUserId,
+    identity.telegramUserId,
+    identity.customerPlatform,
+    identity.customerPlatformUserId,
+    identity.customerIdentity,
     sessionId,
     JSON.stringify(payload),
     nowIso(),
@@ -3923,27 +4079,52 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   if (!Number.isFinite(total) || total <= 0) {
     return res.status(400).json({ error: 'ORDER_TOTAL_REQUIRED' });
   }
-  const telegramUserId = String(
-    incoming?.telegramUserId || customer?.telegramId || req.body?.telegramUserId || ''
-  ).trim();
+  const identity = resolveCustomerIdentity(
+    {
+      ...req.body,
+      ...incoming,
+      customerPlatform: incoming?.customerPlatform || req.body?.customerPlatform,
+      customerPlatformUserId: incoming?.customerPlatformUserId || req.body?.customerPlatformUserId,
+      telegramUserId: incoming?.telegramUserId || req.body?.telegramUserId,
+    },
+    customer,
+  );
   const workflowStatus = normalizeOrderWorkflowStatus(incoming?.status || incoming?.workflowStatus || 'new');
   const createdAt = String(incoming?.createdAt || nowIso());
   const ts = nowIso();
+  const customerPayload = {
+    ...customer,
+    platform: identity.customerPlatform,
+    customerPlatform: identity.customerPlatform,
+    platformUserId: identity.customerPlatformUserId,
+    customerPlatformUserId: identity.customerPlatformUserId,
+    customerIdentity: identity.customerIdentity,
+  };
+  if (identity.telegramUserId && !customerPayload.telegramId) customerPayload.telegramId = identity.telegramUserId;
 
   const saveOrderTx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO orders (id, store_id, telegram_user_id, order_number, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, '', ?, 'RUB', ?, ?, ?, ?)
+      INSERT INTO orders (id, store_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, order_number, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 'RUB', ?, ?, ?, ?)
     `).run(
       orderId,
       req.storeId,
-      telegramUserId,
+      identity.telegramUserId,
+      identity.customerPlatform,
+      identity.customerPlatformUserId,
+      identity.customerIdentity,
       orderNumber,
       workflowStatus,
       workflowStatus,
       total,
-      JSON.stringify(customer),
-      JSON.stringify(incoming),
+      JSON.stringify(customerPayload),
+      JSON.stringify({
+        ...incoming,
+        customerPlatform: identity.customerPlatform,
+        customerPlatformUserId: identity.customerPlatformUserId,
+        customerIdentity: identity.customerIdentity,
+        telegramUserId: identity.telegramUserId || String(incoming?.telegramUserId || '').trim(),
+      }),
       createdAt,
       ts,
     );
@@ -3967,11 +4148,14 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     });
 
     db.prepare(`
-      INSERT INTO events (store_id, event_type, product_id, telegram_user_id, session_id, payload_json, created_at)
-      VALUES (?, 'create_order', '', ?, ?, ?, ?)
+      INSERT INTO events (store_id, event_type, product_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, session_id, payload_json, created_at)
+      VALUES (?, 'create_order', '', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.storeId,
-      telegramUserId,
+      identity.telegramUserId,
+      identity.customerPlatform,
+      identity.customerPlatformUserId,
+      identity.customerIdentity,
       String(req.body?.sessionId || ''),
       JSON.stringify({ orderId, total }),
       ts,
@@ -3989,7 +4173,17 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
   const orderRequestChannel = resolveOrderRequestChannelConfig(storeSettings);
   const subscription = getStoreSubscriptionState(req.storeId);
   const notify = subscription.notifyOrders
-    ? await notifyOrderRequest(req.store, { ...incoming, id: orderId, items, customer, total, telegramUserId })
+    ? await notifyOrderRequest(req.store, {
+      ...incoming,
+      id: orderId,
+      items,
+      customer: customerPayload,
+      total,
+      telegramUserId: identity.telegramUserId,
+      customerPlatform: identity.customerPlatform,
+      customerPlatformUserId: identity.customerPlatformUserId,
+      customerIdentity: identity.customerIdentity,
+    })
     : { ok: false, skipped: true, reason: 'SUBSCRIPTION_INACTIVE' };
   let payment = { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_NOT_CONFIGURED' };
   if (subscription.notifyOrders) {
@@ -4002,9 +4196,12 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
           id: orderId,
           total_amount: total,
           currency: 'RUB',
-          telegram_user_id: telegramUserId,
+          telegram_user_id: identity.telegramUserId,
         },
-        telegramUserId,
+        telegramUserId: identity.telegramUserId,
+        customerPlatform: identity.customerPlatform,
+        customerPlatformUserId: identity.customerPlatformUserId,
+        customerIdentity: identity.customerIdentity,
         req,
       });
     }
@@ -4030,18 +4227,45 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
 
 app.get('/api/stores/:storeId/orders/history', storeParamMiddleware, (req, res) => {
   if (Number(req.store.is_active || 0) !== 1) return res.status(403).json({ error: 'STORE_NOT_ACTIVATED' });
-  const telegramUserId = String(req.query?.telegramUserId || '').trim();
-  if (!telegramUserId) return res.status(400).json({ error: 'TELEGRAM_USER_ID_REQUIRED' });
-  const rows = db.prepare(`
-    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
-    FROM orders
-    WHERE store_id = ? AND telegram_user_id = ?
-    ORDER BY created_at DESC
-    LIMIT 200
-  `).all(req.storeId, telegramUserId);
+  const identity = resolveCustomerIdentity(req.query, {});
+  if (!identity.customerIdentity && !identity.telegramUserId) return res.status(400).json({ error: 'CUSTOMER_IDENTITY_REQUIRED' });
+  let rows = [];
+  if (identity.customerIdentity && identity.telegramUserId) {
+    rows = db.prepare(`
+      SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+      FROM orders
+      WHERE store_id = ? AND (customer_identity = ? OR (customer_identity = '' AND telegram_user_id = ?))
+      ORDER BY created_at DESC
+      LIMIT 200
+    `).all(req.storeId, identity.customerIdentity, identity.telegramUserId);
+  } else if (identity.customerIdentity) {
+    rows = db.prepare(`
+      SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+      FROM orders
+      WHERE store_id = ? AND customer_identity = ?
+      ORDER BY created_at DESC
+      LIMIT 200
+    `).all(req.storeId, identity.customerIdentity);
+  } else {
+    rows = db.prepare(`
+      SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+      FROM orders
+      WHERE store_id = ? AND telegram_user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 200
+    `).all(req.storeId, identity.telegramUserId);
+  }
   const sequenceMap = buildOrderSequenceMap(rows);
   const orders = rows.map((row) => hydrateOrderRow(row, sequenceMap));
-  return res.json({ ok: true, storeId: req.storeId, telegramUserId, orders });
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    telegramUserId: identity.telegramUserId,
+    customerPlatform: identity.customerPlatform,
+    customerPlatformUserId: identity.customerPlatformUserId,
+    customerIdentity: identity.customerIdentity,
+    orders,
+  });
 });
 
 function updateOrderPaymentFromCallback({
@@ -4054,6 +4278,9 @@ function updateOrderPaymentFromCallback({
   currency = 'RUB',
   confirmationUrl = '',
   telegramUserId = '',
+  customerPlatform = 'telegram',
+  customerPlatformUserId = '',
+  customerIdentity = '',
   payload = {},
 }) {
   const normalizedProvider = normalizePaymentProvider(provider);
@@ -4108,12 +4335,15 @@ function updateOrderPaymentFromCallback({
 
   const eventType = success ? 'payment_success' : (canceled ? 'payment_fail' : 'payment_pending');
   db.prepare(`
-    INSERT INTO events (store_id, event_type, product_id, telegram_user_id, session_id, payload_json, created_at)
-    VALUES (?, ?, '', ?, '', ?, ?)
+    INSERT INTO events (store_id, event_type, product_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, session_id, payload_json, created_at)
+    VALUES (?, ?, '', ?, ?, ?, ?, '', ?, ?)
   `).run(
     normalizedStoreId,
     eventType,
     String(telegramUserId || '').trim(),
+    normalizeCustomerPlatform(customerPlatform),
+    String(customerPlatformUserId || '').trim(),
+    String(customerIdentity || '').trim(),
     JSON.stringify({ orderId: resolvedOrderId, paymentId: normalizedPaymentId, status: statusCode, amount: amountValue, provider: normalizedProvider }),
     ts,
   );
@@ -4140,6 +4370,9 @@ app.post('/api/stores/:storeId/payments/yookassa/webhook', storeParamMiddleware,
     currency: String(object?.amount?.currency || 'RUB'),
     confirmationUrl: String(object?.confirmation?.confirmation_url || '').trim(),
     telegramUserId: String(metadata?.telegram_user_id || '').trim(),
+    customerPlatform: String(metadata?.customer_platform || '').trim(),
+    customerPlatformUserId: String(metadata?.customer_platform_user_id || '').trim(),
+    customerIdentity: String(metadata?.customer_identity || '').trim(),
     payload,
   });
   return res.json({ ok: true });
@@ -4160,6 +4393,9 @@ app.post('/api/stores/:storeId/payments/tbank/webhook', storeParamMiddleware, (r
     status,
     amount: Number(payload?.Amount || 0) / 100,
     currency: 'RUB',
+    customerPlatform: String(payload?.customer_platform || '').trim(),
+    customerPlatformUserId: String(payload?.customer_platform_user_id || '').trim(),
+    customerIdentity: String(payload?.customer_identity || '').trim(),
     payload,
   });
   return res.json({ ok: true });
@@ -4205,7 +4441,7 @@ app.post('/api/stores/:storeId/payments/alfabank/webhook', storeParamMiddleware,
 
 app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const rows = db.prepare(`
-    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
     FROM orders
     WHERE store_id = ?
     ORDER BY created_at DESC
@@ -4221,7 +4457,7 @@ app.patch('/api/stores/:storeId/admin/orders/:orderId/status', authMiddleware, s
   const nextStatus = normalizeOrderWorkflowStatus(req.body?.status || '');
   if (!orderId) return res.status(400).json({ error: 'ORDER_ID_REQUIRED' });
   const current = db.prepare(`
-    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
     FROM orders
     WHERE store_id = ? AND id = ?
     LIMIT 1
@@ -4231,7 +4467,7 @@ app.patch('/api/stores/:storeId/admin/orders/:orderId/status', authMiddleware, s
   db.prepare('UPDATE orders SET status = ?, workflow_status = ?, updated_at = ? WHERE store_id = ? AND id = ?')
     .run(nextStatus, nextStatus, ts, req.storeId, orderId);
   const updated = db.prepare(`
-    SELECT id, order_number, telegram_user_id, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
+    SELECT id, order_number, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at
     FROM orders
     WHERE store_id = ? AND id = ?
     LIMIT 1

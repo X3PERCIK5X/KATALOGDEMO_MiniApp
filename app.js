@@ -651,6 +651,124 @@ function getTelegramId() {
   return id ? String(id) : '';
 }
 
+function normalizeClientPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'telegram' || value === 'tg') return 'telegram';
+  if (value === 'vk' || value === 'vkontakte') return 'vk';
+  if (value === 'max') return 'max';
+  if (value === 'whatsapp' || value === 'wa') return 'whatsapp';
+  if (value === 'instagram' || value === 'insta' || value === 'ig') return 'instagram';
+  if (value === 'web' || value === 'site' || value === 'browser') return 'web';
+  return value || 'web';
+}
+
+function getClientQueryValue(...keys) {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    for (const key of keys) {
+      const value = String(params.get(key) || '').trim();
+      if (value) return value;
+    }
+  } catch {}
+  return '';
+}
+
+function getGuestPlatformUserId() {
+  const key = 'demo_catalog_guest_user_id_v1';
+  try {
+    const existing = String(localStorage.getItem(key) || '').trim();
+    if (existing) return existing;
+    const next = `guest_${Math.random().toString(36).slice(2, 12)}${Date.now().toString(36)}`;
+    localStorage.setItem(key, next);
+    return next;
+  } catch {
+    return `guest_${Date.now().toString(36)}`;
+  }
+}
+
+function getClientPlatformContext({ allowGuest = true } = {}) {
+  const telegramUserId = String(getTelegramId() || '').trim();
+  const telegramInitData = getTelegramInitData();
+  if (telegramUserId || telegramInitData) {
+    const userId = telegramUserId || '';
+    return {
+      platform: 'telegram',
+      platformUserId: userId,
+      customerIdentity: userId ? `telegram:${userId}` : '',
+      telegramUserId,
+      telegramInitData,
+    };
+  }
+  const explicitPlatform = normalizeClientPlatform(getClientQueryValue('platform', 'customerPlatform'));
+  const explicitUserId = String(getClientQueryValue('platformUserId', 'platform_user_id', 'customerPlatformUserId', 'customer_user_id') || '').trim();
+  if (explicitUserId) {
+    return {
+      platform: explicitPlatform,
+      platformUserId: explicitUserId,
+      customerIdentity: `${explicitPlatform}:${explicitUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  const vkUserId = String(getClientQueryValue('vk_user_id', 'viewer_id', 'vkUserId') || '').trim();
+  if (vkUserId) {
+    return {
+      platform: 'vk',
+      platformUserId: vkUserId,
+      customerIdentity: `vk:${vkUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  const maxUserId = String(getClientQueryValue('max_user_id', 'maxUserId') || '').trim();
+  if (maxUserId) {
+    return {
+      platform: 'max',
+      platformUserId: maxUserId,
+      customerIdentity: `max:${maxUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  const whatsappUserId = String(getClientQueryValue('wa_user_id', 'whatsapp_user_id', 'whatsappUserId') || '').trim();
+  if (whatsappUserId) {
+    return {
+      platform: 'whatsapp',
+      platformUserId: whatsappUserId,
+      customerIdentity: `whatsapp:${whatsappUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  const instagramUserId = String(getClientQueryValue('ig_user_id', 'instagram_user_id', 'instagramUserId') || '').trim();
+  if (instagramUserId) {
+    return {
+      platform: 'instagram',
+      platformUserId: instagramUserId,
+      customerIdentity: `instagram:${instagramUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  if (!allowGuest) {
+    return {
+      platform: 'web',
+      platformUserId: '',
+      customerIdentity: '',
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
+  const guestId = getGuestPlatformUserId();
+  return {
+    platform: 'web',
+    platformUserId: guestId,
+    customerIdentity: `web:${guestId}`,
+    telegramUserId: '',
+    telegramInitData: '',
+  };
+}
+
 function getTelegramInitData() {
   const live = String(window.Telegram?.WebApp?.initData || '').trim();
   if (live) return live;
@@ -712,9 +830,7 @@ function buildTelegramUsernameAvatarUrl(usernameRaw) {
 }
 
 function getPromoOwnerKey() {
-  const tgId = getTelegramId();
-  if (tgId) return `tg:${tgId}`;
-  return 'guest';
+  return getClientPlatformContext().customerIdentity || 'guest';
 }
 
 function hasUsedFirstOrderPromo() {
@@ -4016,9 +4132,9 @@ function scopedStorageKey(baseKey) {
 
 function getOrderHistoryStorageKey() {
   const storeScope = getStorageScopeStoreId();
-  const telegramId = String(getTelegramId() || '').trim()
-    || (String(state.saas.userId || '').startsWith('tg:') ? String(state.saas.userId).slice(3).trim() : '');
-  const userScope = telegramId || 'guest';
+  const context = getClientPlatformContext();
+  const telegramId = String(state.saas.userId || '').startsWith('tg:') ? String(state.saas.userId).slice(3).trim() : '';
+  const userScope = context.customerIdentity || (telegramId ? `telegram:${telegramId}` : 'guest');
   return `demo_catalog_orders_${storeScope}_${userScope}`;
 }
 
@@ -4244,13 +4360,16 @@ function saveStorage() {
 async function saasTrackEvent(eventType, { productId = '', payload = {} } = {}) {
   if (!state.saas.apiBase || !state.saas.storeId) return;
   try {
-    const telegramUserId = getTelegramId();
+    const context = getClientPlatformContext();
     await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/events`, {
       method: 'POST',
       body: {
         eventType,
         productId: String(productId || ''),
-        telegramUserId,
+        telegramUserId: context.telegramUserId,
+        customerPlatform: context.platform,
+        customerPlatformUserId: context.platformUserId,
+        customerIdentity: context.customerIdentity,
         payload: payload && typeof payload === 'object' ? payload : {},
       },
     });
@@ -5421,11 +5540,16 @@ function sortOrdersDesc(list = []) {
 }
 
 async function syncCustomerOrdersFromServer() {
-  const telegramUserId = String(getTelegramId() || '').trim();
+  const context = getClientPlatformContext({ allowGuest: false });
   const storeId = String(state.saas.storeId || '').trim().toUpperCase();
-  if (!telegramUserId || !storeId) return state.orders;
+  if ((!context.customerIdentity && !context.telegramUserId) || !storeId) return state.orders;
   try {
-    const payload = await saasRequest(`/stores/${encodeURIComponent(storeId)}/orders/history?telegramUserId=${encodeURIComponent(telegramUserId)}`);
+    const params = new URLSearchParams();
+    if (context.telegramUserId) params.set('telegramUserId', context.telegramUserId);
+    if (context.platform) params.set('customerPlatform', context.platform);
+    if (context.platformUserId) params.set('customerPlatformUserId', context.platformUserId);
+    if (context.customerIdentity) params.set('customerIdentity', context.customerIdentity);
+    const payload = await saasRequest(`/stores/${encodeURIComponent(storeId)}/orders/history?${params.toString()}`);
     if (Array.isArray(payload?.orders)) {
       state.orders = payload.orders.map((order) => ({
         ...order,
@@ -5560,7 +5684,7 @@ function renderAdminOrderList(target, orders = [], bucket = 'new') {
         <div class="admin-order-meta">Клиент: ${escapeHtml(String(order.customer?.name || '—'))}</div>
         <div class="admin-order-meta">Телефон: ${escapeHtml(String(order.customer?.phone || '—'))}</div>
         <div class="admin-order-meta">Email: ${escapeHtml(String(order.customer?.email || '—'))}</div>
-        <div class="admin-order-meta">Telegram ID: ${escapeHtml(String(order.customer?.telegramId || order.telegramUserId || '—'))}</div>
+        <div class="admin-order-meta">Клиент ID: ${escapeHtml(String(order.customerIdentity || order.customer?.customerIdentity || order.customer?.platformUserId || order.customerPlatformUserId || order.customer?.telegramId || order.telegramUserId || '—'))}</div>
         ${order.customer?.deliveryAddress ? `<div class="admin-order-meta">Адрес: ${escapeHtml(String(order.customer.deliveryAddress))}</div>` : ''}
         ${order.customer?.comment ? `<div class="admin-order-meta">Комментарий: ${escapeHtml(String(order.customer.comment))}</div>` : ''}
         <div class="admin-order-items-list">
@@ -6032,7 +6156,7 @@ async function renderAdminStatsOrders() {
           <div><strong>Клиент:</strong> ${escapeHtml(order.customer?.name || '—')}</div>
           <div><strong>Телефон:</strong> ${escapeHtml(order.customer?.phone || '—')}</div>
           <div><strong>Email:</strong> ${escapeHtml(order.customer?.email || '—')}</div>
-          <div><strong>Telegram ID:</strong> ${escapeHtml(order.customer?.telegramId || order.telegramUserId || '—')}</div>
+          <div><strong>Клиент ID:</strong> ${escapeHtml(order.customerIdentity || order.customer?.customerIdentity || order.customer?.platformUserId || order.customerPlatformUserId || order.customer?.telegramId || order.telegramUserId || '—')}</div>
           <div><strong>Дата:</strong> ${new Date(order.createdAt).toLocaleString('ru-RU')}</div>
           <div><strong>Сумма:</strong> ${escapeHtml(order.totalDisplay || `${formatPrice(adminOrderTotal(order))} ₽`)}</div>
           <hr />
@@ -8100,8 +8224,9 @@ function bindEvents() {
       return;
     }
 
-    const telegramId = getTelegramId();
-    const telegramUsername = getTelegramUsername();
+    const context = getClientPlatformContext();
+    const telegramId = context.telegramUserId;
+    const telegramUsername = telegramId ? getTelegramUsername() : '';
 
     const order = {
       id: Date.now(),
@@ -8111,8 +8236,13 @@ function bindEvents() {
         comment: ui.inputComment ? ui.inputComment.value.trim() : '',
         deliveryType,
         deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : '',
-        telegramId,
+        telegramId: telegramId || '',
         telegramUsername,
+        platform: context.platform,
+        customerPlatform: context.platform,
+        platformUserId: context.platformUserId,
+        customerPlatformUserId: context.platformUserId,
+        customerIdentity: context.customerIdentity,
       },
       items: mappedItems,
       pricedItems,
@@ -8132,6 +8262,9 @@ function bindEvents() {
         totalDisplay: formatSummaryTotal(summary),
       },
       telegramUserId: telegramId || null,
+      customerPlatform: context.platform,
+      customerPlatformUserId: context.platformUserId,
+      customerIdentity: context.customerIdentity,
       status: 'new',
       paymentStatus: '',
       promo: state.promoCode ? {
@@ -8156,6 +8289,9 @@ function bindEvents() {
           body: {
             order,
             telegramUserId: telegramId || '',
+            customerPlatform: context.platform,
+            customerPlatformUserId: context.platformUserId,
+            customerIdentity: context.customerIdentity,
           },
         });
         serverOrderResult = result;
