@@ -58,20 +58,24 @@ const state = {
     catalog: {
       file: null,
       fileName: '',
+      fileLabel: '',
       previewRows: [],
       summary: null,
       status: '',
       loading: false,
       importing: false,
+      previewRequestId: 0,
     },
     category: {
       file: null,
       fileName: '',
+      fileLabel: '',
       previewRows: [],
       summary: null,
       status: '',
       loading: false,
       importing: false,
+      previewRequestId: 0,
     },
   },
   admin: {
@@ -2190,9 +2194,11 @@ function getImportScopeOptions(scope) {
 function resetProductImportState(scope, { keepFile = false } = {}) {
   const importState = getImportScopeState(scope);
   const importUi = getImportScopeUi(scope);
+  importState.previewRequestId += 1;
   if (!keepFile) {
     importState.file = null;
     importState.fileName = '';
+    importState.fileLabel = '';
     if (importUi.file) importUi.file.value = '';
     if (importUi.fileName) importUi.fileName.textContent = 'Не выбран';
   }
@@ -2200,6 +2206,16 @@ function resetProductImportState(scope, { keepFile = false } = {}) {
   importState.summary = null;
   importState.loading = false;
   importState.importing = false;
+}
+
+function formatImportFileLabel(file) {
+  if (!file) return '';
+  const name = String(file.name || '').trim() || 'Без имени';
+  const size = Number(file.size || 0);
+  if (!(size > 0)) return name;
+  if (size >= 1024 * 1024) return `${name} (${(size / (1024 * 1024)).toFixed(1)} МБ)`;
+  if (size >= 1024) return `${name} (${Math.max(1, Math.round(size / 1024))} КБ)`;
+  return `${name} (${size} Б)`;
 }
 
 function getProductImportReadyRows(scope) {
@@ -2246,8 +2262,8 @@ function renderProductImportPanel(scope = 'category') {
 
   if (importUi.file) importUi.file.disabled = !canUseImport || importState.loading || importState.importing;
   if (importUi.fileName) {
-    importUi.fileName.textContent = importState.fileName || 'Не выбран';
-    importUi.fileName.classList.toggle('is-empty', !importState.fileName);
+    importUi.fileName.textContent = importState.fileLabel || importState.fileName || 'Не выбран';
+    importUi.fileName.classList.toggle('is-empty', !importState.fileName && !importState.fileLabel);
   }
   if (importUi.previewButton) {
     importUi.previewButton.disabled = !canUseImport || !importState.file || importState.loading || importState.importing;
@@ -2309,26 +2325,40 @@ async function previewProductImportFile(scope = 'category') {
   const scopeOptions = getImportScopeOptions(scope);
   if (!state.admin.enabled || !state.saas.storeId || !importState.file) return;
   if (!requireAdminFeatureAccess()) return;
+  const requestId = importState.previewRequestId + 1;
+  importState.previewRequestId = requestId;
+  const requestFile = importState.file;
+  const requestFileName = importState.fileName;
+  const requestFileLabel = importState.fileLabel;
   importState.loading = true;
   importState.previewRows = [];
   importState.summary = null;
-  importState.status = `Проверяем файл ${importState.fileName || ''}`.trim();
+  importState.status = `Проверяем файл ${requestFileLabel || requestFileName || ''}`.trim();
   renderProductImportPanel(scope);
   try {
     const form = new FormData();
-    form.append('file', importState.file);
+    form.append('file', requestFile);
     form.append('scope', scopeOptions.scope);
     if (scopeOptions.categoryId) form.append('categoryId', scopeOptions.categoryId);
     if (scopeOptions.groupId) form.append('groupId', scopeOptions.groupId);
     const payload = await saasRequestWithForm(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products/preview`, form, { auth: true });
+    if (requestId !== importState.previewRequestId || requestFile !== importState.file) return;
     importState.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
     importState.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
     const summary = importState.summary || {};
-    importState.status = `Файл проверен: создать ${summary.createCount || 0}, обновить ${summary.updateCount || 0}, ошибок ${summary.invalidRows || 0}. Нажмите «Импортировать».`;
+    const serverFileName = String(payload.fileName || '').trim();
+    const fileLabel = requestFileLabel || requestFileName || serverFileName;
+    importState.status = `Файл проверен: ${fileLabel}. Создать ${summary.createCount || 0}, обновить ${summary.updateCount || 0}, ошибок ${summary.invalidRows || 0}. Нажмите «Импортировать».`;
   } catch (error) {
-    resetProductImportState(scope, { keepFile: true });
+    if (requestId !== importState.previewRequestId || requestFile !== importState.file) return;
+    importState.previewRows = [];
+    importState.summary = null;
+    importState.loading = false;
     importState.status = `Ошибка проверки: ${error.message || 'unknown'}`;
+    renderProductImportPanel(scope);
+    return;
   } finally {
+    if (requestId !== importState.previewRequestId || requestFile !== importState.file) return;
     importState.loading = false;
     renderProductImportPanel(scope);
   }
@@ -7527,12 +7557,14 @@ function bindEvents() {
   on(ui.catalogImportFile, 'change', () => {
     const importState = getImportScopeState('catalog');
     const [file] = Array.from(ui.catalogImportFile?.files || []);
+    importState.previewRequestId += 1;
     importState.file = file || null;
     importState.fileName = String(file?.name || '').trim();
+    importState.fileLabel = formatImportFileLabel(file);
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Файл выбран: ${importState.fileName}. Проверяем...`
+      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Проверяем...`
       : 'Файл не выбран.';
     renderProductImportPanel('catalog');
     if (file) void previewProductImportFile('catalog');
@@ -7549,12 +7581,14 @@ function bindEvents() {
   on(ui.productsImportFile, 'change', () => {
     const importState = getImportScopeState('category');
     const [file] = Array.from(ui.productsImportFile?.files || []);
+    importState.previewRequestId += 1;
     importState.file = file || null;
     importState.fileName = String(file?.name || '').trim();
+    importState.fileLabel = formatImportFileLabel(file);
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Файл выбран: ${importState.fileName}. Проверяем...`
+      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Проверяем...`
       : 'Файл не выбран.';
     renderProductImportPanel('category');
     if (file) void previewProductImportFile('category');
