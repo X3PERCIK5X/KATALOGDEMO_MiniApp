@@ -13,6 +13,8 @@ import {
   previewImport,
   executeImport,
 } from './lib/product-import/index.js';
+import { resolvePlatformBootstrapAuth, resolvePlatformStoreContext } from './lib/platform-auth/index.js';
+import { createOrderDeliveryService } from './lib/channel-delivery/index.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -26,18 +28,27 @@ const DB_PATH = path.join(STORAGE_DIR, 'saas.sqlite3');
 const DEFAULT_STORE_ID = String(process.env.DEFAULT_STORE_ID || '111111').trim().toUpperCase();
 const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || 'admin@demokatalog.app').trim();
 const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || 'Admin12345').trim();
-const OWNER_API_KEY = String(process.env.OWNER_API_KEY || '').trim();
 const BOT_TOKEN_SECRET = String(process.env.BOT_TOKEN_SECRET || '').trim();
-const ADMIN_BOT_TOKEN = String(process.env.ADMIN_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const ADMIN_BOT_WEBHOOK_SECRET = String(process.env.ADMIN_BOT_WEBHOOK_SECRET || '').trim();
+const OWNER_API_KEY_RAW = String(process.env.OWNER_API_KEY_ENC || process.env.OWNER_API_KEY || '').trim();
+const TELEGRAM_BOT_TOKEN_RAW = String(process.env.TELEGRAM_BOT_TOKEN_ENC || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const ADMIN_BOT_TOKEN_RAW = String(process.env.ADMIN_BOT_TOKEN_ENC || process.env.ADMIN_BOT_TOKEN || TELEGRAM_BOT_TOKEN_RAW || '').trim();
+const ADMIN_BOT_WEBHOOK_SECRET_RAW = String(process.env.ADMIN_BOT_WEBHOOK_SECRET_ENC || process.env.ADMIN_BOT_WEBHOOK_SECRET || '').trim();
 const WEBAPP_URL = String(process.env.WEBAPP_URL || '').trim();
 const PUBLIC_API_BASE = String(process.env.PUBLIC_API_BASE || '').trim().replace(/\/$/, '');
+const VK_APP_ID = String(process.env.VK_APP_ID || process.env.VK_MINI_APP_ID || '').trim();
+const VK_APP_SECRET_RAW = String(
+  process.env.VK_APP_SECRET_ENC
+  || process.env.VK_APP_SECRET
+  || process.env.VK_MINI_APP_SECRET
+  || process.env.VK_CLIENT_SECRET
+  || '',
+).trim();
 const SUBSCRIPTION_PAYMENT_URL = String(process.env.SUBSCRIPTION_PAYMENT_URL || '').trim();
 const SUBSCRIPTION_PAYMENT_URL_30 = String(process.env.SUBSCRIPTION_PAYMENT_URL_30 || '').trim();
 const SUBSCRIPTION_PAYMENT_URL_180 = String(process.env.SUBSCRIPTION_PAYMENT_URL_180 || '').trim();
 const SUBSCRIPTION_PAYMENT_URL_365 = String(process.env.SUBSCRIPTION_PAYMENT_URL_365 || '').trim();
 const YOOKASSA_SHOP_ID = String(process.env.YOOKASSA_SHOP_ID || '').trim();
-const YOOKASSA_SECRET_KEY = String(process.env.YOOKASSA_SECRET_KEY || '').trim();
+const YOOKASSA_SECRET_KEY_RAW = String(process.env.YOOKASSA_SECRET_KEY_ENC || process.env.YOOKASSA_SECRET_KEY || '').trim();
 const SUBSCRIPTION_RETURN_URL = String(process.env.SUBSCRIPTION_RETURN_URL || '').trim();
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
@@ -100,6 +111,25 @@ CREATE INDEX IF NOT EXISTS idx_store_catalog_connections_store_sort
   ON store_catalog_connections(store_id, sort_order ASC, id ASC);
 CREATE INDEX IF NOT EXISTS idx_store_catalog_connections_store_platform
   ON store_catalog_connections(store_id, platform);
+
+CREATE TABLE IF NOT EXISTS store_platform_bindings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  platform TEXT NOT NULL DEFAULT 'vk',
+  binding_type TEXT NOT NULL DEFAULT 'community',
+  external_id TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(store_id, platform, binding_type, external_id),
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_store_platform_bindings_store_sort
+  ON store_platform_bindings(store_id, sort_order ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_store_platform_bindings_lookup
+  ON store_platform_bindings(platform, binding_type, external_id);
 
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -541,6 +571,17 @@ function decryptBotToken(value) {
   return decrypted.toString('utf8');
 }
 
+function readEncryptedEnvSecret(rawValue) {
+  return decryptBotToken(String(rawValue || '').trim());
+}
+
+const OWNER_API_KEY = readEncryptedEnvSecret(OWNER_API_KEY_RAW);
+const TELEGRAM_BOT_TOKEN = readEncryptedEnvSecret(TELEGRAM_BOT_TOKEN_RAW);
+const ADMIN_BOT_TOKEN = readEncryptedEnvSecret(ADMIN_BOT_TOKEN_RAW || TELEGRAM_BOT_TOKEN);
+const ADMIN_BOT_WEBHOOK_SECRET = readEncryptedEnvSecret(ADMIN_BOT_WEBHOOK_SECRET_RAW);
+const VK_APP_SECRET = decryptBotToken(VK_APP_SECRET_RAW);
+const YOOKASSA_SECRET_KEY = readEncryptedEnvSecret(YOOKASSA_SECRET_KEY_RAW);
+
 function createSession(storeId, userId = '') {
   const token = crypto.randomBytes(32).toString('hex');
   const createdAt = nowIso();
@@ -750,6 +791,172 @@ function normalizeCatalogConnectionTitle(raw, platform = 'custom', fallback = ''
 
 function normalizeCatalogConnectionIdentifier(raw) {
   return String(raw || '').trim().slice(0, 300);
+}
+
+function normalizeStorePlatformBindingPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'vk' || value === 'vkontakte') return 'vk';
+  if (value === 'telegram' || value === 'tg') return 'telegram';
+  if (value === 'max') return 'max';
+  return 'custom';
+}
+
+function normalizeStorePlatformBindingType(raw, platform = 'custom') {
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const value = String(raw || '').trim().toLowerCase();
+  if (normalizedPlatform === 'vk') return 'community';
+  if (value === 'community' || value === 'group') return 'community';
+  if (value === 'bot') return 'bot';
+  if (value === 'channel') return 'channel';
+  return 'external';
+}
+
+function normalizeVkCommunityExternalId(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const direct = value.match(/^-?[0-9]{1,20}$/);
+  if (direct) return String(Math.abs(Number(direct[0])) || '').trim();
+
+  const cleaned = value
+    .replace(/^https?:\/\/(www\.)?/i, '')
+    .replace(/^m\./i, '')
+    .replace(/^vk\.com\//i, '')
+    .replace(/^\/+/i, '')
+    .trim();
+
+  const clubMatch = cleaned.match(/^(club|public|event)([0-9]{1,20})$/i);
+  if (clubMatch) return String(clubMatch[2] || '').trim();
+
+  const screenNameMatch = cleaned.match(/^[A-Za-z0-9_.]{3,80}$/);
+  if (screenNameMatch) return cleaned.toLowerCase();
+  return '';
+}
+
+function normalizeStorePlatformBindingExternalId(platform, type, raw) {
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const normalizedType = normalizeStorePlatformBindingType(type, normalizedPlatform);
+  if (normalizedPlatform === 'vk' && normalizedType === 'community') {
+    return normalizeVkCommunityExternalId(raw);
+  }
+  return String(raw || '').trim().slice(0, 190);
+}
+
+function normalizeStorePlatformBindingTitle(raw, platform = 'custom', type = 'external', fallback = '') {
+  const value = String(raw || '').trim().slice(0, 140);
+  if (value) return value;
+  const fallbackValue = String(fallback || '').trim().slice(0, 140);
+  if (fallbackValue) return fallbackValue;
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const normalizedType = normalizeStorePlatformBindingType(type, normalizedPlatform);
+  if (normalizedPlatform === 'vk' && normalizedType === 'community') return 'Сообщество VK';
+  return 'Привязка платформы';
+}
+
+function serializeStorePlatformBinding(row, { req = null } = {}) {
+  if (!row) return null;
+  const platform = normalizeStorePlatformBindingPlatform(row.platform);
+  const bindingType = normalizeStorePlatformBindingType(row.binding_type, platform);
+  const externalId = String(row.external_id || '').trim();
+  const title = normalizeStorePlatformBindingTitle(row.title, platform, bindingType, externalId);
+  return {
+    id: Number(row.id || 0),
+    platform,
+    bindingType,
+    externalId,
+    title,
+    catalogUrl: getStoreCatalogUrl(row.store_id, req),
+    createdAt: String(row.created_at || '').trim(),
+    updatedAt: String(row.updated_at || '').trim(),
+  };
+}
+
+function listStorePlatformBindingRows(storeId) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) return [];
+  return db.prepare(`
+    SELECT *
+    FROM store_platform_bindings
+    WHERE store_id = ?
+    ORDER BY sort_order ASC, id ASC
+  `).all(sid);
+}
+
+function listStorePlatformBindings(storeId, { req = null } = {}) {
+  return listStorePlatformBindingRows(storeId)
+    .map((row) => serializeStorePlatformBinding(row, { req }))
+    .filter(Boolean);
+}
+
+function createStorePlatformBindingRecord({
+  storeId,
+  platform,
+  bindingType,
+  externalId,
+  title = '',
+  meta = {},
+}) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!sid) throw new Error('STORE_ID_REQUIRED');
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const normalizedBindingType = normalizeStorePlatformBindingType(bindingType, normalizedPlatform);
+  const normalizedExternalId = normalizeStorePlatformBindingExternalId(normalizedPlatform, normalizedBindingType, externalId);
+  if (!normalizedExternalId) throw new Error('PLATFORM_BINDING_EXTERNAL_ID_REQUIRED');
+  const safeTitle = normalizeStorePlatformBindingTitle(title, normalizedPlatform, normalizedBindingType, normalizedExternalId);
+  const safeMeta = meta && typeof meta === 'object' ? meta : {};
+  const nextSort = Number(
+    db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_sort FROM store_platform_bindings WHERE store_id = ?').get(sid)?.next_sort || 0,
+  );
+  const ts = nowIso();
+  const result = db.prepare(`
+    INSERT INTO store_platform_bindings (
+      store_id, platform, binding_type, external_id, title, meta_json, sort_order, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sid,
+    normalizedPlatform,
+    normalizedBindingType,
+    normalizedExternalId,
+    safeTitle,
+    JSON.stringify(safeMeta),
+    nextSort,
+    ts,
+    ts,
+  );
+  return db.prepare('SELECT * FROM store_platform_bindings WHERE id = ?').get(result.lastInsertRowid) || null;
+}
+
+function getStoreIdByPlatformBinding(platform, bindingType, externalId) {
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const normalizedBindingType = normalizeStorePlatformBindingType(bindingType, normalizedPlatform);
+  const normalizedExternalId = normalizeStorePlatformBindingExternalId(normalizedPlatform, normalizedBindingType, externalId);
+  if (!normalizedExternalId) return '';
+  const row = db.prepare(`
+    SELECT store_id
+    FROM store_platform_bindings
+    WHERE platform = ?
+      AND binding_type = ?
+      AND external_id = ?
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(normalizedPlatform, normalizedBindingType, normalizedExternalId);
+  return String(row?.store_id || '').trim().toUpperCase();
+}
+
+function getStorePlatformBindingRow(platform, bindingType, externalId) {
+  const normalizedPlatform = normalizeStorePlatformBindingPlatform(platform);
+  const normalizedBindingType = normalizeStorePlatformBindingType(bindingType, normalizedPlatform);
+  const normalizedExternalId = normalizeStorePlatformBindingExternalId(normalizedPlatform, normalizedBindingType, externalId);
+  if (!normalizedExternalId) return null;
+  return db.prepare(`
+    SELECT *
+    FROM store_platform_bindings
+    WHERE platform = ?
+      AND binding_type = ?
+      AND external_id = ?
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(normalizedPlatform, normalizedBindingType, normalizedExternalId) || null;
 }
 
 function serializeCatalogConnection(row, { req = null } = {}) {
@@ -993,72 +1200,22 @@ function normalizeOrderProcessingMode(raw) {
   return String(raw || '').trim().toLowerCase() === 'chat' ? 'chat' : 'payment';
 }
 
-function normalizeOrderRequestChannelType(raw) {
-  const value = String(raw || '').trim().toLowerCase();
-  if (value === 'telegram_chat' || value === 'telegram' || value === 'admin_bot') return 'telegram_chat';
-  if (value === 'webhook' || value === 'http_webhook') return 'webhook';
-  if (value === 'external') return 'messenger_link';
-  if (value === 'messenger_link' || value === 'messenger' || value === 'link') return 'messenger_link';
-  return 'telegram_chat';
-}
+const orderDeliveryService = createOrderDeliveryService({
+  decryptBotToken,
+  getStoreSettings,
+  resolveCustomerIdentity,
+  fillPaymentTemplate,
+  isValidHttpUrl,
+  nowIso,
+  fetchImpl: fetch,
+});
 
-function normalizeTelegramChatId(raw) {
-  const value = String(raw || '').trim();
-  return /^-?[0-9]{5,20}$/.test(value) ? value : '';
-}
-
-function resolveOrderRequestChatIdFromSettings(settings) {
-  const source = settings && typeof settings === 'object' ? settings : {};
-  const candidates = [
-    source.orderRequestChatId,
-    source.orderChatId,
-    source.chatId,
-    source.telegramChatId,
-  ];
-  for (const candidate of candidates) {
-    const chatId = normalizeTelegramChatId(candidate);
-    if (chatId) return chatId;
-  }
-  return '';
-}
-
-function resolveOrderRequestTargetFromSettings(settings) {
-  const source = settings && typeof settings === 'object' ? settings : {};
-  return String(
-    source.orderRequestTarget
-    || source.orderRequestUrl
-    || source.orderRequestWebhookUrl
-    || source.orderRequestLink
-    || '',
-  ).trim();
-}
-
-function resolveOrderRequestChannelConfig(settings) {
-  const source = settings && typeof settings === 'object' ? settings : {};
-  const hasRequestUrl = Boolean(String(
-    source.orderRequestTarget
-    || source.orderRequestUrl
-    || source.orderRequestWebhookUrl
-    || source.orderRequestLink
-    || '',
-  ).trim());
-  const channelType = normalizeOrderRequestChannelType(
-    source.orderRequestChannelType
-    || source.orderRequestSender
-    || (hasRequestUrl ? (String(source.orderRequestWebhookUrl || '').trim() ? 'webhook' : 'messenger_link') : '')
-    || '',
-  );
-  if (channelType === 'telegram_chat') {
-    return {
-      channelType,
-      target: resolveOrderRequestChatIdFromSettings(source),
-    };
-  }
-  return {
-    channelType,
-    target: resolveOrderRequestTargetFromSettings(source),
-  };
-}
+const normalizeOrderRequestChannelType = orderDeliveryService.normalizeOrderRequestChannelType;
+const normalizeTelegramChatId = orderDeliveryService.normalizeTelegramChatId;
+const resolveOrderRequestChatIdFromSettings = orderDeliveryService.resolveOrderRequestChatIdFromSettings;
+const resolveOrderRequestTargetFromSettings = orderDeliveryService.resolveOrderRequestTargetFromSettings;
+const resolveOrderRequestVkTokenFromSettings = orderDeliveryService.resolveOrderRequestVkTokenFromSettings;
+const resolveOrderRequestChannelConfig = orderDeliveryService.resolveOrderRequestChannelConfig;
 
 function normalizePaymentProvider(raw) {
   const value = String(raw || '').trim().toLowerCase();
@@ -1881,6 +2038,9 @@ function sanitizeSettingsPatch(settingsPatch) {
       out.orderChatId = chatId;
       out.chatId = chatId;
       out.telegramChatId = chatId;
+      out.orderRequestVkToken = '';
+      out.vkOrderToken = '';
+      out.vkCommunityToken = '';
     } else {
       const target = String(rawProvidedTarget || '').trim();
       out.orderRequestTarget = target;
@@ -1888,6 +2048,17 @@ function sanitizeSettingsPatch(settingsPatch) {
       out.orderRequestLink = target;
       if (resolvedChannel === 'webhook') {
         out.orderRequestWebhookUrl = target;
+        out.orderRequestVkToken = '';
+        out.vkOrderToken = '';
+        out.vkCommunityToken = '';
+      } else if (resolvedChannel === 'vk_messages') {
+        const vkToken = resolveOrderRequestVkTokenFromSettings(out);
+        out.orderRequestWebhookUrl = '';
+        out.orderRequestVkToken = vkToken;
+        out.vkOrderToken = vkToken;
+        out.vkCommunityToken = vkToken;
+      } else {
+        out.orderRequestWebhookUrl = '';
       }
       out.orderRequestChatId = '';
       out.orderChatId = '';
@@ -1915,6 +2086,18 @@ function sanitizeSettingsPatch(settingsPatch) {
       out.orderChatId = chatId;
       out.chatId = chatId;
       out.telegramChatId = chatId;
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(out, 'orderRequestVkToken')
+    || Object.prototype.hasOwnProperty.call(out, 'vkOrderToken')
+    || Object.prototype.hasOwnProperty.call(out, 'vkCommunityToken')
+  ) {
+    const vkToken = resolveOrderRequestVkTokenFromSettings(out);
+    if (normalizeOrderRequestChannelType(out.orderRequestChannelType || '') === 'vk_messages') {
+      out.orderRequestVkToken = vkToken;
+      out.vkOrderToken = vkToken;
+      out.vkCommunityToken = vkToken;
     }
   }
   return out;
@@ -2375,6 +2558,74 @@ function userIdentityFromRequest(body, options = {}) {
   return '';
 }
 
+function getStoresForIdentity(identity, req = null) {
+  const safeIdentity = String(identity || '').trim();
+  if (!safeIdentity) return [];
+  return db.prepare(`
+    SELECT s.store_id, s.store_name
+    FROM stores s
+    JOIN store_users su ON su.store_id = s.store_id
+    WHERE su.user_id = ? AND s.is_active = 1
+    ORDER BY s.created_at ASC
+  `).all(safeIdentity).map((row) => ({
+    storeId: String(row?.store_id || '').trim().toUpperCase(),
+    storeName: String(row?.store_name || '').trim(),
+    catalogUrl: getStoreCatalogUrl(String(row?.store_id || '').trim().toUpperCase(), req),
+  }));
+}
+
+function buildPlatformBootstrapStoreName(platform, profile = {}) {
+  const normalizedPlatform = normalizeCustomerPlatform(platform);
+  const firstName = String(profile?.firstName || profile?.first_name || '').trim();
+  const lastName = String(profile?.lastName || profile?.last_name || '').trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  const username = String(profile?.username || profile?.screen_name || '').trim().replace(/^@+/, '');
+  const platformLabelMap = {
+    telegram: 'Telegram',
+    vk: 'VK',
+    max: 'MAX',
+    whatsapp: 'WhatsApp',
+    instagram: 'Instagram',
+    web: 'Web',
+  };
+  const platformLabel = platformLabelMap[normalizedPlatform] || 'Platform';
+  if (fullName) return `${platformLabel} • ${fullName}`;
+  if (username) return `${platformLabel} • ${username}`;
+  return `${platformLabel} Store`;
+}
+
+function createPlatformBootstrapStore({ identity, email = '', platform = 'web', profile = {} }) {
+  const storeId = uniqueStoreId();
+  const dataset = buildDefaultDataset();
+  const ts = nowIso();
+  const placeholderHash = bcrypt.hashSync(crypto.randomBytes(18).toString('hex'), 10);
+  const storeName = buildPlatformBootstrapStoreName(platform, profile);
+
+  db.prepare(`
+    INSERT INTO stores (store_id, store_name, owner_email, owner_user_id, password_hash, invite_code, is_active, settings_json, config_json, categories_json, products_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?, ?, ?)
+  `).run(
+    storeId,
+    storeName,
+    String(email || '').trim().toLowerCase(),
+    String(identity || '').trim(),
+    placeholderHash,
+    JSON.stringify(dataset.settings || {}),
+    JSON.stringify(dataset.config),
+    JSON.stringify(dataset.categories),
+    JSON.stringify(dataset.products),
+    ts,
+    ts,
+  );
+
+  replaceCategoriesTx(storeId, dataset.categories);
+  replaceProductsTx(storeId, dataset.products);
+  ensureStoreSubscriptionRow(storeId, ts);
+  if (identity) upsertStoreUser(storeId, identity, 'owner');
+  if (email) upsertStoreUser(storeId, `email:${String(email).trim().toLowerCase()}`, 'owner');
+  return getStoreRow(storeId);
+}
+
 function parseTelegramIdFromInitData(initData, botToken) {
   const raw = String(initData || '').trim();
   const token = String(botToken || '').trim();
@@ -2634,154 +2885,13 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
   }
 }
 
-function buildOrderNotificationText(storeRow, orderPayload) {
-  const customer = orderPayload.customer || {};
-  const items = Array.isArray(orderPayload.items) ? orderPayload.items : [];
-  const identity = resolveCustomerIdentity(orderPayload, customer);
-  const customerLabel = identity.customerIdentity || identity.telegramUserId || '—';
-  const itemsText = items.slice(0, 25).map((it) => {
-    const title = String(it?.title || 'Товар');
-    const qty = Number(it?.qty || 1);
-    const price = Number(it?.price || 0);
-    const pricePart = price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : 'по запросу';
-    return `• ${title} × ${qty} (${pricePart})`;
-  }).join('\n');
-
-  const text = [
-    `🛒 Новый заказ (${storeRow.store_id})`,
-    `ID: ${orderPayload.id}`,
-    `Сумма: ${Number(orderPayload.total || 0).toLocaleString('ru-RU')} ₽`,
-    `Имя: ${customer.name || '—'}`,
-    `Телефон: ${customer.phone || '—'}`,
-    `Email: ${customer.email || '—'}`,
-    `Клиент: ${customerLabel}`,
-    customer.deliveryType ? `Получение: ${customer.deliveryType === 'delivery' ? 'Доставка' : 'Самовывоз'}` : '',
-    customer.deliveryAddress ? `Адрес: ${customer.deliveryAddress}` : '',
-    itemsText ? `\nТовары:\n${itemsText}` : '',
-  ].filter(Boolean).join('\n');
-  return text;
-}
-
-function buildOrderNotificationTemplateValues(storeRow, orderPayload, messageText = '') {
-  const customer = orderPayload.customer || {};
-  const identity = resolveCustomerIdentity(orderPayload, customer);
-  const totalRaw = Number(orderPayload.total || 0);
-  const total = Number.isFinite(totalRaw) ? totalRaw : 0;
-  return {
-    store_id: String(storeRow?.store_id || '').trim(),
-    order_id: String(orderPayload?.id || '').trim(),
-    total: total > 0 ? total.toFixed(2) : '0.00',
-    currency: 'RUB',
-    customer_name: String(customer?.name || '').trim(),
-    customer_phone: String(customer?.phone || '').trim(),
-    customer_email: String(customer?.email || '').trim(),
-    telegram_user_id: identity.telegramUserId,
-    customer_platform: identity.customerPlatform,
-    customer_platform_user_id: identity.customerPlatformUserId,
-    customer_identity: identity.customerIdentity,
-    message: String(messageText || '').trim(),
-  };
-}
-
-function buildOrderMessengerRedirectUrl(targetTemplate, values) {
-  const template = String(targetTemplate || '').trim();
-  if (!template) return '';
-  let resolved = fillPaymentTemplate(template, values);
-  if (!isValidHttpUrl(resolved)) return '';
-  const hasMessagePlaceholder = /\{message\}/i.test(template);
-  if (hasMessagePlaceholder) return resolved;
-  try {
-    const parsed = new URL(resolved);
-    if (!parsed.searchParams.has('text') && !parsed.searchParams.has('message')) {
-      parsed.searchParams.set('text', String(values?.message || ''));
-    }
-    resolved = parsed.toString();
-    return isValidHttpUrl(resolved) ? resolved : '';
-  } catch {
-    return '';
-  }
-}
-
-async function notifyOrderViaTelegram(storeRow, orderPayload, { chatIdOverride = '' } = {}) {
-  const token = decryptBotToken(storeRow.bot_token_enc);
-  if (!token) return { ok: false, skipped: true, reason: 'BOT_NOT_CONNECTED' };
-  const settings = getStoreSettings(storeRow);
-  const chatId = normalizeTelegramChatId(chatIdOverride) || resolveOrderRequestChatIdFromSettings(settings);
-  if (!chatId) return { ok: false, skipped: true, reason: 'CHAT_ID_NOT_CONFIGURED' };
-  const text = buildOrderNotificationText(storeRow, orderPayload);
-
-  try {
-    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.ok) return { ok: false, error: 'TELEGRAM_SEND_FAILED' };
-    return { ok: true, via: 'telegram_chat' };
-  } catch {
-    return { ok: false, error: 'TELEGRAM_SEND_FAILED' };
-  }
-}
-
-async function notifyOrderViaWebhook(targetUrl, storeRow, orderPayload) {
-  const endpoint = String(targetUrl || '').trim();
-  if (!isValidHttpUrl(endpoint)) return { ok: false, skipped: true, reason: 'WEBHOOK_URL_NOT_CONFIGURED' };
-  const text = buildOrderNotificationText(storeRow, orderPayload);
-  const payload = {
-    type: 'order_request',
-    storeId: String(storeRow?.store_id || '').trim(),
-    orderId: String(orderPayload?.id || '').trim(),
-    order: orderPayload,
-    message: text,
-    createdAt: nowIso(),
-  };
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const responseBody = await response.text().catch(() => '');
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: 'WEBHOOK_SEND_FAILED',
-        details: String(responseBody || '').slice(0, 200),
-      };
-    }
-    return { ok: true, via: 'webhook' };
-  } catch {
-    return { ok: false, error: 'WEBHOOK_SEND_FAILED' };
-  }
-}
-
-async function notifyOrderRequest(storeRow, orderPayload) {
-  const settings = getStoreSettings(storeRow);
-  const config = resolveOrderRequestChannelConfig(settings);
-  if (config.channelType === 'telegram_chat') {
-    return notifyOrderViaTelegram(storeRow, orderPayload, { chatIdOverride: config.target });
-  }
-  if (config.channelType === 'webhook') {
-    return notifyOrderViaWebhook(config.target, storeRow, orderPayload);
-  }
-  const message = buildOrderNotificationText(storeRow, orderPayload);
-  const values = buildOrderNotificationTemplateValues(storeRow, orderPayload, message);
-  const redirectUrl = buildOrderMessengerRedirectUrl(config.target, values);
-  if (!redirectUrl) {
-    return { ok: false, skipped: true, reason: 'MESSENGER_LINK_NOT_CONFIGURED' };
-  }
-  return {
-    ok: true,
-    via: 'messenger_link',
-    delivery: 'redirect',
-    redirectUrl,
-  };
-}
+const buildOrderNotificationText = orderDeliveryService.buildOrderNotificationText;
+const buildOrderNotificationTemplateValues = orderDeliveryService.buildOrderNotificationTemplateValues;
+const buildOrderMessengerRedirectUrl = orderDeliveryService.buildOrderMessengerRedirectUrl;
+const notifyOrderViaTelegram = orderDeliveryService.notifyOrderViaTelegram;
+const notifyOrderViaVkMessages = orderDeliveryService.notifyOrderViaVkMessages;
+const notifyOrderViaWebhook = orderDeliveryService.notifyOrderViaWebhook;
+const notifyOrderRequest = orderDeliveryService.notifyOrderRequest;
 
 async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
   if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
@@ -2888,8 +2998,7 @@ async function flushPendingAdminMessages(telegramUserId = '') {
 function getAdminMiniAppUrl() {
   const base = resolveCatalogBaseFromEnv();
   if (!base) return '';
-  const url = new URL(`${base}/`);
-  url.searchParams.set('admin', '1');
+  const url = new URL(`${base}/admin`);
   return appendWebAppVersion(url.toString());
 }
 
@@ -3250,6 +3359,100 @@ app.post('/api/auth/register', (req, res) => {
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
 
   return res.json({ ok: true, storeId });
+});
+
+app.post('/api/auth/platform/bootstrap', (req, res) => {
+  const resolved = resolvePlatformBootstrapAuth(req.body || {}, {
+    vkAppId: VK_APP_ID,
+    vkAppSecret: VK_APP_SECRET,
+    resolveTelegramUserIdFromBody,
+  });
+  if (!resolved.ok) {
+    const status = String(resolved?.platform || req.body?.platform || '').trim().toLowerCase() === 'vk'
+      || String(resolved?.error || '').trim().startsWith('VK_')
+      ? 401
+      : 400;
+    return res.status(status).json({ error: resolved.error || 'INVALID_PLATFORM_BOOTSTRAP_PAYLOAD' });
+  }
+
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  let stores = getStoresForIdentity(resolved.identity, req);
+  let primaryStoreId = String(req.body?.storeId || '').trim().toUpperCase();
+  let created = false;
+
+  if (!stores.length) {
+    const createdStore = createPlatformBootstrapStore({
+      identity: resolved.identity,
+      email,
+      platform: resolved.platform,
+      profile: resolved.profile,
+    });
+    if (!createdStore) return res.status(500).json({ error: 'STORE_CREATE_FAILED' });
+    created = true;
+    stores = getStoresForIdentity(resolved.identity, req);
+    primaryStoreId = String(createdStore.store_id || '').trim().toUpperCase();
+  }
+
+  if (!primaryStoreId && stores[0]?.storeId) primaryStoreId = String(stores[0].storeId || '').trim().toUpperCase();
+  if (primaryStoreId && !stores.some((item) => String(item?.storeId || '').trim().toUpperCase() === primaryStoreId)) {
+    primaryStoreId = String(stores[0]?.storeId || '').trim().toUpperCase();
+  }
+  if (!isValidStoreId(primaryStoreId)) return res.status(500).json({ error: 'PLATFORM_BOOTSTRAP_STORE_NOT_FOUND' });
+
+  const token = createSession(primaryStoreId, resolved.identity);
+  const row = getStoreRow(primaryStoreId);
+  if (!row) return res.status(500).json({ error: 'PLATFORM_BOOTSTRAP_STORE_NOT_FOUND' });
+
+  return res.json({
+    ok: true,
+    token,
+    created,
+    storeId: primaryStoreId,
+    userId: resolved.identity,
+    platform: resolved.platform,
+    platformUserId: resolved.platformUserId,
+    catalogUrl: getStoreCatalogUrl(primaryStoreId, req),
+    stores,
+  });
+});
+
+app.post('/api/auth/platform/link', authMiddleware, (req, res) => {
+  const resolved = resolvePlatformBootstrapAuth(req.body || {}, {
+    vkAppId: VK_APP_ID,
+    vkAppSecret: VK_APP_SECRET,
+    resolveTelegramUserIdFromBody,
+  });
+  if (!resolved.ok) {
+    const status = String(resolved?.platform || req.body?.platform || '').trim().toLowerCase() === 'vk'
+      || String(resolved?.error || '').trim().startsWith('VK_')
+      ? 401
+      : 400;
+    return res.status(status).json({ error: resolved.error || 'INVALID_PLATFORM_LINK_PAYLOAD' });
+  }
+
+  const storeId = String(req.auth?.storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  const storeRow = getStoreRow(storeId);
+  if (!storeRow) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+
+  upsertStoreUser(storeId, resolved.identity, 'owner');
+
+  const authUserId = String(req.auth?.userId || '').trim();
+  if (!String(storeRow.owner_user_id || '').trim()) {
+    db.prepare('UPDATE stores SET owner_user_id = ?, updated_at = ? WHERE store_id = ?')
+      .run(resolved.identity, nowIso(), storeId);
+  } else if (authUserId && hasStoreAccess(authUserId, storeId)) {
+    upsertStoreUser(storeId, authUserId, 'owner');
+  }
+
+  return res.json({
+    ok: true,
+    storeId,
+    linkedIdentity: resolved.identity,
+    platform: resolved.platform,
+    platformUserId: resolved.platformUserId,
+    stores: getStoresForIdentity(resolved.identity, req),
+  });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -3635,6 +3838,28 @@ app.get('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMid
   });
 });
 
+app.patch('/api/admin/stores/:storeId/meta', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, (req, res) => {
+  const storeName = String(req.body?.storeName || '').trim().slice(0, 120);
+  if (!storeName) return res.status(400).json({ error: 'STORE_NAME_REQUIRED' });
+  db.prepare(`
+    UPDATE stores
+    SET store_name = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(
+    storeName,
+    nowIso(),
+    req.storeId,
+  );
+  const row = getStoreRow(req.storeId);
+  if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    storeName: String(row.store_name || '').trim(),
+    catalogUrl: getStoreCatalogUrl(req.storeId, req),
+  });
+});
+
 app.post('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
   const platform = normalizeCatalogConnectionPlatform(req.body?.platform || 'telegram');
   const title = normalizeCatalogConnectionTitle(req.body?.title || '', platform, req.body?.identifier || '');
@@ -3728,6 +3953,80 @@ app.delete('/api/admin/stores/:storeId/catalog-bots/:connectionId', authMiddlewa
     removedId: connectionId,
     webhookDelete,
     connections: listStoreCatalogConnections(req.storeId, { req }),
+  });
+});
+
+app.get('/api/admin/stores/:storeId/platform-bindings', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    bindings: listStorePlatformBindings(req.storeId, { req }),
+  });
+});
+
+app.post('/api/admin/stores/:storeId/platform-bindings', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const platform = normalizeStorePlatformBindingPlatform(req.body?.platform || 'vk');
+  const bindingType = normalizeStorePlatformBindingType(req.body?.bindingType || 'community', platform);
+  const externalId = normalizeStorePlatformBindingExternalId(
+    platform,
+    bindingType,
+    req.body?.externalId || req.body?.communityId || req.body?.identifier || '',
+  );
+  const title = normalizeStorePlatformBindingTitle(req.body?.title || '', platform, bindingType, externalId);
+
+  if (!externalId) return res.status(400).json({ error: 'PLATFORM_BINDING_EXTERNAL_ID_REQUIRED' });
+
+  const duplicate = listStorePlatformBindingRows(req.storeId).some((row) => (
+    normalizeStorePlatformBindingPlatform(row.platform) === platform
+    && normalizeStorePlatformBindingType(row.binding_type, row.platform) === bindingType
+    && String(row.external_id || '').trim().toLowerCase() === String(externalId || '').trim().toLowerCase()
+  ));
+  if (duplicate) return res.status(409).json({ error: 'PLATFORM_BINDING_ALREADY_EXISTS' });
+
+  const existingBinding = getStorePlatformBindingRow(platform, bindingType, externalId);
+  if (existingBinding && String(existingBinding.store_id || '').trim().toUpperCase() !== req.storeId) {
+    return res.status(409).json({
+      error: 'PLATFORM_BINDING_CONFLICT',
+      existingStoreId: String(existingBinding.store_id || '').trim().toUpperCase(),
+      binding: serializeStorePlatformBinding(existingBinding, { req }),
+    });
+  }
+
+  const created = createStorePlatformBindingRecord({
+    storeId: req.storeId,
+    platform,
+    bindingType,
+    externalId,
+    title,
+    meta: { createdBy: 'admin-platform-binding' },
+  });
+
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    binding: serializeStorePlatformBinding(created, { req }),
+    bindings: listStorePlatformBindings(req.storeId, { req }),
+  });
+});
+
+app.delete('/api/admin/stores/:storeId/platform-bindings/:bindingId', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const bindingId = Number(req.params?.bindingId || 0);
+  if (!Number.isInteger(bindingId) || bindingId <= 0) {
+    return res.status(400).json({ error: 'INVALID_PLATFORM_BINDING_ID' });
+  }
+  const existing = db.prepare(`
+    SELECT id
+    FROM store_platform_bindings
+    WHERE id = ? AND store_id = ?
+  `).get(bindingId, req.storeId);
+  if (!existing?.id) return res.status(404).json({ error: 'PLATFORM_BINDING_NOT_FOUND' });
+
+  db.prepare('DELETE FROM store_platform_bindings WHERE id = ? AND store_id = ?').run(bindingId, req.storeId);
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    removedId: bindingId,
+    bindings: listStorePlatformBindings(req.storeId, { req }),
   });
 });
 
@@ -4452,6 +4751,36 @@ app.get('/api/stores/:storeId/admin/orders', authMiddleware, storeParamMiddlewar
   return res.json({ ok: true, storeId: req.storeId, orders });
 });
 
+app.post('/api/platform/store-resolve', (req, res) => {
+  const resolved = resolvePlatformStoreContext(req.body || {}, {
+    vkAppId: VK_APP_ID,
+    vkAppSecret: VK_APP_SECRET,
+  });
+  if (!resolved.ok) {
+    const status = String(resolved?.platform || req.body?.platform || '').trim().toLowerCase() === 'vk'
+      || String(resolved?.error || '').trim().startsWith('VK_')
+      ? 401
+      : 400;
+    return res.status(status).json({ error: resolved.error || 'INVALID_PLATFORM_STORE_RESOLVE_PAYLOAD' });
+  }
+
+  if (resolved.platform === 'vk') {
+    const vkGroupId = String(resolved.vkGroupId || '').trim();
+    if (!vkGroupId) return res.status(400).json({ error: 'VK_GROUP_ID_REQUIRED' });
+    const storeId = getStoreIdByPlatformBinding('vk', 'community', vkGroupId);
+    if (!isValidStoreId(storeId)) return res.status(404).json({ error: 'PLATFORM_STORE_NOT_FOUND' });
+    return res.json({
+      ok: true,
+      platform: 'vk',
+      storeId,
+      vkGroupId,
+      catalogUrl: getStoreCatalogUrl(storeId, req),
+    });
+  }
+
+  return res.status(400).json({ error: 'PLATFORM_STORE_RESOLVE_NOT_SUPPORTED' });
+});
+
 app.patch('/api/stores/:storeId/admin/orders/:orderId/status', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
   const orderId = String(req.params.orderId || '').trim();
   const nextStatus = normalizeOrderWorkflowStatus(req.body?.status || '');
@@ -4657,6 +4986,14 @@ function sendNoCacheFile(res, filePath, contentType) {
 }
 
 app.get(/^\/store\/[A-Za-z0-9]{6}$/u, (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get('/admin', (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get(/^\/admin\/.*$/u, (_req, res) => {
   sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
 });
 

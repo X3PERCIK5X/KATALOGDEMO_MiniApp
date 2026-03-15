@@ -44,6 +44,9 @@ const state = {
   catalogBotConnections: [],
   catalogBotConnectionsStoreId: '',
   catalogBotConnectionsLoading: false,
+  platformBindings: [],
+  platformBindingsStoreId: '',
+  platformBindingsLoading: false,
   paymentIntegration: {
     provider: 'yookassa',
     accountId: '',
@@ -99,6 +102,13 @@ const state = {
     settings: {},
     datasetLoaded: false,
     lastPublicSyncAt: 0,
+    lastLinkedPlatformIdentity: '',
+    publicResolveError: null,
+    platformBootstrapError: null,
+    needsAdminStoreSelection: false,
+    pendingOnboarding: null,
+    activeOnboarding: null,
+    lastPlatformConnectPromptKey: '',
   },
   subscription: {
     code: 'unknown',
@@ -295,6 +305,16 @@ const ui = {
   profileBotConnectStatus: document.getElementById('profileBotConnectStatus'),
   profileBotConnectSaveButton: document.getElementById('profileBotConnectSaveButton'),
   profileBotConnectionsList: document.getElementById('profileBotConnectionsList'),
+  profilePlatformBindingsSection: document.getElementById('profilePlatformBindingsSection'),
+  platformBindingForm: document.getElementById('platformBindingForm'),
+  platformBindingPlatformInput: document.getElementById('platformBindingPlatformInput'),
+  platformBindingTypeInput: document.getElementById('platformBindingTypeInput'),
+  platformBindingTitleInput: document.getElementById('platformBindingTitleInput'),
+  platformBindingExternalIdInput: document.getElementById('platformBindingExternalIdInput'),
+  platformBindingStatus: document.getElementById('platformBindingStatus'),
+  platformBindingSaveButton: document.getElementById('platformBindingSaveButton'),
+  platformBindingSetupInfo: document.getElementById('platformBindingSetupInfo'),
+  platformBindingsList: document.getElementById('platformBindingsList'),
   profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
   profileHistorySection: document.getElementById('profileHistorySection'),
   ordersOpenNewButton: document.getElementById('ordersOpenNewButton'),
@@ -328,6 +348,8 @@ const ui = {
   orderRequestChannelInput: document.getElementById('orderRequestChannelInput'),
   orderRequestTargetLabel: document.getElementById('orderRequestTargetLabel'),
   orderRequestTargetInput: document.getElementById('orderRequestTargetInput'),
+  orderRequestVkTokenLabel: document.getElementById('orderRequestVkTokenLabel'),
+  orderRequestVkTokenInput: document.getElementById('orderRequestVkTokenInput'),
   orderRequestHint: document.getElementById('orderRequestHint'),
   orderChatStatus: document.getElementById('orderChatStatus'),
   orderChatSaveButton: document.getElementById('orderChatSaveButton'),
@@ -487,6 +509,91 @@ function reportStatus(message) {
   if (!ui.dataStatus) return;
   ui.dataStatus.classList.remove('hidden');
   ui.dataStatus.textContent = message;
+}
+
+function buildEmptyStateMarkup(title, text) {
+  return `
+    <div class="empty-state">
+      <div class="empty-title">${escapeHtml(title || 'Нет данных')}</div>
+      <div class="empty-text">${escapeHtml(text || 'Попробуйте позже.')}</div>
+    </div>
+  `;
+}
+
+function getPublicPlatformResolveErrorInfo(errorCode, platform = '') {
+  const normalizedPlatform = String(platform || '').trim().toLowerCase();
+  const code = String(errorCode || '').trim().toUpperCase();
+
+  if (normalizedPlatform === 'vk') {
+    if (code === 'PLATFORM_STORE_NOT_FOUND') {
+      return {
+        title: 'Каталог не подключен',
+        message: 'Это сообщество VK пока не привязано к магазину. Подключите сообщество в админке магазина.',
+      };
+    }
+    if (code === 'VK_GROUP_ID_REQUIRED') {
+      return {
+        title: 'Сообщество VK не определено',
+        message: 'Откройте каталог из нужного сообщества VK, чтобы система смогла выбрать магазин.',
+      };
+    }
+    if (code === 'PLATFORM_CONTEXT_UNAVAILABLE') {
+      return {
+        title: 'Данные запуска VK не получены',
+        message: 'VK не передал данные запуска приложения. Перезапустите мини-приложение из сообщества.',
+      };
+    }
+    return {
+      title: 'Каталог VK недоступен',
+      message: 'Не удалось определить магазин по данным запуска VK. Проверьте привязку сообщества и настройки приложения.',
+    };
+  }
+
+  return {
+    title: 'Каталог недоступен',
+    message: 'Не удалось определить магазин для этой платформы.',
+  };
+}
+
+function renderPublicPlatformUnavailableState() {
+  const info = state.saas.publicResolveError;
+  if (!info?.blocking || state.admin.enabled) return;
+
+  if (state.homeBannerTimer) {
+    window.clearInterval(state.homeBannerTimer);
+    state.homeBannerTimer = null;
+  }
+
+  state.categories = [];
+  state.products = [];
+  state.stores = [];
+  state.currentCategory = null;
+  state.currentCategoryIds = null;
+  state.currentProduct = null;
+  state.dataLoaded = true;
+
+  const title = String(info.title || 'Каталог недоступен').trim();
+  const message = String(info.message || 'Не удалось определить магазин для этой платформы.').trim();
+  const markup = buildEmptyStateMarkup(title, message);
+
+  if (ui.homeBannerTrack) {
+    ui.homeBannerTrack.innerHTML = markup;
+    ui.homeBannerTrack.style.transform = '';
+    ui.homeBannerTrack.scrollLeft = 0;
+  }
+  if (ui.homeBannerDots) {
+    ui.homeBannerDots.innerHTML = '';
+    ui.homeBannerDots.classList.add('is-hidden');
+  }
+  if (ui.promoTrack) ui.promoTrack.innerHTML = markup;
+  if (ui.homePopularTrack) ui.homePopularTrack.innerHTML = markup;
+  if (ui.categoriesGrid) ui.categoriesGrid.innerHTML = markup;
+  if (ui.productsList) ui.productsList.innerHTML = markup;
+  if (ui.storesList) ui.storesList.innerHTML = markup;
+  if (ui.aboutText) ui.aboutText.innerHTML = formatMultiline(message);
+  if (ui.categoriesTitle) ui.categoriesTitle.textContent = 'Каталог';
+  if (ui.headerStoreCity) ui.headerStoreCity.textContent = 'Каталог';
+  reportStatus(message);
 }
 
 function requireAdminFeatureAccess(message = 'Функция недоступна: требуется активная подписка.') {
@@ -798,6 +905,17 @@ function getClientPlatformContext({ allowGuest = true } = {}) {
   };
 }
 
+async function waitForPlatformBridgeReady(timeoutMs = 1800) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+      ? window.HORECA_PLATFORM
+      : null;
+    if (!platformBridge || platformBridge.ready) return;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+}
+
 function getTelegramInitData() {
   const live = String(window.Telegram?.WebApp?.initData || '').trim();
   if (live) return live;
@@ -840,6 +958,202 @@ async function resolveTelegramIdentity({ retries = 8, delayMs = 140 } = {}) {
     await new Promise((resolve) => window.setTimeout(resolve, delayMs));
   }
   return { telegramUserId: '', telegramInitData: '' };
+}
+
+async function buildCurrentPlatformAuthPayload({ allowTelegram = false } = {}) {
+  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+    ? window.HORECA_PLATFORM
+    : null;
+  const context = getClientPlatformContext({ allowGuest: false });
+  if (!context?.platform || context.platform === 'web') return null;
+  if (context.platform === 'telegram' && !allowTelegram) return null;
+
+  if (platformBridge?.buildBootstrapPayload) {
+    const payload = platformBridge.buildBootstrapPayload();
+    if (payload && typeof payload === 'object') return payload;
+  }
+
+  if (context.platform === 'telegram') {
+    const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
+    if (!telegramUserId && !telegramInitData) return null;
+    return {
+      platform: 'telegram',
+      telegramUserId,
+      telegramInitData,
+      profile: buildPlatformProfilePayload('telegram'),
+    };
+  }
+
+  if (!context.platformUserId) return null;
+  return {
+    platform: context.platform,
+    platformUserId: context.platformUserId,
+    profile: buildPlatformProfilePayload(context.platform),
+  };
+}
+
+function buildPlatformProfilePayload(platform) {
+  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+    ? window.HORECA_PLATFORM
+    : null;
+  const bridgeContext = typeof platformBridge?.getContext === 'function' ? platformBridge.getContext() : null;
+  const bridgeProfile = bridgeContext?.profile && typeof bridgeContext.profile === 'object' ? bridgeContext.profile : null;
+  if (bridgeProfile && Object.keys(bridgeProfile).length) return bridgeProfile;
+  const normalized = normalizeClientPlatform(platform);
+  if (normalized === 'vk') {
+    const vkUser = window.HORECA_PLATFORM?.vkUserInfo;
+    if (vkUser && typeof vkUser === 'object') {
+      return {
+        id: String(vkUser.id || '').trim(),
+        firstName: String(vkUser.first_name || '').trim(),
+        lastName: String(vkUser.last_name || '').trim(),
+        username: String(vkUser.screen_name || '').trim(),
+        photoUrl: String(vkUser.photo_200 || vkUser.photo_100 || '').trim(),
+      };
+    }
+  }
+  if (normalized === 'telegram') {
+    const user = getTelegramUser();
+    if (user && typeof user === 'object') {
+      return {
+        id: String(user.id || '').trim(),
+        firstName: String(user.first_name || '').trim(),
+        lastName: String(user.last_name || '').trim(),
+        username: String(user.username || '').trim(),
+        photoUrl: buildTelegramUsernameAvatarUrl(String(user.username || '').trim()),
+      };
+    }
+  }
+  return {};
+}
+
+async function saasTryPlatformBootstrap() {
+  if (!state.admin.enabled) return false;
+  await waitForPlatformBridgeReady();
+  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+    ? window.HORECA_PLATFORM
+    : null;
+  const context = getClientPlatformContext({ allowGuest: false });
+  if (!context?.platform || context.platform === 'web') return false;
+  // Telegram оставляем на старом manual-flow, чтобы не создавать новые магазины неожиданно.
+  if (context.platform === 'telegram') return false;
+  if (!context.platformUserId) return false;
+  if (platformBridge?.canAutoBootstrap && !platformBridge.canAutoBootstrap()) return false;
+
+  const payload = await buildCurrentPlatformAuthPayload();
+  if (!payload || typeof payload !== 'object') return false;
+  const hadStoredStoreId = Boolean(String(localStorage.getItem(SAAS_STORE_KEY) || '').trim());
+
+  try {
+    const bootstrap = await saasRequest('/auth/platform/bootstrap', {
+      method: 'POST',
+      body: payload,
+    });
+    const storeId = String(bootstrap?.storeId || '').trim().toUpperCase();
+    const token = String(bootstrap?.token || '').trim();
+    if (!storeId || !token) return false;
+    state.saas.enabled = true;
+    state.saas.storeId = storeId;
+    state.saas.token = token;
+    state.saas.userId = String(bootstrap?.userId || `${context.platform}:${context.platformUserId}`);
+    state.saas.stores = Array.isArray(bootstrap?.stores) ? bootstrap.stores : [];
+    state.saas.pendingOnboarding = {
+      platform: context.platform,
+      created: Boolean(bootstrap?.created),
+      storeId,
+    };
+    state.saas.platformBootstrapError = null;
+    state.saas.needsAdminStoreSelection = !hadStoredStoreId && state.saas.stores.length > 1;
+    localStorage.setItem(SAAS_STORE_KEY, storeId);
+    localStorage.setItem(SAAS_TOKEN_KEY, token);
+    try {
+      const me = await saasRequest('/auth/me', { auth: true });
+      state.saas.userId = String(me?.userId || state.saas.userId || '');
+      state.saas.userProfile = me?.telegramProfile && typeof me.telegramProfile === 'object' ? me.telegramProfile : null;
+      if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
+      state.saas.needsAdminStoreSelection = !hadStoredStoreId && state.saas.stores.length > 1;
+    } catch {}
+    await refreshSubscriptionStatus();
+    return true;
+  } catch (error) {
+    console.error('platform bootstrap failed', error);
+    state.saas.platformBootstrapError = {
+      code: String(error?.payload?.error || error?.message || 'PLATFORM_BOOTSTRAP_FAILED').trim(),
+      platform: context.platform,
+    };
+    return false;
+  }
+}
+
+async function resolvePublicStoreIdFromPlatformContext() {
+  if (state.admin.enabled) return '';
+  state.saas.publicResolveError = null;
+  await waitForPlatformBridgeReady();
+  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+    ? window.HORECA_PLATFORM
+    : null;
+  const context = getClientPlatformContext({ allowGuest: false });
+  if (!context?.platform || context.platform === 'web' || context.platform === 'telegram') return '';
+
+  const payload = platformBridge?.buildBootstrapPayload
+    ? platformBridge.buildBootstrapPayload()
+    : null;
+
+  if (!payload || typeof payload !== 'object') {
+    state.saas.publicResolveError = {
+      platform: context.platform,
+      code: 'PLATFORM_CONTEXT_UNAVAILABLE',
+      blocking: true,
+      ...getPublicPlatformResolveErrorInfo('PLATFORM_CONTEXT_UNAVAILABLE', context.platform),
+    };
+    return '';
+  }
+  try {
+    const resolved = await saasRequest('/platform/store-resolve', {
+      method: 'POST',
+      body: payload,
+    });
+    const storeId = String(resolved?.storeId || '').trim().toUpperCase();
+    state.saas.publicResolveError = null;
+    return /^[A-Z0-9]{6}$/.test(storeId) ? storeId : '';
+  } catch (error) {
+    console.error('public platform store resolve failed', error);
+    const code = String(error?.message || 'PLATFORM_STORE_RESOLVE_FAILED').trim();
+    state.saas.publicResolveError = {
+      platform: context.platform,
+      code,
+      blocking: true,
+      ...getPublicPlatformResolveErrorInfo(code, context.platform),
+    };
+    return '';
+  }
+}
+
+async function saasEnsurePlatformLinked() {
+  if (!state.admin.enabled || !state.saas.enabled || !state.saas.storeId || !state.saas.token) return false;
+  const context = getClientPlatformContext({ allowGuest: false });
+  if (!context?.platform || context.platform === 'web') return false;
+  const identityKey = `${String(state.saas.storeId || '').trim().toUpperCase()}:${String(context.customerIdentity || `${context.platform}:${context.platformUserId || ''}`).trim()}`;
+  if (!identityKey || state.saas.lastLinkedPlatformIdentity === identityKey) return true;
+
+  const payload = await buildCurrentPlatformAuthPayload({ allowTelegram: true });
+  if (!payload || typeof payload !== 'object') return false;
+
+  try {
+    const result = await saasRequest('/auth/platform/link', {
+      method: 'POST',
+      auth: true,
+      body: payload,
+    });
+    state.saas.lastLinkedPlatformIdentity = String(result?.linkedIdentity || identityKey);
+    if (Array.isArray(result?.stores) && result.stores.length) {
+      state.saas.stores = result.stores;
+    }
+    return true;
+  } catch (error) {
+    console.error('platform link failed', error);
+    return false;
+  }
 }
 
 function getTelegramUsername() {
@@ -1093,6 +1407,7 @@ function setScreen(name) {
   if (name === 'settings-bots') {
     renderBotSettings();
     renderProfileBotConnectSection();
+    void maybeOpenCurrentPlatformConnectionPrompt();
   }
   if (name === 'settings-checkout') {
     renderOrderChatSettings();
@@ -1227,16 +1542,26 @@ function ensureProfileAdminSections() {
     section.className = 'profile-subscription-card hidden';
     section.innerHTML = `
       <div class="section-title">Уведомления о заказах в чат</div>
-      <p class="feedback-note">1) Добавьте admin-бота в нужный Telegram-чат. 2) Бот отправит в чат его Chat ID. 3) Вставьте Chat ID ниже и сохраните.</p>
+      <p class="feedback-note">Выберите канал уведомлений: Telegram, VK, webhook или внешняя ссылка мессенджера.</p>
       <form id="orderChatSettingsForm" class="order-form flat">
         <input id="orderChatModeInput" type="hidden" value="chat" />
-        <input id="orderRequestChannelInput" type="hidden" value="telegram_chat" />
+        <label>Канал уведомлений
+          <select id="orderRequestChannelInput">
+            <option value="telegram_chat">Telegram чат</option>
+            <option value="vk_messages">VK сообщения</option>
+            <option value="webhook">Webhook</option>
+            <option value="messenger_link">Ссылка мессенджера</option>
+          </select>
+        </label>
         <label id="orderRequestTargetLabel">Chat ID Telegram
           <input id="orderRequestTargetInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Например: -1001234567890" />
         </label>
-        <p id="orderRequestHint" class="feedback-note">После сохранения новые заявки будут отправляться в этот чат.</p>
+        <label id="orderRequestVkTokenLabel" class="hidden">Токен сообщества VK
+          <input id="orderRequestVkTokenInput" type="text" autocomplete="off" placeholder="vk1.a.... или сервисный токен сообщества" />
+        </label>
+        <p id="orderRequestHint" class="feedback-note">После сохранения новые заявки будут отправляться в выбранный канал.</p>
         <div id="orderChatStatus" class="status"></div>
-        <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить Chat ID</button>
+        <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить канал уведомлений</button>
       </form>
     `;
     const anchor = ui.profilePaymentIntegrationSection || ui.profileSubscriptionSection || ui.profileHistorySection;
@@ -1264,6 +1589,15 @@ function ensureProfileAdminSections() {
   ui.profileBotConnectStatus = document.getElementById('profileBotConnectStatus');
   ui.profileBotConnectSaveButton = document.getElementById('profileBotConnectSaveButton');
   ui.profileBotConnectionsList = document.getElementById('profileBotConnectionsList');
+  ui.profilePlatformBindingsSection = document.getElementById('profilePlatformBindingsSection');
+  ui.platformBindingForm = document.getElementById('platformBindingForm');
+  ui.platformBindingPlatformInput = document.getElementById('platformBindingPlatformInput');
+  ui.platformBindingTypeInput = document.getElementById('platformBindingTypeInput');
+  ui.platformBindingTitleInput = document.getElementById('platformBindingTitleInput');
+  ui.platformBindingExternalIdInput = document.getElementById('platformBindingExternalIdInput');
+  ui.platformBindingStatus = document.getElementById('platformBindingStatus');
+  ui.platformBindingSaveButton = document.getElementById('platformBindingSaveButton');
+  ui.platformBindingsList = document.getElementById('platformBindingsList');
 
   ui.profileOrderChatSection = document.getElementById('profileOrderChatSection');
   ui.orderChatSettingsForm = document.getElementById('orderChatSettingsForm');
@@ -1271,6 +1605,8 @@ function ensureProfileAdminSections() {
   ui.orderRequestChannelInput = document.getElementById('orderRequestChannelInput');
   ui.orderRequestTargetLabel = document.getElementById('orderRequestTargetLabel');
   ui.orderRequestTargetInput = document.getElementById('orderRequestTargetInput');
+  ui.orderRequestVkTokenLabel = document.getElementById('orderRequestVkTokenLabel');
+  ui.orderRequestVkTokenInput = document.getElementById('orderRequestVkTokenInput');
   ui.orderRequestHint = document.getElementById('orderRequestHint');
   ui.orderChatStatus = document.getElementById('orderChatStatus');
   ui.orderChatSaveButton = document.getElementById('orderChatSaveButton');
@@ -1822,8 +2158,8 @@ function adminEnsureActionSheet() {
   return modal;
 }
 
-function adminOpenActionSheet(title, actions = []) {
-  if (!requireAdminFeatureAccess()) return Promise.resolve(null);
+function adminOpenActionSheet(title, actions = [], { skipFeatureGate = false } = {}) {
+  if (!skipFeatureGate && !requireAdminFeatureAccess()) return Promise.resolve(null);
   const modal = adminEnsureActionSheet();
   const titleEl = modal.querySelector('.admin-actions-title');
   const listEl = modal.querySelector('.admin-actions-list');
@@ -3380,9 +3716,19 @@ function clearSaasAuth() {
   state.saas.userProfile = null;
   state.saas.stores = [];
   state.saas.settings = {};
+  state.saas.lastLinkedPlatformIdentity = '';
+  state.saas.publicResolveError = null;
+  state.saas.platformBootstrapError = null;
+  state.saas.needsAdminStoreSelection = false;
+  state.saas.pendingOnboarding = null;
+  state.saas.activeOnboarding = null;
+  state.saas.lastPlatformConnectPromptKey = '';
   state.catalogBotConnections = [];
   state.catalogBotConnectionsStoreId = '';
   state.catalogBotConnectionsLoading = false;
+  state.platformBindings = [];
+  state.platformBindingsStoreId = '';
+  state.platformBindingsLoading = false;
   localStorage.removeItem(SAAS_TOKEN_KEY);
   localStorage.removeItem(SAAS_STORE_KEY);
 }
@@ -3399,6 +3745,72 @@ async function saasLoadStoresList() {
   }
 }
 
+function formatAdminStoreChoiceLabel(store) {
+  const storeId = String(store?.storeId || '').trim().toUpperCase();
+  const storeName = String(store?.storeName || '').trim();
+  return storeName ? `${storeId} — ${storeName}` : storeId;
+}
+
+async function saasChooseStoreFromList(stores, {
+  title = 'Выберите магазин',
+  allowPromptFallback = true,
+} = {}) {
+  const normalizedStores = Array.isArray(stores) ? stores.filter((item) => String(item?.storeId || '').trim()) : [];
+  if (!normalizedStores.length) return null;
+  if (normalizedStores.length === 1) return normalizedStores[0];
+
+  if (normalizedStores.length <= 12) {
+    const action = await adminOpenActionSheet(title, normalizedStores.map((store) => ({
+      id: String(store.storeId || '').trim().toUpperCase(),
+      label: formatAdminStoreChoiceLabel(store),
+    })), { skipFeatureGate: true });
+    if (!action) return null;
+    return normalizedStores.find((store) => String(store?.storeId || '').trim().toUpperCase() === String(action || '').trim().toUpperCase()) || null;
+  }
+
+  if (!allowPromptFallback) return null;
+  const options = normalizedStores.map((store, index) => `${index + 1}. ${formatAdminStoreChoiceLabel(store)}`).join('\n');
+  const answer = window.prompt(`${title}\n${options}\n\nВведите номер или Store ID:`, String(state.saas.storeId || ''));
+  if (!answer) return null;
+  const trimmed = String(answer).trim().toUpperCase();
+  const byIndex = Number(trimmed);
+  return Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= normalizedStores.length
+    ? normalizedStores[byIndex - 1]
+    : normalizedStores.find((store) => String(store?.storeId || '').trim().toUpperCase() === trimmed) || null;
+}
+
+async function saasEnsureCurrentAdminStoreSelection({
+  interactive = false,
+  title = 'Выберите магазин',
+} = {}) {
+  const stores = Array.isArray(state.saas.stores) && state.saas.stores.length
+    ? state.saas.stores
+    : await saasLoadStoresList();
+  if (!stores.length) return false;
+
+  const currentStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+  const currentExists = currentStoreId && stores.some((store) => String(store?.storeId || '').trim().toUpperCase() === currentStoreId);
+  const mustChoose = Boolean(state.saas.needsAdminStoreSelection);
+
+  if (currentExists && !mustChoose) return true;
+
+  if (stores.length === 1) {
+    state.saas.storeId = String(stores[0].storeId || '').trim().toUpperCase();
+    state.saas.needsAdminStoreSelection = false;
+    localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+    return true;
+  }
+
+  if (!interactive) return false;
+
+  const picked = await saasChooseStoreFromList(stores, { title });
+  if (!picked?.storeId) return false;
+  state.saas.storeId = String(picked.storeId || '').trim().toUpperCase();
+  state.saas.needsAdminStoreSelection = false;
+  localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+  return true;
+}
+
 async function saasSwitchStore(nextStoreId) {
   const normalized = String(nextStoreId || '').trim().toUpperCase();
   if (!/^[A-Z0-9]{6}$/.test(normalized)) return false;
@@ -3410,6 +3822,7 @@ async function saasSwitchStore(nextStoreId) {
   state.catalogBotConnections = [];
   state.catalogBotConnectionsStoreId = '';
   state.catalogBotConnectionsLoading = false;
+  state.saas.needsAdminStoreSelection = false;
   localStorage.setItem(SAAS_STORE_KEY, normalized);
   const payload = await saasRequest(`/stores/${encodeURIComponent(normalized)}/admin/data`, { auth: true });
   applyStoreDataset(payload);
@@ -3443,16 +3856,8 @@ async function saasPromptSelectStore() {
     window.alert('Магазины не найдены для текущего аккаунта.');
     return;
   }
-  const options = stores.map((s, i) => `${i + 1}. ${s.storeId} — ${s.storeName || ''}`).join('\n');
-  const answer = window.prompt(`Выберите магазин:\n${options}\n\nВведите номер или Store ID:`, String(state.saas.storeId || ''));
-  if (!answer) return;
-  const trimmed = String(answer).trim().toUpperCase();
-  const byIndex = Number(trimmed);
-  const picked = Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= stores.length
-    ? stores[byIndex - 1]
-    : stores.find((s) => String(s.storeId || '').toUpperCase() === trimmed);
+  const picked = await saasChooseStoreFromList(stores, { title: 'Выберите магазин' });
   if (!picked?.storeId) {
-    window.alert('Магазин не найден.');
     return;
   }
   await saasSwitchStore(picked.storeId);
@@ -3524,6 +3929,7 @@ function ensureSaasAuthModal() {
         <button type="button" class="saas-auth-tab active" data-auth-tab="login">Вход</button>
         <button type="button" class="saas-auth-tab" data-auth-tab="register">Регистрация</button>
       </div>
+      <div class="saas-auth-platform-hint hidden"></div>
       <form class="saas-auth-form" autocomplete="on" novalidate>
         <label class="saas-auth-label">Bot ID
           <input class="admin-modal-input" name="storeId" placeholder="например: A1B2C3" required maxlength="6" />
@@ -3566,12 +3972,40 @@ function openSaasAuthModal() {
   const passwordInput = modal.querySelector('input[name="password"]');
   const repeatWrap = modal.querySelector('.saas-auth-repeat');
   const repeatInput = modal.querySelector('input[name="passwordRepeat"]');
+  const platformHint = modal.querySelector('.saas-auth-platform-hint');
   const errorBox = modal.querySelector('.saas-auth-error');
   const submitBtn = modal.querySelector('[data-auth-submit]');
   const recoverBtn = modal.querySelector('[data-auth-recover]');
   const tabs = Array.from(modal.querySelectorAll('[data-auth-tab]'));
   let resetCode = '';
   let mode = 'login';
+
+  const renderPlatformHint = () => {
+    if (!platformHint) return;
+    const context = getClientPlatformContext({ allowGuest: false });
+    const errorCode = String(state.saas.platformBootstrapError?.code || '').trim();
+    if (!context?.platform || context.platform === 'web' || context.platform === 'telegram' || !errorCode) {
+      platformHint.classList.add('hidden');
+      platformHint.textContent = '';
+      return;
+    }
+    const messages = {
+      VK_SIGN_REQUIRED: 'VK не передал подпись запуска. Автовход с платформы недоступен.',
+      VK_SIGN_INVALID: 'VK передал некорректную подпись запуска. Сервер отклонил автовход.',
+      VK_USER_ID_REQUIRED: 'VK не передал идентификатор пользователя. Автовход невозможен.',
+      VK_APP_ID_MISMATCH: 'VK запущен не с тем App ID, который настроен на сервере.',
+      VK_LAUNCH_PARAMS_REQUIRED: 'VK не передал launch params приложению.',
+      VK_LAUNCH_PARAMS_INVALID: 'VK передал launch params в некорректном формате.',
+      PLATFORM_USER_ID_REQUIRED: 'Платформа не передала идентификатор пользователя для автовхода.',
+    };
+    const label = context.platform === 'vk'
+      ? 'Подключение VK'
+      : context.platform === 'max'
+        ? 'Подключение MAX'
+        : 'Подключение платформы';
+    platformHint.textContent = `${label}: ${messages[errorCode] || `автовход не выполнен (${errorCode})`}`;
+    platformHint.classList.remove('hidden');
+  };
 
   const setMode = (nextMode) => {
     if (nextMode === 'register') mode = 'register';
@@ -3621,6 +4055,7 @@ function openSaasAuthModal() {
   };
 
   setMode('login');
+  renderPlatformHint();
   modal.classList.remove('hidden');
   setTimeout(() => storeInput?.focus(), 20);
 
@@ -3805,7 +4240,10 @@ async function saasRequest(path, { method = 'GET', body, auth = false } = {}) {
   }
   if (!response.ok) {
     const message = payload?.error || `HTTP ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.payload = payload || {};
+    error.status = response.status;
+    throw error;
   }
   return payload || {};
 }
@@ -3820,7 +4258,10 @@ async function saasRequestWithForm(path, formData, { auth = false } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.error || `HTTP ${response.status}`);
+    const error = new Error(payload?.error || `HTTP ${response.status}`);
+    error.payload = payload || {};
+    error.status = response.status;
+    throw error;
   }
   return payload || {};
 }
@@ -3849,6 +4290,100 @@ function getCurrentStoreMeta() {
   return state.saas.stores.find((store) => String(store?.storeId || '').trim().toUpperCase() === activeStoreId) || null;
 }
 
+async function saveCurrentStoreMeta({ storeName } = {}) {
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  const normalizedStoreName = String(storeName || '').trim();
+  if (!state.admin.enabled || !storeId || !normalizedStoreName) return false;
+  const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/meta`, {
+    method: 'PATCH',
+    auth: true,
+    body: { storeName: normalizedStoreName },
+  });
+  if (Array.isArray(state.saas.stores)) {
+    state.saas.stores = state.saas.stores.map((store) => (
+      String(store?.storeId || '').trim().toUpperCase() === storeId
+        ? { ...store, storeName: normalizedStoreName, catalogUrl: String(payload?.catalogUrl || store.catalogUrl || '').trim() }
+        : store
+    ));
+  }
+  return true;
+}
+
+async function runPendingPlatformOnboarding() {
+  if (!state.admin.enabled || !state.saas.pendingOnboarding || !state.saas.storeId) return false;
+  const onboarding = state.saas.pendingOnboarding;
+  state.saas.pendingOnboarding = null;
+
+  if (!onboarding?.created) return false;
+
+  const currentStore = getCurrentStoreMeta();
+  const currentName = String(currentStore?.storeName || '').trim();
+  const suggestedName = currentName && !/^store\b/i.test(currentName) && !/^new store$/i.test(currentName)
+    ? currentName
+    : '';
+  const nextName = await adminEditValue('Название магазина', suggestedName, { multiline: false });
+  if (typeof nextName === 'string') {
+    const trimmed = String(nextName || '').trim();
+    if (trimmed && trimmed !== currentName) {
+      try {
+        await saveCurrentStoreMeta({ storeName: trimmed });
+      } catch (error) {
+        reportStatus(`Не удалось сохранить название магазина: ${String(error?.message || 'unknown')}`);
+      }
+    }
+  }
+
+  renderProfile();
+  setScreen('settings-bots');
+  state.saas.activeOnboarding = {
+    platform: String(onboarding.platform || '').trim().toLowerCase(),
+    step: 'bind-community',
+    storeId: String(state.saas.storeId || '').trim().toUpperCase(),
+  };
+  if (ui.profilePlatformBindingsSection) {
+    ui.profilePlatformBindingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (ui.platformBindingStatus) {
+    ui.platformBindingStatus.textContent = 'Шаг 2: привяжите первое сообщество VK к этому магазину, чтобы запустить каталог для покупателей.';
+  }
+  reportStatus('Магазин создан. Следующий шаг: привязать сообщество VK к каталогу.');
+  return true;
+}
+
+function finishActivePlatformOnboardingAfterVkBinding(binding = null) {
+  const active = state.saas.activeOnboarding;
+  const currentStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!active || active.platform !== 'vk' || active.step !== 'bind-community' || active.storeId !== currentStoreId) {
+    return false;
+  }
+
+  state.saas.activeOnboarding = null;
+  const launchUrl = getVkCatalogAppUrl();
+  const bindingLabel = String(binding?.externalId || binding?.title || 'сообщество VK').trim();
+
+  if (ui.profilePlatformBindingsSection) {
+    ui.profilePlatformBindingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (ui.platformBindingStatus) {
+    ui.platformBindingStatus.textContent = launchUrl
+      ? `Готово: ${bindingLabel} привязано. URL VK Catalog App: ${launchUrl}`
+      : `Готово: ${bindingLabel} привязано к магазину.`;
+  }
+  reportStatus('VK-каталог подключен. Сообщество привязано к текущему магазину.');
+
+  const alertLines = [
+    'VK onboarding завершен.',
+    '',
+    `Сообщество: ${bindingLabel}`,
+    `Магазин: ${currentStoreId}`,
+    launchUrl ? `URL VK Catalog App: ${launchUrl}` : '',
+    '',
+    'Следующий шаг: вставьте этот URL в настройки VK Mini App и откройте приложение из привязанного сообщества.',
+  ].filter(Boolean);
+  window.alert(alertLines.join('\n'));
+  return true;
+}
+
 function getCurrentStoreCatalogUrl() {
   const fromMeta = String(getCurrentStoreMeta()?.catalogUrl || '').trim();
   if (fromMeta) return fromMeta;
@@ -3869,6 +4404,30 @@ function getCurrentStoreCatalogUrl() {
   return `${window.location.origin}/store/${encodeURIComponent(storeId)}`;
 }
 
+function getSaasPublicOrigin() {
+  const apiBase = String(state.saas.apiBase || getSaasApiBase() || '').trim();
+  if (apiBase) {
+    try {
+      const apiUrl = new URL(apiBase);
+      apiUrl.pathname = '';
+      apiUrl.search = '';
+      apiUrl.hash = '';
+      return apiUrl.origin;
+    } catch {}
+  }
+  return String(window.location.origin || '').trim();
+}
+
+function getVkCatalogAppUrl() {
+  const origin = getSaasPublicOrigin();
+  return origin ? `${origin}/?platform=vk` : '';
+}
+
+function getVkAdminAppUrl() {
+  const origin = getSaasPublicOrigin();
+  return origin ? `${origin}/?admin=1&platform=vk` : '';
+}
+
 function normalizeCatalogBotPlatform(raw) {
   const value = String(raw || '').trim().toLowerCase();
   if (value === 'telegram' || value === 'tg') return 'telegram';
@@ -3879,6 +4438,112 @@ function normalizeCatalogBotPlatform(raw) {
 
 function getCatalogBotPlatformMeta(platform) {
   return CATALOG_BOT_PLATFORM_META[normalizeCatalogBotPlatform(platform)] || CATALOG_BOT_PLATFORM_META.custom;
+}
+
+function getCurrentAdminPlatform() {
+  if (!state.admin.enabled) return 'web';
+  return normalizeClientPlatform(getClientPlatformContext({ allowGuest: false })?.platform || 'web');
+}
+
+function hasCurrentPlatformPrimaryConnection(platform) {
+  const normalized = normalizeClientPlatform(platform);
+  if (!state.admin.enabled || !state.saas.storeId) return true;
+  if (normalized === 'web' || !normalized) return true;
+  if (normalized === 'vk') {
+    return state.platformBindings.some((binding) => normalizePlatformBindingPlatform(binding?.platform) === 'vk');
+  }
+  if (normalized === 'telegram' || normalized === 'max') {
+    return state.catalogBotConnections.some((connection) => normalizeCatalogBotPlatform(connection?.platform) === normalized);
+  }
+  return state.catalogBotConnections.some((connection) => normalizeCatalogBotPlatform(connection?.platform) === normalized);
+}
+
+function focusPlatformConnectionTarget(platform) {
+  const normalized = normalizeClientPlatform(platform);
+  setScreen('settings-bots');
+  if (normalized === 'vk') {
+    if (ui.profilePlatformBindingsSection) {
+      ui.profilePlatformBindingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (ui.platformBindingExternalIdInput) ui.platformBindingExternalIdInput.focus();
+    if (ui.platformBindingStatus) {
+      ui.platformBindingStatus.textContent = 'Подключите VK: укажите ID или ссылку на сообщество, которое будет открывать каталог.';
+    }
+    return;
+  }
+
+  if (ui.profileBotPlatformInput) {
+    ui.profileBotPlatformInput.value = normalized === 'web' ? 'custom' : normalized;
+  }
+  renderProfileBotConnectSection();
+  if (ui.profileBotConnectSection) {
+    ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (normalized === 'telegram') {
+    if (ui.profileBotTokenInput) ui.profileBotTokenInput.focus();
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = 'Подключите Telegram: введите Bot Token, чтобы настроить меню и webhook каталога.';
+    }
+  } else {
+    if (ui.profileBotIdentifierInput) ui.profileBotIdentifierInput.focus();
+    const label = getCatalogBotPlatformMeta(normalized).label;
+    if (ui.profileBotConnectStatus) {
+      ui.profileBotConnectStatus.textContent = `Подключите ${label}: добавьте ID или ссылку точки входа в каталог.`;
+    }
+  }
+}
+
+async function maybeOpenCurrentPlatformConnectionPrompt({ force = false } = {}) {
+  if (!state.admin.enabled || !state.saas.storeId) return false;
+  const platform = getCurrentAdminPlatform();
+  if (!platform || platform === 'web') return false;
+  if (!force && hasCurrentPlatformPrimaryConnection(platform)) return false;
+
+  const promptKey = `${String(state.saas.storeId || '').trim().toUpperCase()}:${platform}`;
+  if (!force && state.saas.lastPlatformConnectPromptKey === promptKey) return false;
+  state.saas.lastPlatformConnectPromptKey = promptKey;
+
+  if (platform === 'vk') {
+    const action = await adminOpenActionSheet('Подключение VK', [
+      { id: 'bind-vk-community', label: 'Привязать сообщество VK' },
+      { id: 'open-vk-bot', label: 'Открыть блок подключений VK' },
+    ], { skipFeatureGate: true });
+    if (!action) return false;
+    if (action === 'bind-vk-community') {
+      focusPlatformConnectionTarget('vk');
+      return true;
+    }
+    if (action === 'open-vk-bot') {
+      focusPlatformConnectionTarget('vk');
+      return true;
+    }
+    return false;
+  }
+
+  if (platform === 'max') {
+    const action = await adminOpenActionSheet('Подключение MAX', [
+      { id: 'connect-max', label: 'Подключить MAX' },
+    ], { skipFeatureGate: true });
+    if (!action) return false;
+    focusPlatformConnectionTarget('max');
+    return true;
+  }
+
+  if (platform === 'telegram') {
+    const action = await adminOpenActionSheet('Подключение Telegram', [
+      { id: 'connect-telegram', label: 'Подключить Telegram бота' },
+    ], { skipFeatureGate: true });
+    if (!action) return false;
+    focusPlatformConnectionTarget('telegram');
+    return true;
+  }
+
+  const action = await adminOpenActionSheet(`Подключение ${platform.toUpperCase()}`, [
+    { id: 'connect-generic', label: 'Открыть блок подключения' },
+  ], { skipFeatureGate: true });
+  if (!action) return false;
+  focusPlatformConnectionTarget(platform);
+  return true;
 }
 
 function getCatalogBotSummaryText(connections) {
@@ -3892,6 +4557,207 @@ function getCatalogBotSummaryText(connections) {
   const first = items[0];
   const label = String(first?.platformLabel || getCatalogBotPlatformMeta(first?.platform).label || 'Подключение').trim();
   return items.length > 1 ? `${label} +${items.length - 1}` : label;
+}
+
+function normalizePlatformBindingPlatform(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (value === 'vk' || value === 'vkontakte') return 'vk';
+  if (value === 'telegram' || value === 'tg') return 'telegram';
+  if (value === 'max') return 'max';
+  return 'custom';
+}
+
+function normalizePlatformBindingType(raw, platform = 'custom') {
+  const normalizedPlatform = normalizePlatformBindingPlatform(platform);
+  const value = String(raw || '').trim().toLowerCase();
+  if (normalizedPlatform === 'vk') return 'community';
+  if (value === 'community' || value === 'group') return 'community';
+  if (value === 'bot') return 'bot';
+  if (value === 'channel') return 'channel';
+  return 'external';
+}
+
+async function loadPlatformBindings({ force = false } = {}) {
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!state.admin.enabled || !storeId || !state.saas.token) {
+    state.platformBindings = [];
+    state.platformBindingsStoreId = '';
+    state.platformBindingsLoading = false;
+    return [];
+  }
+  if (!force && !state.platformBindingsLoading && state.platformBindingsStoreId === storeId) {
+    return state.platformBindings;
+  }
+  state.platformBindingsLoading = true;
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(storeId)}/platform-bindings`, {
+      auth: true,
+    });
+    state.platformBindings = Array.isArray(payload?.bindings) ? payload.bindings : [];
+    state.platformBindingsStoreId = storeId;
+    return state.platformBindings;
+  } catch (error) {
+    state.platformBindings = [];
+    state.platformBindingsStoreId = '';
+    if (ui.platformBindingStatus) {
+      ui.platformBindingStatus.textContent = `Ошибка загрузки привязок: ${String(error?.message || 'unknown')}`;
+    }
+    return [];
+  } finally {
+    state.platformBindingsLoading = false;
+  }
+}
+
+function renderPlatformBindingsSection() {
+  if (!ui.profilePlatformBindingsSection) return;
+  const show = Boolean(state.admin.enabled);
+  ui.profilePlatformBindingsSection.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  const vkAdminUrl = getVkAdminAppUrl();
+  const vkCatalogUrl = getVkCatalogAppUrl();
+  const vkBindings = state.platformBindings.filter((binding) => normalizePlatformBindingPlatform(binding?.platform) === 'vk');
+  if (ui.platformBindingSetupInfo) {
+    ui.platformBindingSetupInfo.innerHTML = `
+      <div class="catalog-bot-card">
+        <div class="catalog-bot-card-head">
+          <span class="catalog-bot-badge">VK</span>
+          <strong>Настройка VK Mini Apps</strong>
+        </div>
+        <div class="catalog-bot-card-line"><span>Admin App:</span><span><a class="catalog-bot-card-url" href="${escapeHtml(vkAdminUrl || '—')}" target="_blank" rel="noopener">${escapeHtml(vkAdminUrl || '—')}</a></span></div>
+        <div class="catalog-bot-card-line"><span>Catalog App:</span><span><a class="catalog-bot-card-url" href="${escapeHtml(vkCatalogUrl || '—')}" target="_blank" rel="noopener">${escapeHtml(vkCatalogUrl || '—')}</a></span></div>
+        <div class="catalog-bot-card-line"><span>VK Dev:</span><span>Вставьте эти URL в поля «Мобильное приложение URL» и «Десктопная версия сайта URL» для двух отдельных VK Mini Apps: админки и каталога.</span></div>
+        <div class="catalog-bot-card-actions">
+          <button class="secondary-button" type="button" data-platform-binding-copy-url="${escapeHtml(vkAdminUrl || '')}">Скопировать Admin URL</button>
+          <button class="secondary-button" type="button" data-platform-binding-open-url="${escapeHtml(vkAdminUrl || '')}">Открыть Admin</button>
+          <button class="secondary-button" type="button" data-platform-binding-copy-url="${escapeHtml(vkCatalogUrl || '')}">Скопировать Catalog URL</button>
+          <button class="secondary-button" type="button" data-platform-binding-open-url="${escapeHtml(vkCatalogUrl || '')}">Открыть Catalog</button>
+        </div>
+      </div>
+    `;
+  }
+  if (ui.platformBindingsList) {
+    if (!storeId) {
+      ui.platformBindingsList.innerHTML = '<div class="catalog-bot-empty">Сначала выберите магазин.</div>';
+    } else if (state.platformBindingsLoading) {
+      ui.platformBindingsList.innerHTML = '<div class="catalog-bot-empty">Загружаем привязки платформ...</div>';
+    } else if (!state.platformBindings.length) {
+      ui.platformBindingsList.innerHTML = '<div class="catalog-bot-empty">Привязки платформ пока не добавлены.</div>';
+    } else {
+      ui.platformBindingsList.innerHTML = state.platformBindings.map((binding) => {
+        const safeId = Number(binding?.id || 0);
+        const title = escapeHtml(String(binding?.title || 'Привязка'));
+        const externalId = escapeHtml(String(binding?.externalId || '—'));
+        const platform = escapeHtml(String(binding?.platform || 'custom').toUpperCase());
+        const bindingType = escapeHtml(String(binding?.bindingType || 'external'));
+        const launchUrl = normalizePlatformBindingPlatform(binding?.platform) === 'vk' ? vkCatalogUrl : '';
+        const safeLaunchUrl = escapeHtml(launchUrl || '—');
+        return `
+          <div class="catalog-bot-card">
+            <div class="catalog-bot-card-head">
+              <span class="catalog-bot-badge">${platform}</span>
+              <span class="catalog-bot-badge">Привязано</span>
+              <strong>${title}</strong>
+            </div>
+            <div class="catalog-bot-card-line"><span>Статус:</span><span>Сообщество будет открывать каталог этого магазина</span></div>
+            <div class="catalog-bot-card-line"><span>Тип:</span><span>${bindingType}</span></div>
+            <div class="catalog-bot-card-line"><span>ID/ссылка:</span><span>${externalId}</span></div>
+            <div class="catalog-bot-card-line"><span>Магазин:</span><span>${escapeHtml(storeId || '—')}</span></div>
+            ${launchUrl ? `
+            <div class="catalog-bot-card-line"><span>VK Catalog App:</span><span><a class="catalog-bot-card-url" href="${safeLaunchUrl}" target="_blank" rel="noopener">${safeLaunchUrl}</a></span></div>
+            ` : ''}
+            <div class="catalog-bot-card-actions">
+              ${launchUrl ? `<button class="secondary-button" type="button" data-platform-binding-copy-url="${safeLaunchUrl}">Скопировать URL</button>` : ''}
+              ${launchUrl ? `<button class="secondary-button" type="button" data-platform-binding-open-url="${safeLaunchUrl}">Открыть</button>` : ''}
+              <button class="secondary-button" type="button" data-platform-binding-remove="${safeId}">Удалить</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+  if (ui.platformBindingStatus && !String(ui.platformBindingStatus.textContent || '').trim()) {
+    ui.platformBindingStatus.textContent = storeId
+      ? (vkBindings.length
+          ? `VK-каталог привязан к этому магазину. Сообществ: ${vkBindings.length}. URL Mini App: ${vkCatalogUrl || 'недоступен'}.`
+          : `Укажите сообщество VK, которое должно открывать каталог этого магазина. URL Mini App: ${vkCatalogUrl || 'недоступен'}.`)
+      : 'Сначала выберите магазин.';
+  }
+  if (storeId && state.platformBindingsStoreId !== storeId && !state.platformBindingsLoading) {
+    void loadPlatformBindings({ force: true }).then(() => {
+      renderPlatformBindingsSection();
+    });
+  }
+}
+
+async function savePlatformBinding() {
+  if (!state.admin.enabled || !state.saas.storeId) {
+    if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Сначала выберите магазин.';
+    return;
+  }
+  if (!requireAdminFeatureAccess()) return;
+  const platform = normalizePlatformBindingPlatform(ui.platformBindingPlatformInput?.value || 'vk');
+  const bindingType = normalizePlatformBindingType(ui.platformBindingTypeInput?.value || 'community', platform);
+  const title = String(ui.platformBindingTitleInput?.value || '').trim();
+  const externalId = String(ui.platformBindingExternalIdInput?.value || '').trim();
+  if (!externalId) {
+    if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Укажите ID сообщества VK или ссылку.';
+    return;
+  }
+  if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Сохраняем привязку...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/platform-bindings`, {
+      method: 'POST',
+      auth: true,
+      body: { platform, bindingType, title, externalId },
+    });
+    state.platformBindings = Array.isArray(payload?.bindings) ? payload.bindings : state.platformBindings;
+    state.platformBindingsStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+    if (ui.platformBindingTitleInput) ui.platformBindingTitleInput.value = '';
+    if (ui.platformBindingExternalIdInput) ui.platformBindingExternalIdInput.value = '';
+    renderPlatformBindingsSection();
+    if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Привязка платформы сохранена.';
+    const createdBinding = payload?.binding && typeof payload.binding === 'object' ? payload.binding : null;
+    finishActivePlatformOnboardingAfterVkBinding(createdBinding);
+  } catch (error) {
+    if (ui.platformBindingStatus) {
+      const code = String(error?.message || 'unknown');
+      if (code === 'PLATFORM_BINDING_ALREADY_EXISTS') {
+        ui.platformBindingStatus.textContent = 'Такая привязка уже сохранена для этого магазина.';
+      } else if (code === 'PLATFORM_BINDING_CONFLICT') {
+        const conflictStoreId = String(error?.payload?.existingStoreId || '').trim().toUpperCase();
+        ui.platformBindingStatus.textContent = conflictStoreId
+          ? `Это сообщество VK уже привязано к магазину ${conflictStoreId}. Сначала отвяжите его там.`
+          : 'Это сообщество VK уже привязано к другому магазину.';
+      } else {
+        ui.platformBindingStatus.textContent = `Ошибка сохранения: ${code}`;
+      }
+    }
+  }
+}
+
+async function removePlatformBinding(bindingId) {
+  if (!state.admin.enabled || !state.saas.storeId || !bindingId) return;
+  const numericId = Number(bindingId || 0);
+  if (!Number.isInteger(numericId) || numericId <= 0) return;
+  const confirmed = window.confirm('Удалить привязку платформы?');
+  if (!confirmed) return;
+  if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Удаляем привязку...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/platform-bindings/${numericId}`, {
+      method: 'DELETE',
+      auth: true,
+    });
+    state.platformBindings = Array.isArray(payload?.bindings) ? payload.bindings : [];
+    state.platformBindingsStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+    renderPlatformBindingsSection();
+    if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Привязка удалена.';
+  } catch (error) {
+    if (ui.platformBindingStatus) {
+      ui.platformBindingStatus.textContent = `Ошибка удаления: ${String(error?.message || 'unknown')}`;
+    }
+  }
 }
 
 async function loadCatalogBotConnections({ force = false } = {}) {
@@ -4044,6 +4910,7 @@ function renderProfileBotConnectSection() {
       renderProfileBotConnectSection();
     });
   }
+  renderPlatformBindingsSection();
 }
 
 async function saveProfileBotConnection() {
@@ -4196,10 +5063,19 @@ async function saasEnsureAdminSession() {
       state.saas.userId = String(me?.userId || '');
       state.saas.userProfile = me?.telegramProfile && typeof me.telegramProfile === 'object' ? me.telegramProfile : null;
       state.saas.stores = Array.isArray(me?.stores) ? me.stores : [];
+      const currentExists = state.saas.stores.some((store) => String(store?.storeId || '').trim().toUpperCase() === storedStoreId);
+      state.saas.needsAdminStoreSelection = state.saas.stores.length > 1 && !currentExists;
     } catch {
       // токен проверим позже на загрузке датасета
     }
     await refreshSubscriptionStatus();
+    void saasEnsurePlatformLinked();
+    return true;
+  }
+
+  const platformBootstrapOk = await saasTryPlatformBootstrap();
+  if (platformBootstrapOk) {
+    void saasEnsurePlatformLinked();
     return true;
   }
 
@@ -4247,6 +5123,7 @@ async function saasEnsureAdminSession() {
         if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
       } catch {}
       await refreshSubscriptionStatus();
+      void saasEnsurePlatformLinked();
       return true;
     } catch (error) {
       const code = String(error?.message || '');
@@ -4298,11 +5175,31 @@ async function saasLoadDatasetForCurrentContext() {
     }
   }
   const requestedPublicStoreId = String(getRequestedStoreId() || '').trim().toUpperCase();
+  const publicPlatformContext = getClientPlatformContext({ allowGuest: false });
+  const isPlatformBoundPublicContext = !state.admin.enabled
+    && !requestedPublicStoreId
+    && publicPlatformContext?.platform
+    && publicPlatformContext.platform !== 'web'
+    && publicPlatformContext.platform !== 'telegram';
+  const resolvedPlatformStoreId = requestedPublicStoreId ? '' : String(await resolvePublicStoreIdFromPlatformContext() || '').trim().toUpperCase();
   const storedPublicStoreId = String(localStorage.getItem(SAAS_STORE_KEY) || '').trim().toUpperCase();
-  const publicStoreId = requestedPublicStoreId || storedPublicStoreId;
+  if (isPlatformBoundPublicContext && !/^[A-Z0-9]{6}$/.test(resolvedPlatformStoreId)) {
+    if (!state.saas.publicResolveError) {
+      state.saas.publicResolveError = {
+        platform: publicPlatformContext.platform,
+        code: 'PLATFORM_STORE_NOT_FOUND',
+        blocking: true,
+        ...getPublicPlatformResolveErrorInfo('PLATFORM_STORE_NOT_FOUND', publicPlatformContext.platform),
+      };
+    }
+    renderPublicPlatformUnavailableState();
+    return false;
+  }
+  const publicStoreId = requestedPublicStoreId || resolvedPlatformStoreId || storedPublicStoreId;
   if (!state.admin.enabled && /^[A-Z0-9]{6}$/.test(publicStoreId)) {
     const payload = await saasRequest(`/store/${encodeURIComponent(publicStoreId)}/public?_t=${Date.now()}`);
     applyStoreDataset(payload);
+    state.saas.publicResolveError = null;
     state.saas.storeId = publicStoreId;
     localStorage.setItem(SAAS_STORE_KEY, publicStoreId);
     state.saas.datasetLoaded = true;
@@ -6230,6 +7127,10 @@ function isValidTelegramChatId(value) {
   return /^-?[0-9]{5,20}$/.test(String(value || '').trim());
 }
 
+function isValidVkPeerId(value) {
+  return /^-?[0-9]{4,20}$/.test(String(value || '').trim());
+}
+
 function isValidHttpUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return false;
@@ -6244,6 +7145,7 @@ function isValidHttpUrl(value) {
 function normalizeOrderRequestChannel(raw) {
   const value = String(raw || '').trim().toLowerCase();
   if (value === 'telegram_chat' || value === 'telegram' || value === 'admin_bot') return 'telegram_chat';
+  if (value === 'vk_messages' || value === 'vk' || value === 'vk_group') return 'vk_messages';
   if (value === 'webhook' || value === 'http_webhook') return 'webhook';
   if (value === 'external') return 'messenger_link';
   if (value === 'messenger_link' || value === 'messenger' || value === 'link') return 'messenger_link';
@@ -6264,20 +7166,34 @@ function getOrderRequestChannelMeta(channel) {
       label: 'Webhook URL',
       placeholder: 'https://example.com/order-webhook',
       hint: 'Система отправит JSON заказа по HTTP POST. Подходит для любых мессенджеров через интеграторы.',
+      secretLabel: '',
+      secretPlaceholder: '',
+    };
+  }
+  if (code === 'vk_messages') {
+    return {
+      label: 'Peer ID / User ID VK',
+      placeholder: 'Например: 2000000001 или 123456789',
+      hint: 'Укажите peer_id чата или user_id пользователя VK. Для отправки нужен токен сообщества с правом messages.',
+      secretLabel: 'Токен сообщества VK',
+      secretPlaceholder: 'vk1.a....',
     };
   }
   return {
     label: 'Ссылка/шаблон мессенджера',
     placeholder: 'https://wa.me/7900...?text={message}',
     hint: 'Можно указать ссылку VK/WhatsApp/MAX и шаблон с параметрами: {message}, {order_id}, {store_id}, {total}, {customer_name}, {customer_phone}.',
+    secretLabel: '',
+    secretPlaceholder: '',
   };
 }
 
-function validateOrderRequestTarget(channel, target) {
+function validateOrderRequestTarget(channel, target, secret = '') {
   const code = normalizeOrderRequestChannel(channel);
   const raw = String(target || '').trim();
   if (!raw) return false;
   if (code === 'telegram_chat') return isValidTelegramChatId(raw);
+  if (code === 'vk_messages') return isValidVkPeerId(raw) && Boolean(String(secret || '').trim());
   return isValidHttpUrl(raw);
 }
 
@@ -6296,11 +7212,13 @@ function getOrderChatSettingsDraft(sourceSettings = null) {
   const target = channel === 'telegram_chat'
     ? String(settings.orderRequestChatId || settings.orderChatId || settings.chatId || settings.telegramChatId || '').trim()
     : String(settings.orderRequestTarget || settings.orderRequestUrl || settings.orderRequestWebhookUrl || '').trim();
+  const vkToken = String(settings.orderRequestVkToken || settings.vkOrderToken || settings.vkCommunityToken || '').trim();
   return {
     mode,
     channel,
     target,
-    targetValid: validateOrderRequestTarget(channel, target),
+    vkToken,
+    targetValid: validateOrderRequestTarget(channel, target, vkToken),
   };
 }
 
@@ -6310,9 +7228,11 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
       mode: normalizeOrderProcessingMode(ui.orderChatModeInput?.value || 'chat'),
       channel: normalizeOrderRequestChannel(ui.orderRequestChannelInput?.value || 'telegram_chat'),
       target: String(ui.orderRequestTargetInput?.value || '').trim(),
+      vkToken: String(ui.orderRequestVkTokenInput?.value || '').trim(),
       targetValid: validateOrderRequestTarget(
         ui.orderRequestChannelInput?.value || 'telegram_chat',
         ui.orderRequestTargetInput?.value || '',
+        ui.orderRequestVkTokenInput?.value || '',
       ),
     }
     : getOrderChatSettingsDraft();
@@ -6323,6 +7243,7 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
     if (ui.orderChatModeInput) ui.orderChatModeInput.value = draft.mode;
     if (ui.orderRequestChannelInput) ui.orderRequestChannelInput.value = draft.channel;
     if (ui.orderRequestTargetInput) ui.orderRequestTargetInput.value = draft.target;
+    if (ui.orderRequestVkTokenInput) ui.orderRequestVkTokenInput.value = draft.vkToken || '';
   }
 
   if (ui.orderRequestTargetLabel) {
@@ -6332,6 +7253,22 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
   }
   if (ui.orderRequestTargetInput) {
     ui.orderRequestTargetInput.placeholder = channelMeta.placeholder;
+    if (draft.channel === 'telegram_chat' || draft.channel === 'vk_messages') {
+      ui.orderRequestTargetInput.type = 'text';
+      ui.orderRequestTargetInput.inputMode = 'numeric';
+    } else {
+      ui.orderRequestTargetInput.type = 'url';
+      ui.orderRequestTargetInput.inputMode = 'url';
+    }
+  }
+  if (ui.orderRequestVkTokenLabel) {
+    ui.orderRequestVkTokenLabel.classList.toggle('hidden', draft.channel !== 'vk_messages');
+    if (ui.orderRequestVkTokenLabel.firstChild && ui.orderRequestVkTokenLabel.firstChild.nodeType === 3) {
+      ui.orderRequestVkTokenLabel.firstChild.textContent = `${channelMeta.secretLabel || 'Токен'} `;
+    }
+  }
+  if (ui.orderRequestVkTokenInput) {
+    ui.orderRequestVkTokenInput.placeholder = channelMeta.secretPlaceholder || '';
   }
   if (ui.orderRequestHint) {
     ui.orderRequestHint.textContent = channelMeta.hint;
@@ -6342,15 +7279,21 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
       if (draft.targetValid) {
         if (draft.channel === 'telegram_chat') {
           ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в Telegram Chat ID.';
+        } else if (draft.channel === 'vk_messages') {
+          ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в сообщения VK.';
         } else if (draft.channel === 'webhook') {
           ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в webhook.';
         } else {
           ui.orderChatStatus.textContent = 'Режим заявок активен: заказ будет открыт через ссылку мессенджера.';
         }
       } else {
-        ui.orderChatStatus.textContent = draft.channel === 'telegram_chat'
-          ? 'Для режима заявок укажите корректный Chat ID Telegram.'
-          : 'Для режима заявок укажите корректную ссылку (http/https).';
+        if (draft.channel === 'telegram_chat') {
+          ui.orderChatStatus.textContent = 'Для режима заявок укажите корректный Chat ID Telegram.';
+        } else if (draft.channel === 'vk_messages') {
+          ui.orderChatStatus.textContent = 'Для режима заявок укажите корректный VK peer_id/user_id и токен сообщества.';
+        } else {
+          ui.orderChatStatus.textContent = 'Для режима заявок укажите корректную ссылку (http/https).';
+        }
       }
     } else {
       ui.orderChatStatus.textContent = draft.targetValid
@@ -6366,19 +7309,28 @@ async function saveOrderChatSettings() {
   const mode = normalizeOrderProcessingMode(ui.orderChatModeInput?.value || 'chat');
   const channel = normalizeOrderRequestChannel(ui.orderRequestChannelInput?.value || 'telegram_chat');
   const target = String(ui.orderRequestTargetInput?.value || '').trim();
-  if (mode === 'chat' && !validateOrderRequestTarget(channel, target)) {
+  const vkToken = String(ui.orderRequestVkTokenInput?.value || '').trim();
+  if (mode === 'chat' && !validateOrderRequestTarget(channel, target, vkToken)) {
     if (ui.orderChatStatus) {
-      ui.orderChatStatus.textContent = channel === 'telegram_chat'
-        ? 'Введите корректный Chat ID Telegram (например: -1001234567890).'
-        : 'Введите корректную ссылку (http/https).';
+      if (channel === 'telegram_chat') {
+        ui.orderChatStatus.textContent = 'Введите корректный Chat ID Telegram (например: -1001234567890).';
+      } else if (channel === 'vk_messages') {
+        ui.orderChatStatus.textContent = 'Введите корректный VK peer_id/user_id и токен сообщества.';
+      } else {
+        ui.orderChatStatus.textContent = 'Введите корректную ссылку (http/https).';
+      }
     }
     return;
   }
-  if (target && !validateOrderRequestTarget(channel, target)) {
+  if ((target || vkToken) && !validateOrderRequestTarget(channel, target, vkToken)) {
     if (ui.orderChatStatus) {
-      ui.orderChatStatus.textContent = channel === 'telegram_chat'
-        ? 'Chat ID должен содержать только цифры и опциональный знак "-".'
-        : 'Ссылка должна начинаться с http:// или https://';
+      if (channel === 'telegram_chat') {
+        ui.orderChatStatus.textContent = 'Chat ID должен содержать только цифры и опциональный знак "-".';
+      } else if (channel === 'vk_messages') {
+        ui.orderChatStatus.textContent = 'VK peer_id/user_id должен быть числом, токен сообщества обязателен.';
+      } else {
+        ui.orderChatStatus.textContent = 'Ссылка должна начинаться с http:// или https://';
+      }
     }
     return;
   }
@@ -6396,6 +7348,9 @@ async function saveOrderChatSettings() {
       orderChatId: telegramChatId,
       chatId: telegramChatId,
       telegramChatId: telegramChatId,
+      orderRequestVkToken: channel === 'vk_messages' ? vkToken : '',
+      vkOrderToken: channel === 'vk_messages' ? vkToken : '',
+      vkCommunityToken: channel === 'vk_messages' ? vkToken : '',
     };
     const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
       method: 'POST',
@@ -7355,6 +8310,9 @@ function bindEvents() {
   on(ui.orderRequestTargetInput, 'input', () => {
     renderOrderChatSettings({ fromInputs: true });
   });
+  on(ui.orderRequestVkTokenInput, 'input', () => {
+    renderOrderChatSettings({ fromInputs: true });
+  });
   on(ui.orderChatSettingsForm, 'submit', async (e) => {
     e.preventDefault();
     await saveOrderChatSettings();
@@ -7390,6 +8348,43 @@ function bindEvents() {
     if (!connectionId) return;
     await removeProfileBotConnection(connectionId);
   });
+  on(ui.platformBindingForm, 'submit', async (e) => {
+    e.preventDefault();
+    await savePlatformBinding();
+  });
+  const handlePlatformBindingActionsClick = async (e) => {
+    const copyUrlButton = e.target.closest('[data-platform-binding-copy-url]');
+    if (copyUrlButton) {
+      const value = String(copyUrlButton.dataset.platformBindingCopyUrl || '').trim();
+      if (!value) return;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          window.prompt('Скопируйте URL VK Catalog App:', value);
+        }
+        if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'URL VK Catalog App скопирован.';
+      } catch {
+        window.prompt('Скопируйте URL VK Catalog App:', value);
+      }
+      return;
+    }
+    const openUrlButton = e.target.closest('[data-platform-binding-open-url]');
+    if (openUrlButton) {
+      const value = String(openUrlButton.dataset.platformBindingOpenUrl || '').trim();
+      if (!value) return;
+      openExternalPaymentLink(value);
+      if (ui.platformBindingStatus) ui.platformBindingStatus.textContent = 'Открываем VK Catalog App URL.';
+      return;
+    }
+    const removeButton = e.target.closest('[data-platform-binding-remove]');
+    if (!removeButton) return;
+    const bindingId = Number(removeButton.dataset.platformBindingRemove || 0);
+    if (!bindingId) return;
+    await removePlatformBinding(bindingId);
+  };
+  on(ui.platformBindingsList, 'click', handlePlatformBindingActionsClick);
+  on(ui.platformBindingSetupInfo, 'click', handlePlatformBindingActionsClick);
   on(ui.paymentIntegrationProviderInput, 'change', () => {
     const nextProvider = normalizePaymentProviderCode(ui.paymentIntegrationProviderInput?.value || 'yookassa');
     const prevProvider = normalizePaymentProviderCode(state.paymentIntegration?.provider || 'yookassa');
@@ -8575,6 +9570,10 @@ function setupBottomDockKeyboardLock() {
 
 // Загружает конфигурацию витрины (тексты, баннеры, статьи, контакты).
 async function loadConfig() {
+  if (!state.admin.enabled && state.saas.publicResolveError?.blocking) {
+    renderPublicPlatformUnavailableState();
+    return;
+  }
   if (!state.saas.datasetLoaded) {
     const res = await fetch('config.json', { cache: 'no-store' });
     state.config = await res.json();
@@ -8645,6 +9644,10 @@ async function loadConfig() {
 const DATA_VERSION = '20260210-3';
 // Загружает товарные данные каталога.
 async function loadData() {
+  if (!state.admin.enabled && state.saas.publicResolveError?.blocking) {
+    renderPublicPlatformUnavailableState();
+    return;
+  }
   if (state.saas.datasetLoaded) {
     state.dataLoaded = true;
     if (!state.currentGroup) state.currentGroup = 'apparel';
@@ -8771,15 +9774,20 @@ async function init() {
       const ready = await saasEnsureAdminSession();
       if (ready) {
         await saasLoadStoresList();
-        if (state.saas.storeId && state.saas.stores.length) {
-          const currentExists = state.saas.stores.some((s) => String(s.storeId || '').toUpperCase() === state.saas.storeId);
-          if (!currentExists && state.saas.stores[0]?.storeId) {
-            state.saas.storeId = String(state.saas.stores[0].storeId).toUpperCase();
-            localStorage.setItem(SAAS_STORE_KEY, state.saas.storeId);
+        const storeReady = await saasEnsureCurrentAdminStoreSelection({
+          interactive: true,
+          title: 'Выберите магазин для админки',
+        });
+        if (storeReady) {
+          await saasLoadDatasetForCurrentContext();
+          const onboardingShown = await runPendingPlatformOnboarding();
+          if (!onboardingShown) {
+            reportStatus(`SaaS магазин подключен: ${state.saas.storeId}`);
+            void maybeOpenCurrentPlatformConnectionPrompt();
           }
+        } else if (state.saas.stores.length > 1) {
+          reportStatus('Выберите магазин для продолжения работы в админке.');
         }
-        await saasLoadDatasetForCurrentContext();
-        reportStatus(`SaaS магазин подключен: ${state.saas.storeId}`);
       }
     } else {
       await saasLoadDatasetForCurrentContext();

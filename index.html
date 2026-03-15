@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260315-235" />
+    <link rel="stylesheet" href="/style.css?v=20260315-253" />
   </head>
   <body>
     <header class="header">
@@ -420,8 +420,8 @@
           <h2>Настройки бота</h2>
         </div>
         <div id="profileBotConnectSection" class="profile-subscription-card hidden">
-          <div class="section-title">Подключение ботов каталога</div>
-          <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким ботам и площадкам. Telegram-боты подключаются по токену автоматически, а VK/MAX и другие платформы сохраняются как внешние точки входа в каталог.</p>
+          <div class="section-title">Подключение мессенджеров и ботов</div>
+          <p class="feedback-note">Текущая платформа подсказывается автоматически при входе. Здесь же можно вручную доподключить любые другие мессенджеры и точки входа к этому же магазину.</p>
           <div class="profile-admin-store">Bot ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
           <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
           <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
@@ -447,6 +447,24 @@
             <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
           </form>
           <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
+        </div>
+        <div id="profilePlatformBindingsSection" class="profile-subscription-card hidden">
+          <div class="section-title">Привязка каталога к VK</div>
+          <p class="feedback-note">Привяжите сообщество VK к текущему магазину. На следующем шаге каталог в VK будет открываться именно по этой привязке.</p>
+          <form id="platformBindingForm" class="order-form flat">
+            <input id="platformBindingPlatformInput" type="hidden" value="vk" />
+            <input id="platformBindingTypeInput" type="hidden" value="community" />
+            <label>Название привязки
+              <input id="platformBindingTitleInput" type="text" autocomplete="off" placeholder="Например: Основное сообщество VK" />
+            </label>
+            <label>ID сообщества VK или ссылка
+              <input id="platformBindingExternalIdInput" type="text" autocomplete="off" placeholder="club123456, public123456, 123456 или https://vk.com/club123456" />
+            </label>
+            <div id="platformBindingStatus" class="status"></div>
+            <button id="platformBindingSaveButton" class="primary-button" type="submit">Сохранить привязку VK</button>
+          </form>
+          <div id="platformBindingSetupInfo" class="catalog-bot-list"></div>
+          <div id="platformBindingsList" class="catalog-bot-list"></div>
         </div>
         <div class="bot-settings-card">
           <div class="section-title">Сообщение бота</div>
@@ -478,16 +496,26 @@
         </div>
         <div id="profileOrderChatSection" class="profile-subscription-card hidden">
           <div class="section-title">Уведомления о заказах в чат</div>
-          <p class="feedback-note">1) Добавьте admin-бота в нужный Telegram-чат. 2) Бот отправит в чат его Chat ID. 3) Вставьте Chat ID ниже и сохраните.</p>
+          <p class="feedback-note">Выберите канал уведомлений: Telegram, VK, webhook или внешняя ссылка мессенджера.</p>
           <form id="orderChatSettingsForm" class="order-form flat">
             <input id="orderChatModeInput" type="hidden" value="chat" />
-            <input id="orderRequestChannelInput" type="hidden" value="telegram_chat" />
+            <label>Канал уведомлений
+              <select id="orderRequestChannelInput">
+                <option value="telegram_chat">Telegram чат</option>
+                <option value="vk_messages">VK сообщения</option>
+                <option value="webhook">Webhook</option>
+                <option value="messenger_link">Ссылка мессенджера</option>
+              </select>
+            </label>
             <label id="orderRequestTargetLabel">Chat ID Telegram
               <input id="orderRequestTargetInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Например: -1001234567890" />
             </label>
+            <label id="orderRequestVkTokenLabel" class="hidden">Токен сообщества VK
+              <input id="orderRequestVkTokenInput" type="text" autocomplete="off" placeholder="vk1.a.... или сервисный токен сообщества" />
+            </label>
             <p id="orderRequestHint" class="feedback-note">После сохранения новые заявки будут отправляться в этот чат.</p>
             <div id="orderChatStatus" class="status"></div>
-            <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить Chat ID</button>
+            <button id="orderChatSaveButton" class="primary-button" type="submit">Сохранить канал уведомлений</button>
           </form>
         </div>
         <div id="profilePaymentIntegrationSection" class="profile-subscription-card hidden">
@@ -843,9 +871,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260315-235"></script>
-    <script src="/platform.js?v=20260315-235"></script>
-    <script src="/telegram.js?v=20260315-235"></script>
-    <script src="/app.js?v=20260315-235"></script>
+    <script src="/vk-bridge.min.js?v=20260315-253"></script>
+    <script src="/platform.js?v=20260315-253"></script>
+    <script src="/telegram.js?v=20260315-253"></script>
+    <script src="/app.js?v=20260315-253"></script>
   </body>
 </html>

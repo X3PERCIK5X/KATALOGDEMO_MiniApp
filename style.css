@@ -2600,6 +2600,8 @@ body:not(.admin-mode) .profile-theme-panel {
 .catalog-bot-card-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .subscription-tariffs {
@@ -5110,6 +5112,16 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
   box-shadow: 0 0 0 3px rgba(230, 106, 44, 0.2);
 }
 
+.saas-auth-platform-hint {
+  border: 1px solid rgba(108, 161, 255, 0.38);
+  background: rgba(34, 74, 140, 0.24);
+  color: #d7e7ff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .saas-auth-error {
   border: 1px solid rgba(255, 112, 112, 0.45);
   background: rgba(139, 39, 39, 0.25);
@@ -5126,6 +5138,12 @@ html[data-theme="light"] .saas-auth-modal {
 html[data-theme="light"] .saas-auth-card {
   background: #ffffff;
   border-color: rgba(18, 42, 62, 0.2);
+}
+
+html[data-theme="light"] .saas-auth-platform-hint {
+  border-color: rgba(65, 111, 195, 0.26);
+  background: rgba(77, 122, 204, 0.09);
+  color: #24456f;
 }
 
 html[data-theme="light"] .saas-auth-tab {
