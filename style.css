@@ -4693,14 +4693,6 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   gap: 8px;
 }
 
-.products-import-sample-links {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .products-import-title {
   font-size: 14px;
   font-weight: 800;
@@ -4714,15 +4706,6 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   font-size: 11px;
   line-height: 1.25;
   color: var(--muted);
-}
-
-.products-import-sample-link {
-  align-self: flex-start;
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-  white-space: nowrap;
 }
 
 .products-import-controls {
