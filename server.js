@@ -3467,18 +3467,19 @@ app.post('/api/auth/login', (req, res) => {
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ error: 'WRONG_PASSWORD' });
 
-  const fallbackIdentity = identity || (row.owner_user_id ? String(row.owner_user_id) : (row.owner_email ? `email:${String(row.owner_email).toLowerCase()}` : ''));
-  const token = createSession(storeId, fallbackIdentity);
-  if (fallbackIdentity) upsertStoreUser(storeId, fallbackIdentity, 'owner');
+  const sessionIdentity = identity && hasStoreAccess(identity, storeId)
+    ? identity
+    : '';
+  const token = createSession(storeId, sessionIdentity);
 
-  const stores = fallbackIdentity
+  const stores = sessionIdentity
     ? db.prepare(`
         SELECT s.store_id, s.store_name
         FROM stores s
         JOIN store_users su ON su.store_id = s.store_id
         WHERE su.user_id = ? AND s.is_active = 1
         ORDER BY s.created_at ASC
-      `).all(fallbackIdentity).map((s) => ({
+      `).all(sessionIdentity).map((s) => ({
         storeId: s.store_id,
         storeName: s.store_name,
         catalogUrl: getStoreCatalogUrl(s.store_id, req),

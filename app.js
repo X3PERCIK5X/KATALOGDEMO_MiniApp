@@ -1028,61 +1028,7 @@ function buildPlatformProfilePayload(platform) {
 }
 
 async function saasTryPlatformBootstrap() {
-  if (!state.admin.enabled) return false;
-  await waitForPlatformBridgeReady();
-  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
-    ? window.HORECA_PLATFORM
-    : null;
-  const context = getClientPlatformContext({ allowGuest: false });
-  if (!context?.platform || context.platform === 'web') return false;
-  // Telegram оставляем на старом manual-flow, чтобы не создавать новые магазины неожиданно.
-  if (context.platform === 'telegram') return false;
-  if (!context.platformUserId) return false;
-  if (platformBridge?.canAutoBootstrap && !platformBridge.canAutoBootstrap()) return false;
-
-  const payload = await buildCurrentPlatformAuthPayload();
-  if (!payload || typeof payload !== 'object') return false;
-  const hadStoredStoreId = Boolean(String(localStorage.getItem(SAAS_STORE_KEY) || '').trim());
-
-  try {
-    const bootstrap = await saasRequest('/auth/platform/bootstrap', {
-      method: 'POST',
-      body: payload,
-    });
-    const storeId = String(bootstrap?.storeId || '').trim().toUpperCase();
-    const token = String(bootstrap?.token || '').trim();
-    if (!storeId || !token) return false;
-    state.saas.enabled = true;
-    state.saas.storeId = storeId;
-    state.saas.token = token;
-    state.saas.userId = String(bootstrap?.userId || `${context.platform}:${context.platformUserId}`);
-    state.saas.stores = Array.isArray(bootstrap?.stores) ? bootstrap.stores : [];
-    state.saas.pendingOnboarding = {
-      platform: context.platform,
-      created: Boolean(bootstrap?.created),
-      storeId,
-    };
-    state.saas.platformBootstrapError = null;
-    state.saas.needsAdminStoreSelection = !hadStoredStoreId && state.saas.stores.length > 1;
-    localStorage.setItem(SAAS_STORE_KEY, storeId);
-    localStorage.setItem(SAAS_TOKEN_KEY, token);
-    try {
-      const me = await saasRequest('/auth/me', { auth: true });
-      state.saas.userId = String(me?.userId || state.saas.userId || '');
-      state.saas.userProfile = me?.telegramProfile && typeof me.telegramProfile === 'object' ? me.telegramProfile : null;
-      if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
-      state.saas.needsAdminStoreSelection = !hadStoredStoreId && state.saas.stores.length > 1;
-    } catch {}
-    await refreshSubscriptionStatus();
-    return true;
-  } catch (error) {
-    console.error('platform bootstrap failed', error);
-    state.saas.platformBootstrapError = {
-      code: String(error?.payload?.error || error?.message || 'PLATFORM_BOOTSTRAP_FAILED').trim(),
-      platform: context.platform,
-    };
-    return false;
-  }
+  return false;
 }
 
 async function resolvePublicStoreIdFromPlatformContext() {
@@ -1130,30 +1076,7 @@ async function resolvePublicStoreIdFromPlatformContext() {
 }
 
 async function saasEnsurePlatformLinked() {
-  if (!state.admin.enabled || !state.saas.enabled || !state.saas.storeId || !state.saas.token) return false;
-  const context = getClientPlatformContext({ allowGuest: false });
-  if (!context?.platform || context.platform === 'web') return false;
-  const identityKey = `${String(state.saas.storeId || '').trim().toUpperCase()}:${String(context.customerIdentity || `${context.platform}:${context.platformUserId || ''}`).trim()}`;
-  if (!identityKey || state.saas.lastLinkedPlatformIdentity === identityKey) return true;
-
-  const payload = await buildCurrentPlatformAuthPayload({ allowTelegram: true });
-  if (!payload || typeof payload !== 'object') return false;
-
-  try {
-    const result = await saasRequest('/auth/platform/link', {
-      method: 'POST',
-      auth: true,
-      body: payload,
-    });
-    state.saas.lastLinkedPlatformIdentity = String(result?.linkedIdentity || identityKey);
-    if (Array.isArray(result?.stores) && result.stores.length) {
-      state.saas.stores = result.stores;
-    }
-    return true;
-  } catch (error) {
-    console.error('platform link failed', error);
-    return false;
-  }
+  return false;
 }
 
 function getTelegramUsername() {
@@ -3931,8 +3854,11 @@ function ensureSaasAuthModal() {
       </div>
       <div class="saas-auth-platform-hint hidden"></div>
       <form class="saas-auth-form" autocomplete="on" novalidate>
-        <label class="saas-auth-label">Bot ID
+        <label class="saas-auth-label saas-auth-store-id">Bot ID
           <input class="admin-modal-input" name="storeId" placeholder="например: A1B2C3" required maxlength="6" />
+        </label>
+        <label class="saas-auth-label saas-auth-store-name hidden">Название магазина
+          <input class="admin-modal-input" name="storeName" placeholder="например: Магазин VK" maxlength="120" />
         </label>
         <label class="saas-auth-label saas-auth-bot-token hidden">Bot token
           <input class="admin-modal-input" name="botToken" placeholder="123456:ABC..." />
@@ -3962,9 +3888,14 @@ function ensureSaasAuthModal() {
 
 function openSaasAuthModal() {
   const modal = ensureSaasAuthModal();
+  const context = getClientPlatformContext({ allowGuest: false });
+  const normalizedPlatform = normalizeClientPlatform(context?.platform || 'web');
+  const directStoreRegistration = normalizedPlatform !== 'telegram';
   const form = modal.querySelector('.saas-auth-form');
   const storeInput = modal.querySelector('input[name="storeId"]');
-  const storeWrap = storeInput?.parentElement || null;
+  const storeWrap = modal.querySelector('.saas-auth-store-id');
+  const storeNameWrap = modal.querySelector('.saas-auth-store-name');
+  const storeNameInput = modal.querySelector('input[name="storeName"]');
   const botTokenWrap = modal.querySelector('.saas-auth-bot-token');
   const botTokenInput = modal.querySelector('input[name="botToken"]');
   const resetCodeWrap = modal.querySelector('.saas-auth-reset-code');
@@ -3982,9 +3913,18 @@ function openSaasAuthModal() {
 
   const renderPlatformHint = () => {
     if (!platformHint) return;
-    const context = getClientPlatformContext({ allowGuest: false });
     const errorCode = String(state.saas.platformBootstrapError?.code || '').trim();
-    if (!context?.platform || context.platform === 'web' || context.platform === 'telegram' || !errorCode) {
+    if (directStoreRegistration) {
+      const label = normalizedPlatform === 'vk'
+        ? 'VK'
+        : normalizedPlatform === 'max'
+          ? 'MAX'
+          : 'веб-админка';
+      platformHint.textContent = `${label}: регистрация создает новый магазин и выдает Store ID. Дальше вход для владельца и модераторов выполняется по Store ID и паролю.`;
+      platformHint.classList.remove('hidden');
+      return;
+    }
+    if (!errorCode) {
       platformHint.classList.add('hidden');
       platformHint.textContent = '';
       return;
@@ -4018,39 +3958,51 @@ function openSaasAuthModal() {
       btn.classList.toggle('active', tabMode === mode);
     });
     if (storeWrap) storeWrap.classList.toggle('hidden', mode === 'register');
-    botTokenWrap.classList.toggle('hidden', mode !== 'register');
+    if (storeNameWrap) storeNameWrap.classList.toggle('hidden', !(mode === 'register' && directStoreRegistration));
+    botTokenWrap.classList.toggle('hidden', mode !== 'register' || directStoreRegistration);
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
     passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
     const needStore = mode !== 'register';
-    const needBotToken = mode === 'register';
+    const needBotToken = mode === 'register' && !directStoreRegistration;
+    const needStoreName = mode === 'register' && directStoreRegistration;
     const needPassword = mode !== 'recover_code';
     const needResetCode = mode === 'recover_code';
     const needRepeat = (mode === 'register' || mode === 'recover_password');
     storeInput.required = needStore;
     botTokenInput.required = needBotToken;
+    if (storeNameInput) storeNameInput.required = needStoreName;
     passwordInput.required = needPassword;
     resetCodeInput.required = needResetCode;
     repeatInput.required = needRepeat;
     storeInput.disabled = !needStore;
     botTokenInput.disabled = !needBotToken;
+    if (storeNameInput) storeNameInput.disabled = !needStoreName;
     passwordInput.disabled = !needPassword;
     resetCodeInput.disabled = !needResetCode;
     repeatInput.disabled = !needRepeat;
-    recoverBtn.classList.toggle('hidden', mode !== 'login');
+    recoverBtn.classList.toggle('hidden', mode !== 'login' || directStoreRegistration);
     submitBtn.textContent = mode === 'register'
-      ? 'Сохранить пароль'
+      ? directStoreRegistration ? 'Создать магазин' : 'Сохранить пароль'
       : mode === 'recover_code'
         ? 'Далее'
         : mode === 'recover_password'
           ? 'Сменить пароль'
           : 'Войти';
+    if (storeWrap) {
+      const label = storeWrap.querySelector('.admin-modal-input') ? storeWrap.firstChild : null;
+      storeWrap.childNodes[0].textContent = directStoreRegistration ? 'Store ID' : 'Bot ID';
+      if (storeInput) {
+        storeInput.placeholder = directStoreRegistration ? 'например: A1B2C3' : 'например: A1B2C3';
+      }
+    }
     if (errorBox) {
       errorBox.classList.add('hidden');
       errorBox.textContent = '';
     }
     if (mode !== 'register' && mode !== 'recover_password') repeatInput.value = '';
     if (mode !== 'register') botTokenInput.value = '';
+    if (mode !== 'register' && storeNameInput) storeNameInput.value = '';
     if (mode !== 'recover_code') resetCodeInput.value = '';
   };
 
@@ -4090,11 +4042,12 @@ function openSaasAuthModal() {
 
     const onSubmit = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
+      const storeName = String(storeNameInput?.value || '').trim();
       const botToken = String(botTokenInput?.value || '').trim();
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
       const codeValue = String(resetCodeInput?.value || '').trim();
-      if (mode !== 'register' && !/^[A-Z0-9]{6}$/.test(storeId)) return showError('Bot ID должен быть ровно 6 символов (A-Z, 0-9).');
+      if (mode !== 'register' && !/^[A-Z0-9]{6}$/.test(storeId)) return showError(`${directStoreRegistration ? 'Store ID' : 'Bot ID'} должен быть ровно 6 символов (A-Z, 0-9).`);
       if (mode === 'recover_code') {
         if (!/^[0-9]{6}$/.test(codeValue)) return showError('Код должен быть из 6 цифр.');
         resetCode = codeValue;
@@ -4106,7 +4059,8 @@ function openSaasAuthModal() {
       }
       if (password.length < 6) return showError('Пароль должен быть не короче 6 символов.');
       if ((mode === 'register' || mode === 'recover_password') && password !== passwordRepeat) return showError('Пароли не совпадают.');
-      if (mode === 'register' && !botToken.includes(':')) return showError('Введите корректный bot token.');
+      if (mode === 'register' && directStoreRegistration && storeName.length < 2) return showError('Введите название магазина.');
+      if (mode === 'register' && !directStoreRegistration && !botToken.includes(':')) return showError('Введите корректный bot token.');
       if (mode === 'recover_password') {
         const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
         try {
@@ -4133,7 +4087,7 @@ function openSaasAuthModal() {
         }
       }
       cleanup();
-      resolve({ mode, storeId, password, botToken });
+      resolve({ mode, storeId, storeName, password, botToken, directStoreRegistration });
     };
 
     const triggerSubmit = (event) => {
@@ -5082,29 +5036,40 @@ async function saasEnsureAdminSession() {
   while (true) {
     const authData = await openSaasAuthModal();
     if (!authData) return false;
-    const { mode, storeId, password, botToken } = authData;
+    const { mode, storeId, storeName, password, botToken, directStoreRegistration } = authData;
     const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
     const email = String(state.profile?.email || '').trim().toLowerCase();
     try {
       let loginBotId = storeId;
       if (mode === 'register') {
-        const registration = await saasRequest('/auth/register-by-bot', {
-          method: 'POST',
-          body: { botToken, password, telegramUserId, telegramInitData, email },
-        });
-        const issuedBotId = String(registration?.botId || registration?.storeId || '').trim().toUpperCase();
-        const via = String(registration?.botIdSentVia || '').trim();
-        const sent = Boolean(registration?.botIdSent);
-        const queued = String(registration?.botIdSendError || '').trim() === 'BOT_ID_SEND_FAILED';
-        if (sent) {
-          const channelLabel = via === 'admin_bot' ? 'в admin-бот владельца' : 'в admin-бот';
-          window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
-        } else if (queued) {
-          window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nОтправка в admin-бот поставлена в очередь и будет доставлена автоматически.`);
+        if (directStoreRegistration) {
+          const registration = await saasRequest('/auth/register', {
+            method: 'POST',
+            body: { storeName, password, email },
+          });
+          const issuedStoreId = String(registration?.storeId || '').trim().toUpperCase();
+          if (!issuedStoreId) throw new Error('STORE_ID_NOT_ISSUED');
+          loginBotId = issuedStoreId;
+          window.alert(`Магазин создан.\n\nStore ID: ${issuedStoreId}\n\nСохраните Store ID. Вход владельца и модераторов выполняется по Store ID и паролю.`);
         } else {
-          window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);
+          const registration = await saasRequest('/auth/register-by-bot', {
+            method: 'POST',
+            body: { botToken, password, telegramUserId, telegramInitData, email },
+          });
+          const issuedBotId = String(registration?.botId || registration?.storeId || '').trim().toUpperCase();
+          const via = String(registration?.botIdSentVia || '').trim();
+          const sent = Boolean(registration?.botIdSent);
+          const queued = String(registration?.botIdSendError || '').trim() === 'BOT_ID_SEND_FAILED';
+          if (sent) {
+            const channelLabel = via === 'admin_bot' ? 'в admin-бот владельца' : 'в admin-бот';
+            window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
+          } else if (queued) {
+            window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nОтправка в admin-бот поставлена в очередь и будет доставлена автоматически.`);
+          } else {
+            window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);
+          }
+          continue;
         }
-        continue;
       }
       const login = await saasRequest('/auth/login', {
         method: 'POST',
@@ -5123,12 +5088,11 @@ async function saasEnsureAdminSession() {
         if (Array.isArray(me?.stores) && me.stores.length) state.saas.stores = me.stores;
       } catch {}
       await refreshSubscriptionStatus();
-      void saasEnsurePlatformLinked();
       return true;
     } catch (error) {
       const code = String(error?.message || '');
       const messageMap = {
-        STORE_NOT_FOUND: 'Bot ID не найден.',
+        STORE_NOT_FOUND: `${directStoreRegistration ? 'Store ID' : 'Bot ID'} не найден.`,
         WRONG_PASSWORD: 'Неверный пароль.',
         STORE_ALREADY_ACTIVE: 'Этот Bot ID уже активирован. Используйте вкладку "Вход".',
         STORE_NOT_ACTIVATED: 'Bot ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
@@ -5136,6 +5100,8 @@ async function saasEnsureAdminSession() {
         BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
         TELEGRAM_ID_REQUIRED: 'Не удалось определить Telegram ID. Откройте mini app из Telegram.',
         BOT_ID_SEND_FAILED: 'Не удалось отправить Bot ID в бот.',
+        INVALID_REGISTER_PAYLOAD: 'Введите название магазина и пароль.',
+        STORE_ID_NOT_ISSUED: 'Сервер не выдал Store ID для нового магазина.',
         ADMIN_BOT_NOT_CONFIGURED: 'Admin-бот не настроен на сервере.',
         'HTTP 405': 'API сервер не подключен.',
         'HTTP 404': 'API сервер не найден.',
