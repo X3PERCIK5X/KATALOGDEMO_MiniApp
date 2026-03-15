@@ -731,7 +731,34 @@ function getAdminDraftKey() {
   return storePart ? `demo_catalog_admin_draft_v1_${storePart}` : state.admin.draftKey;
 }
 
+function hasExplicitNonTelegramPlatformContext() {
+  const bridgePlatform = normalizeClientPlatform(window.HORECA_PLATFORM?.platform || '');
+  if (bridgePlatform && bridgePlatform !== 'web' && bridgePlatform !== 'telegram') return true;
+
+  const explicitPlatform = normalizeClientPlatform(
+    getClientQueryValue('platform', 'customerPlatform'),
+  );
+  if (explicitPlatform && explicitPlatform !== 'web' && explicitPlatform !== 'telegram') return true;
+
+  return Boolean(
+    getClientQueryValue(
+      'vk_app_id',
+      'vk_user_id',
+      'viewer_id',
+      'vkGroupId',
+      'vk_group_id',
+      'max_user_id',
+      'maxUserId',
+      'wa_user_id',
+      'whatsapp_user_id',
+      'ig_user_id',
+      'instagram_user_id',
+    ),
+  );
+}
+
 function getTelegramUser() {
+  if (hasExplicitNonTelegramPlatformContext()) return {};
   const cachedUser = window.HORECA_TG?.initDataUnsafe?.user;
   if (cachedUser && typeof cachedUser === 'object') return cachedUser;
 
@@ -813,6 +840,22 @@ function getClientPlatformContext({ allowGuest = true } = {}) {
   const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
     ? window.HORECA_PLATFORM
     : null;
+  const bridgePlatform = normalizeClientPlatform(platformBridge?.platform || '');
+  if (bridgePlatform && bridgePlatform !== 'web' && bridgePlatform !== 'telegram') {
+    const bridgeUserId = String(
+      platformBridge?.getContext?.()?.platformUserId
+      || platformBridge?.vkUserInfo?.id
+      || getClientQueryValue('vk_user_id', 'viewer_id', 'vkUserId', 'max_user_id', 'maxUserId')
+      || '',
+    ).trim();
+    return {
+      platform: bridgePlatform,
+      platformUserId: bridgeUserId,
+      customerIdentity: bridgeUserId ? `${bridgePlatform}:${bridgeUserId}` : '',
+      telegramUserId: '',
+      telegramInitData: '',
+    };
+  }
   const telegramUserId = String(getTelegramId() || '').trim();
   const telegramInitData = getTelegramInitData();
   if (telegramUserId || telegramInitData) {
@@ -917,6 +960,7 @@ async function waitForPlatformBridgeReady(timeoutMs = 1800) {
 }
 
 function getTelegramInitData() {
+  if (hasExplicitNonTelegramPlatformContext()) return '';
   const live = String(window.Telegram?.WebApp?.initData || '').trim();
   if (live) return live;
   const cached = String(window.HORECA_TG?.initData || '').trim();
