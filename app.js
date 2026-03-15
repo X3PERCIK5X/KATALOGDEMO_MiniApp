@@ -663,10 +663,26 @@ function normalizeClientPlatform(raw) {
 }
 
 function getClientQueryValue(...keys) {
+  const platformParams = window.HORECA_PLATFORM?.launchParams && typeof window.HORECA_PLATFORM.launchParams === 'object'
+    ? window.HORECA_PLATFORM.launchParams
+    : null;
+  if (platformParams) {
+    for (const key of keys) {
+      const value = String(platformParams[key] || '').trim();
+      if (value) return value;
+    }
+  }
   try {
     const params = new URLSearchParams(window.location.search || '');
     for (const key of keys) {
       const value = String(params.get(key) || '').trim();
+      if (value) return value;
+    }
+  } catch {}
+  try {
+    const hash = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    for (const key of keys) {
+      const value = String(hash.get(key) || '').trim();
       if (value) return value;
     }
   } catch {}
@@ -687,6 +703,9 @@ function getGuestPlatformUserId() {
 }
 
 function getClientPlatformContext({ allowGuest = true } = {}) {
+  const platformBridge = window.HORECA_PLATFORM && typeof window.HORECA_PLATFORM === 'object'
+    ? window.HORECA_PLATFORM
+    : null;
   const telegramUserId = String(getTelegramId() || '').trim();
   const telegramInitData = getTelegramInitData();
   if (telegramUserId || telegramInitData) {
@@ -697,6 +716,16 @@ function getClientPlatformContext({ allowGuest = true } = {}) {
       customerIdentity: userId ? `telegram:${userId}` : '',
       telegramUserId,
       telegramInitData,
+    };
+  }
+  const vkBridgeUserId = String(platformBridge?.vkUserInfo?.id || '').trim();
+  if (vkBridgeUserId) {
+    return {
+      platform: 'vk',
+      platformUserId: vkBridgeUserId,
+      customerIdentity: `vk:${vkBridgeUserId}`,
+      telegramUserId: '',
+      telegramInitData: '',
     };
   }
   const explicitPlatform = normalizeClientPlatform(getClientQueryValue('platform', 'customerPlatform'));
