@@ -2218,6 +2218,14 @@ function formatImportFileLabel(file) {
   return `${name} (${size} Б)`;
 }
 
+function formatImportByteSize(value) {
+  const size = Number(value || 0);
+  if (!(size > 0)) return '0 Б';
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+  if (size >= 1024) return `${Math.max(1, Math.round(size / 1024))} КБ`;
+  return `${size} Б`;
+}
+
 function getProductImportReadyRows(scope) {
   const importState = getImportScopeState(scope);
   return Array.isArray(importState.previewRows)
@@ -2228,6 +2236,12 @@ function getProductImportReadyRows(scope) {
 function buildProductImportSummaryHtml(summary) {
   if (!summary) return '';
   const recognizedFields = Array.isArray(summary.recognizedFields) ? summary.recognizedFields : [];
+  const sourceFields = Array.isArray(summary.sourceFields) ? summary.sourceFields : [];
+  const sourceInfo = [
+    summary.sourceFileName ? `Сервер получил файл: ${escapeHtml(summary.sourceFileName)}` : '',
+    Number(summary.sourceFileSize || 0) >= 0 ? `Размер: ${escapeHtml(formatImportByteSize(summary.sourceFileSize || 0))}` : '',
+    Number(summary.sourceRowsCount || 0) ? `Строк после чтения: ${escapeHtml(String(summary.sourceRowsCount || 0))}` : '',
+  ].filter(Boolean).join(' · ');
   return `
     <div class="products-import-summary">
       <div class="products-import-summary-item"><strong>${summary.totalRows || 0}</strong><span>строк</span></div>
@@ -2239,6 +2253,8 @@ function buildProductImportSummaryHtml(summary) {
       <div class="products-import-summary-item"><strong>${summary.subcategoriesToCreate || 0}</strong><span>подразделов</span></div>
       <div class="products-import-summary-item"><strong>${summary.imageRows || 0}</strong><span>фото по ссылке</span></div>
     </div>
+    ${sourceInfo ? `<div class="products-import-recognized">${sourceInfo}</div>` : ''}
+    ${sourceFields.length ? `<div class="products-import-recognized">Колонки файла: ${sourceFields.map((item) => escapeHtml(item)).join(', ')}</div>` : ''}
     ${recognizedFields.length ? `<div class="products-import-recognized">Распознаны поля: ${recognizedFields.map((item) => escapeHtml(item)).join(', ')}</div>` : ''}
   `;
 }
@@ -7564,10 +7580,9 @@ function bindEvents() {
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Проверяем...`
+      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
     renderProductImportPanel('catalog');
-    if (file) void previewProductImportFile('catalog');
   });
 
   on(ui.catalogImportPreviewButton, 'click', () => {
@@ -7588,10 +7603,9 @@ function bindEvents() {
     importState.previewRows = [];
     importState.summary = null;
     importState.status = file
-      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Проверяем...`
+      ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
     renderProductImportPanel('category');
-    if (file) void previewProductImportFile('category');
   });
 
   on(ui.productsImportPreviewButton, 'click', () => {
