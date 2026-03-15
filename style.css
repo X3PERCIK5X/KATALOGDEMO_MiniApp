@@ -4709,7 +4709,8 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
 
 .products-import-text,
 .products-import-status,
-.products-import-more {
+.products-import-more,
+.products-import-recognized {
   font-size: 11px;
   line-height: 1.25;
   color: var(--muted);

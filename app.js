@@ -2211,6 +2211,7 @@ function getProductImportReadyRows(scope) {
 
 function buildProductImportSummaryHtml(summary) {
   if (!summary) return '';
+  const recognizedFields = Array.isArray(summary.recognizedFields) ? summary.recognizedFields : [];
   return `
     <div class="products-import-summary">
       <div class="products-import-summary-item"><strong>${summary.totalRows || 0}</strong><span>строк</span></div>
@@ -2222,6 +2223,7 @@ function buildProductImportSummaryHtml(summary) {
       <div class="products-import-summary-item"><strong>${summary.subcategoriesToCreate || 0}</strong><span>подразделов</span></div>
       <div class="products-import-summary-item"><strong>${summary.imageRows || 0}</strong><span>фото по ссылке</span></div>
     </div>
+    ${recognizedFields.length ? `<div class="products-import-recognized">Распознаны поля: ${recognizedFields.map((item) => escapeHtml(item)).join(', ')}</div>` : ''}
   `;
 }
 
