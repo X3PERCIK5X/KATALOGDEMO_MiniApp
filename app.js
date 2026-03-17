@@ -2681,19 +2681,6 @@ function formatImportByteSize(value) {
   return `${size} Б`;
 }
 
-function openImportFilePicker(input) {
-  if (!input || input.disabled) return;
-  try {
-    if (typeof input.showPicker === 'function') {
-      input.showPicker();
-      return;
-    }
-  } catch {}
-  try {
-    input.click();
-  } catch {}
-}
-
 function getProductImportReadyRows(scope) {
   const importState = getImportScopeState(scope);
   return Array.isArray(importState.previewRows)
@@ -2745,7 +2732,10 @@ function renderProductImportPanel(scope = 'category') {
   );
 
   if (importUi.file) importUi.file.disabled = !canUseImport || importState.loading || importState.importing;
-  if (importUi.pickButton) importUi.pickButton.disabled = !canUseImport || importState.loading || importState.importing;
+  if (importUi.pickButton) {
+    importUi.pickButton.classList.toggle('is-disabled', !canUseImport || importState.loading || importState.importing);
+    importUi.pickButton.setAttribute('aria-disabled', (!canUseImport || importState.loading || importState.importing) ? 'true' : 'false');
+  }
   if (importUi.fileName) {
     importUi.fileName.textContent = importState.fileLabel || importState.fileName || 'Не выбран';
     importUi.fileName.classList.toggle('is-empty', !importState.fileName && !importState.fileLabel);
@@ -8775,10 +8765,6 @@ function bindEvents() {
     renderProductImportPanel('catalog');
   });
 
-  on(ui.catalogImportPickButton, 'click', () => {
-    openImportFilePicker(ui.catalogImportFile);
-  });
-
   on(ui.catalogImportPreviewButton, 'click', () => {
     void previewProductImportFile('catalog');
   });
@@ -8800,10 +8786,6 @@ function bindEvents() {
       ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
     renderProductImportPanel('category');
-  });
-
-  on(ui.productsImportPickButton, 'click', () => {
-    openImportFilePicker(ui.productsImportFile);
   });
 
   on(ui.productsImportPreviewButton, 'click', () => {

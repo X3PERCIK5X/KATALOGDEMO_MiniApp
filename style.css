@@ -4717,8 +4717,22 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   align-items: center;
 }
 
+.products-import-pick-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 34px;
+}
+
 .products-import-file {
-  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
 }
 
 .products-import-pick {
@@ -4738,6 +4752,14 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   font: inherit;
   line-height: 1;
   text-decoration: none;
+}
+
+.products-import-pick-wrap.is-disabled {
+  pointer-events: none;
+}
+
+.products-import-pick-wrap.is-disabled .products-import-pick {
+  opacity: 0.55;
 }
 
 .products-import-file-name {

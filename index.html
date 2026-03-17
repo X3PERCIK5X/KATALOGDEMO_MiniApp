@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260317-257" />
+    <link rel="stylesheet" href="/style.css?v=20260317-258" />
   </head>
   <body>
     <header class="header">
@@ -106,8 +106,10 @@
               </div>
             </div>
             <div class="products-import-controls">
-              <input id="catalogImportFile" class="products-import-file hidden" type="file" accept=".csv,.xlsx,.xls" />
-              <button id="catalogImportPickButton" class="products-import-pick" type="button">Файл</button>
+              <label id="catalogImportPickButton" class="products-import-pick-wrap" for="catalogImportFile">
+                <input id="catalogImportFile" class="products-import-file" type="file" accept=".csv,.xlsx,.xls" />
+                <span class="products-import-pick">Файл</span>
+              </label>
               <div id="catalogImportFileName" class="products-import-file-name">Не выбран</div>
               <button id="catalogImportPreviewButton" class="secondary-button products-import-button" type="button">Проверить</button>
               <button id="catalogImportSubmitButton" class="primary-button products-import-button" type="button" disabled>Импортировать</button>
@@ -165,8 +167,10 @@
               </div>
             </div>
             <div class="products-import-controls">
-              <input id="productsImportFile" class="products-import-file hidden" type="file" accept=".csv,.xlsx,.xls" />
-              <button id="productsImportPickButton" class="products-import-pick" type="button">Файл</button>
+              <label id="productsImportPickButton" class="products-import-pick-wrap" for="productsImportFile">
+                <input id="productsImportFile" class="products-import-file" type="file" accept=".csv,.xlsx,.xls" />
+                <span class="products-import-pick">Файл</span>
+              </label>
               <div id="productsImportFileName" class="products-import-file-name">Не выбран</div>
               <button id="productsImportPreviewButton" class="secondary-button products-import-button" type="button">Проверить</button>
               <button id="productsImportSubmitButton" class="primary-button products-import-button" type="button" disabled>Импортировать</button>
@@ -871,9 +875,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260317-257"></script>
-    <script src="/platform.js?v=20260317-257"></script>
-    <script src="/telegram.js?v=20260317-257"></script>
-    <script src="/app.js?v=20260317-257"></script>
+    <script src="/vk-bridge.min.js?v=20260317-258"></script>
+    <script src="/platform.js?v=20260317-258"></script>
+    <script src="/telegram.js?v=20260317-258"></script>
+    <script src="/app.js?v=20260317-258"></script>
   </body>
 </html>
