@@ -3034,7 +3034,7 @@ async function flushPendingAdminMessages(telegramUserId = '') {
 function getAdminMiniAppUrl() {
   const base = resolveCatalogBaseFromEnv();
   if (!base) return '';
-  const url = new URL(`${base}/admin`);
+  const url = new URL(`${base}/admin/tg`);
   return appendWebAppVersion(url.toString());
 }
 
@@ -5039,6 +5039,10 @@ app.get('/admin', (_req, res) => {
 });
 
 app.get(/^\/admin\/.*$/u, (_req, res) => {
+  sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get(/^\/catalog\/(tg|telegram|vk|max)(?:\/.*)?$/u, (_req, res) => {
   sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
 });
 

@@ -1473,7 +1473,7 @@ function ensureProfileAdminSections() {
     section.innerHTML = `
       <div class="section-title">Подключение ботов каталога</div>
       <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким ботам и площадкам. Telegram-боты подключаются по токену автоматически, а VK/MAX и другие платформы сохраняются как внешние точки входа в каталог.</p>
-      <div class="profile-admin-store">Bot ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
+      <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
       <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
       <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
       <form id="profileBotConnectForm" class="order-form flat">
@@ -4438,14 +4438,32 @@ function getSaasPublicOrigin() {
   return String(window.location.origin || '').trim();
 }
 
-function getVkCatalogAppUrl() {
+function getPlatformEntrySlug(platform) {
+  const normalized = normalizeClientPlatform(platform);
+  if (normalized === 'telegram') return 'tg';
+  if (normalized === 'vk') return 'vk';
+  if (normalized === 'max') return 'max';
+  return '';
+}
+
+function getPlatformCatalogAppUrl(platform) {
   const origin = getSaasPublicOrigin();
-  return origin ? `${origin}/?platform=vk` : '';
+  const slug = getPlatformEntrySlug(platform);
+  return origin && slug ? `${origin}/catalog/${slug}` : '';
+}
+
+function getPlatformAdminAppUrl(platform) {
+  const origin = getSaasPublicOrigin();
+  const slug = getPlatformEntrySlug(platform);
+  return origin && slug ? `${origin}/admin/${slug}` : '';
+}
+
+function getVkCatalogAppUrl() {
+  return getPlatformCatalogAppUrl('vk');
 }
 
 function getVkAdminAppUrl() {
-  const origin = getSaasPublicOrigin();
-  return origin ? `${origin}/?admin=1&platform=vk` : '';
+  return getPlatformAdminAppUrl('vk');
 }
 
 function normalizeCatalogBotPlatform(raw) {
@@ -4920,7 +4938,7 @@ function renderProfileBotConnectSection() {
   }
   if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
     if (!storeId) {
-      ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID), затем добавьте подключение.';
+      ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Store ID), затем добавьте подключение.';
     } else {
       ui.profileBotConnectStatus.textContent = platformMeta.hint;
     }
@@ -4936,7 +4954,7 @@ function renderProfileBotConnectSection() {
 async function saveProfileBotConnection() {
   if (!state.admin.enabled) return;
   if (!state.saas.storeId) {
-    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Bot ID).';
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Store ID).';
     return;
   }
   if (!requireAdminFeatureAccess()) return;

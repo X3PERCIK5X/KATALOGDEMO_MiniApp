@@ -20,6 +20,17 @@ console.log('platform.js loaded');
     return value || 'web';
   }
 
+  function getForcedRouteContext() {
+    const pathname = String(window.location.pathname || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (!pathname) return { surface: '', platform: '' };
+    const match = pathname.match(/^\/(admin|catalog)\/(tg|telegram|vk|max)(?:\/|$)/);
+    if (!match) return { surface: '', platform: '' };
+    return {
+      surface: String(match[1] || '').trim(),
+      platform: normalizePlatform(match[2] || ''),
+    };
+  }
+
   function getParam(...keys) {
     const query = readParams(window.location.search || '');
     const hash = readParams(window.location.hash || '');
@@ -78,6 +89,8 @@ console.log('platform.js loaded');
   }
 
   function detectPlatform() {
+    const forced = getForcedRouteContext();
+    if (forced.platform) return forced.platform;
     if (isTelegramLaunch()) return 'telegram';
     if (isVkLaunch()) return 'vk';
     const explicit = getParam('platform', 'customerPlatform');
@@ -242,6 +255,7 @@ console.log('platform.js loaded');
   }
 
   const state = {
+    routeContext: getForcedRouteContext(),
     platform: detectPlatform(),
     launchParams: buildLaunchParams(),
     launchParamsRaw: buildRawLaunchParams(),
@@ -254,6 +268,8 @@ console.log('platform.js loaded');
     const adapter = adapters[state.platform] || adapters.web;
     window.HORECA_PLATFORM = {
       platform: state.platform,
+      routeSurface: state.routeContext.surface,
+      forcedPlatform: state.routeContext.platform,
       launchParams: state.launchParams,
       launchParamsRaw: state.launchParamsRaw,
       vkUserInfo: state.vkUserInfo,
