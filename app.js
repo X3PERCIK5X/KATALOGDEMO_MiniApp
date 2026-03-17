@@ -188,6 +188,7 @@ const ui = {
   categoriesTitle: document.getElementById('categoriesTitle'),
   catalogImportPanel: document.getElementById('catalogImportPanel'),
   catalogImportFile: document.getElementById('catalogImportFile'),
+  catalogImportPickButton: document.getElementById('catalogImportPickButton'),
   catalogImportPreviewButton: document.getElementById('catalogImportPreviewButton'),
   catalogImportSubmitButton: document.getElementById('catalogImportSubmitButton'),
   catalogImportStatus: document.getElementById('catalogImportStatus'),
@@ -195,6 +196,7 @@ const ui = {
   productsTitle: document.getElementById('productsTitle'),
   productsImportPanel: document.getElementById('productsImportPanel'),
   productsImportFile: document.getElementById('productsImportFile'),
+  productsImportPickButton: document.getElementById('productsImportPickButton'),
   productsImportPreviewButton: document.getElementById('productsImportPreviewButton'),
   productsImportSubmitButton: document.getElementById('productsImportSubmitButton'),
   productsImportStatus: document.getElementById('productsImportStatus'),
@@ -2598,6 +2600,7 @@ function getImportScopeUi(scope) {
     return {
       panel: ui.catalogImportPanel,
       file: ui.catalogImportFile,
+      pickButton: ui.catalogImportPickButton,
       fileName: document.getElementById('catalogImportFileName'),
       previewButton: ui.catalogImportPreviewButton,
       submitButton: ui.catalogImportSubmitButton,
@@ -2608,6 +2611,7 @@ function getImportScopeUi(scope) {
   return {
     panel: ui.productsImportPanel,
     file: ui.productsImportFile,
+    pickButton: ui.productsImportPickButton,
     fileName: document.getElementById('productsImportFileName'),
     previewButton: ui.productsImportPreviewButton,
     submitButton: ui.productsImportSubmitButton,
@@ -2677,6 +2681,19 @@ function formatImportByteSize(value) {
   return `${size} Б`;
 }
 
+function openImportFilePicker(input) {
+  if (!input || input.disabled) return;
+  try {
+    if (typeof input.showPicker === 'function') {
+      input.showPicker();
+      return;
+    }
+  } catch {}
+  try {
+    input.click();
+  } catch {}
+}
+
 function getProductImportReadyRows(scope) {
   const importState = getImportScopeState(scope);
   return Array.isArray(importState.previewRows)
@@ -2728,6 +2745,7 @@ function renderProductImportPanel(scope = 'category') {
   );
 
   if (importUi.file) importUi.file.disabled = !canUseImport || importState.loading || importState.importing;
+  if (importUi.pickButton) importUi.pickButton.disabled = !canUseImport || importState.loading || importState.importing;
   if (importUi.fileName) {
     importUi.fileName.textContent = importState.fileLabel || importState.fileName || 'Не выбран';
     importUi.fileName.classList.toggle('is-empty', !importState.fileName && !importState.fileLabel);
@@ -8757,6 +8775,10 @@ function bindEvents() {
     renderProductImportPanel('catalog');
   });
 
+  on(ui.catalogImportPickButton, 'click', () => {
+    openImportFilePicker(ui.catalogImportFile);
+  });
+
   on(ui.catalogImportPreviewButton, 'click', () => {
     void previewProductImportFile('catalog');
   });
@@ -8778,6 +8800,10 @@ function bindEvents() {
       ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
     renderProductImportPanel('category');
+  });
+
+  on(ui.productsImportPickButton, 'click', () => {
+    openImportFilePicker(ui.productsImportFile);
   });
 
   on(ui.productsImportPreviewButton, 'click', () => {

@@ -4726,6 +4726,7 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   align-items: center;
   justify-content: center;
   min-height: 34px;
+  appearance: none;
   padding: 0 12px;
   border-radius: 9px;
   border: 1px solid color-mix(in oklab, var(--accent) 36%, var(--stroke));
@@ -4734,6 +4735,9 @@ body.admin-mode #screen-products .screen-head > .admin-catalog-controls[data-adm
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  text-decoration: none;
 }
 
 .products-import-file-name {
