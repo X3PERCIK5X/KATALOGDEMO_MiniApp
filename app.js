@@ -62,6 +62,7 @@ const state = {
       file: null,
       fileName: '',
       fileLabel: '',
+      previewToken: '',
       previewRows: [],
       summary: null,
       status: '',
@@ -73,6 +74,7 @@ const state = {
       file: null,
       fileName: '',
       fileLabel: '',
+      previewToken: '',
       previewRows: [],
       summary: null,
       status: '',
@@ -2651,6 +2653,7 @@ function resetProductImportState(scope, { keepFile = false } = {}) {
     if (importUi.fileName) importUi.fileName.textContent = 'Не выбран';
   }
   importState.previewRows = [];
+  importState.previewToken = '';
   importState.summary = null;
   importState.loading = false;
   importState.importing = false;
@@ -2808,6 +2811,7 @@ async function previewProductImportFile(scope = 'category') {
     const payload = await saasRequestWithForm(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products/preview`, form, { auth: true });
     if (requestId !== importState.previewRequestId || requestFile !== importState.file) return;
     importState.previewRows = Array.isArray(payload.rows) ? payload.rows : [];
+    importState.previewToken = String(payload.previewToken || '').trim();
     importState.summary = payload.summary && typeof payload.summary === 'object' ? payload.summary : null;
     const summary = importState.summary || {};
     const serverFileName = String(payload.fileName || '').trim();
@@ -2816,6 +2820,7 @@ async function previewProductImportFile(scope = 'category') {
   } catch (error) {
     if (requestId !== importState.previewRequestId || requestFile !== importState.file) return;
     importState.previewRows = [];
+    importState.previewToken = '';
     importState.summary = null;
     importState.loading = false;
     importState.status = `Ошибка проверки: ${error.message || 'unknown'}`;
@@ -2851,7 +2856,13 @@ async function importProductsFromPreview(scope = 'category') {
     const payload = await saasRequest(`/stores/${encodeURIComponent(state.saas.storeId)}/admin/import-products`, {
       method: 'POST',
       auth: true,
-      body: { rows: importState.previewRows, scope: scopeOptions.scope, categoryId: scopeOptions.categoryId, groupId: scopeOptions.groupId },
+      body: {
+        previewToken: importState.previewToken || '',
+        rows: importState.previewToken ? [] : importState.previewRows,
+        scope: scopeOptions.scope,
+        categoryId: scopeOptions.categoryId,
+        groupId: scopeOptions.groupId,
+      },
     });
     if (payload.dataset) applyStoreDataset(payload.dataset);
     renderHeaderStore();
@@ -2869,7 +2880,10 @@ async function importProductsFromPreview(scope = 'category') {
     reportStatus(`Импорт товаров: создано ${result.createdCount || 0}, обновлено ${result.updatedCount || 0}`);
     resetProductImportState(scope);
   } catch (error) {
-    importState.status = `Ошибка импорта: ${error.message || 'unknown'}`;
+    const code = String(error?.message || 'unknown');
+    importState.status = code === 'IMPORT_PREVIEW_EXPIRED'
+      ? 'Предпросмотр устарел. Нажмите «Обновить» и повторите импорт.'
+      : `Ошибка импорта: ${code}`;
   } finally {
     importState.importing = false;
     renderProductImportPanel(scope);

@@ -54,6 +54,8 @@ const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
+const IMPORT_PREVIEW_TTL_MS = 30 * 60 * 1000;
+const importPreviewCache = new Map();
 
 fs.mkdirSync(STORAGE_DIR, { recursive: true });
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -62,6 +64,40 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 app.set('trust proxy', 1);
+
+function cleanupImportPreviewCache() {
+  const now = Date.now();
+  for (const [token, entry] of importPreviewCache.entries()) {
+    if (!entry || Number(entry.expiresAt || 0) <= now) {
+      importPreviewCache.delete(token);
+    }
+  }
+}
+
+function createImportPreviewToken({ storeId, context, rows }) {
+  cleanupImportPreviewCache();
+  const token = crypto.randomBytes(18).toString('hex');
+  importPreviewCache.set(token, {
+    storeId: String(storeId || '').trim().toUpperCase(),
+    context: context && typeof context === 'object' ? { ...context } : {},
+    rows: Array.isArray(rows) ? rows : [],
+    expiresAt: Date.now() + IMPORT_PREVIEW_TTL_MS,
+  });
+  return token;
+}
+
+function consumeImportPreviewToken(token, storeId) {
+  cleanupImportPreviewCache();
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) return null;
+  const entry = importPreviewCache.get(normalizedToken);
+  if (!entry) return null;
+  importPreviewCache.delete(normalizedToken);
+  if (String(entry.storeId || '').trim().toUpperCase() !== String(storeId || '').trim().toUpperCase()) {
+    return null;
+  }
+  return entry;
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS stores (
@@ -4175,6 +4211,11 @@ app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, s
       storeId: req.storeId,
       fileName: preview.fileName,
       context: preview.context,
+      previewToken: createImportPreviewToken({
+        storeId: req.storeId,
+        context: preview.context,
+        rows: preview.rows,
+      }),
       summary: preview.summary,
       rows: preview.rows,
     });
@@ -4186,14 +4227,17 @@ app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, s
 
 app.post('/api/stores/:storeId/admin/import-products', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
   try {
-    const previewRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const previewToken = String(req.body?.previewToken || '').trim();
+    const cachedPreview = previewToken ? consumeImportPreviewToken(previewToken, req.storeId) : null;
+    if (previewToken && !cachedPreview) return res.status(400).json({ error: 'IMPORT_PREVIEW_EXPIRED' });
+    const previewRows = cachedPreview?.rows || (Array.isArray(req.body?.rows) ? req.body.rows : []);
     if (!previewRows.length) return res.status(400).json({ error: 'IMPORT_ROWS_REQUIRED' });
     if (previewRows.length > PRODUCT_IMPORT_MAX_ROWS) return res.status(400).json({ error: 'IMPORT_TOO_MANY_ROWS' });
     const categories = listCategories(req.storeId);
     const products = listProducts(req.storeId);
     const execution = await executeImport({
       previewRows,
-      requestContext: req.body,
+      requestContext: cachedPreview?.context || req.body,
       storeId: req.storeId,
       uploadsDir: UPLOADS_DIR,
       categories,
