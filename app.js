@@ -189,6 +189,7 @@ const ui = {
   catalogImportPanel: document.getElementById('catalogImportPanel'),
   catalogImportFile: document.getElementById('catalogImportFile'),
   catalogImportPickButton: document.getElementById('catalogImportPickButton'),
+  catalogImportClearButton: document.getElementById('catalogImportClearButton'),
   catalogImportPreviewButton: document.getElementById('catalogImportPreviewButton'),
   catalogImportSubmitButton: document.getElementById('catalogImportSubmitButton'),
   catalogImportStatus: document.getElementById('catalogImportStatus'),
@@ -197,6 +198,7 @@ const ui = {
   productsImportPanel: document.getElementById('productsImportPanel'),
   productsImportFile: document.getElementById('productsImportFile'),
   productsImportPickButton: document.getElementById('productsImportPickButton'),
+  productsImportClearButton: document.getElementById('productsImportClearButton'),
   productsImportPreviewButton: document.getElementById('productsImportPreviewButton'),
   productsImportSubmitButton: document.getElementById('productsImportSubmitButton'),
   productsImportStatus: document.getElementById('productsImportStatus'),
@@ -2752,6 +2754,7 @@ function getImportScopeUi(scope) {
       file: ui.catalogImportFile,
       pickButton: ui.catalogImportPickButton,
       fileName: document.getElementById('catalogImportFileName'),
+      clearButton: ui.catalogImportClearButton,
       previewButton: ui.catalogImportPreviewButton,
       submitButton: ui.catalogImportSubmitButton,
       status: ui.catalogImportStatus,
@@ -2763,6 +2766,7 @@ function getImportScopeUi(scope) {
     file: ui.productsImportFile,
     pickButton: ui.productsImportPickButton,
     fileName: document.getElementById('productsImportFileName'),
+    clearButton: ui.productsImportClearButton,
     previewButton: ui.productsImportPreviewButton,
     submitButton: ui.productsImportSubmitButton,
     status: ui.productsImportStatus,
@@ -2840,12 +2844,6 @@ function getProductImportReadyRows(scope) {
 
 function buildProductImportSummaryHtml(summary) {
   if (!summary) return '';
-  const recognizedFields = Array.isArray(summary.recognizedFields) ? summary.recognizedFields : [];
-  const sourceInfo = [
-    summary.sourceFileName ? `Сервер получил файл: ${escapeHtml(summary.sourceFileName)}` : '',
-    Number(summary.sourceFileSize || 0) >= 0 ? `Размер: ${escapeHtml(formatImportByteSize(summary.sourceFileSize || 0))}` : '',
-    Number(summary.sourceRowsCount || 0) ? `Строк после чтения: ${escapeHtml(String(summary.sourceRowsCount || 0))}` : '',
-  ].filter(Boolean).join(' · ');
   return `
     <div class="products-import-summary">
       <div class="products-import-summary-item"><strong>${summary.totalRows || 0}</strong><span>строк</span></div>
@@ -2857,8 +2855,6 @@ function buildProductImportSummaryHtml(summary) {
       <div class="products-import-summary-item"><strong>${summary.subcategoriesToCreate || 0}</strong><span>подразделов</span></div>
       <div class="products-import-summary-item"><strong>${summary.imageRows || 0}</strong><span>фото по ссылке</span></div>
     </div>
-    ${sourceInfo ? `<div class="products-import-recognized">${sourceInfo}</div>` : ''}
-    ${recognizedFields.length ? `<div class="products-import-recognized">Распознаны поля: ${recognizedFields.map((item) => escapeHtml(item)).join(', ')}</div>` : ''}
   `;
 }
 
@@ -2889,6 +2885,9 @@ function renderProductImportPanel(scope = 'category') {
   if (importUi.fileName) {
     importUi.fileName.textContent = importState.fileLabel || importState.fileName || 'Не выбран';
     importUi.fileName.classList.toggle('is-empty', !importState.fileName && !importState.fileLabel);
+  }
+  if (importUi.clearButton) {
+    importUi.clearButton.disabled = !importState.file || importState.loading || importState.importing;
   }
   if (importUi.previewButton) {
     importUi.previewButton.disabled = !canPreview;
@@ -2950,6 +2949,14 @@ function renderProductImportPanel(scope = 'category') {
     ${moreCount ? `<div class="products-import-more">Показаны первые ${previewLimit} строк из ${rows.length}. Остальные будут импортированы по тем же правилам.</div>` : ''}
   `;
   importUi.preview.classList.remove('hidden');
+}
+
+function clearProductImportFile(scope = 'category') {
+  const importState = getImportScopeState(scope);
+  const scopeOptions = getImportScopeOptions(scope);
+  resetProductImportState(scope);
+  importState.status = scopeOptions.idleStatus;
+  renderProductImportPanel(scope);
 }
 
 async function ensureImportSession(scope = 'category') {
@@ -9125,6 +9132,10 @@ function bindEvents() {
     void previewProductImportFile('catalog');
   });
 
+  on(ui.catalogImportClearButton, 'click', () => {
+    clearProductImportFile('catalog');
+  });
+
   on(ui.catalogImportSubmitButton, 'click', () => {
     void importProductsFromPreview('catalog');
   });
@@ -9146,6 +9157,10 @@ function bindEvents() {
 
   on(ui.productsImportPreviewButton, 'click', () => {
     void previewProductImportFile('category');
+  });
+
+  on(ui.productsImportClearButton, 'click', () => {
+    clearProductImportFile('category');
   });
 
   on(ui.productsImportSubmitButton, 'click', () => {
