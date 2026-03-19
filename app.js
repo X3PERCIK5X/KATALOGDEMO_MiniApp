@@ -4784,6 +4784,13 @@ function getCatalogBotSummaryText(connections) {
   return items.length > 1 ? `${label} +${items.length - 1}` : label;
 }
 
+function getCatalogConnectionsByPlatform(platform) {
+  const normalized = normalizeCatalogBotPlatform(platform);
+  return (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
+    return normalizeCatalogBotPlatform(connection?.platform) === normalized;
+  });
+}
+
 function renderCatalogBotConnectionsList(target, connections, catalogUrl) {
   if (!target) return;
   if (state.catalogBotConnectionsLoading) {
