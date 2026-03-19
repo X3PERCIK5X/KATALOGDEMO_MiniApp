@@ -386,10 +386,10 @@ const ui = {
   profilePrivacyPolicySection: document.getElementById('profilePrivacyPolicySection'),
   privacyPolicyForm: document.getElementById('privacyPolicyForm'),
   privacyPolicyTitleInput: document.getElementById('privacyPolicyTitleInput'),
-  privacyPolicyUrlInput: document.getElementById('privacyPolicyUrlInput'),
+  privacyPolicyTextInput: document.getElementById('privacyPolicyTextInput'),
   privacyPolicyFileInput: document.getElementById('privacyPolicyFileInput'),
-  privacyPolicyUploadButton: document.getElementById('privacyPolicyUploadButton'),
   privacyPolicyFileName: document.getElementById('privacyPolicyFileName'),
+  privacyPolicyCurrentLink: document.getElementById('privacyPolicyCurrentLink'),
   privacyPolicyStatus: document.getElementById('privacyPolicyStatus'),
   privacyPolicySaveButton: document.getElementById('privacyPolicySaveButton'),
   promoSettingsForm: document.getElementById('promoSettingsForm'),
@@ -2065,27 +2065,38 @@ function getPrivacyPolicyConfig() {
   return {
     title: String(config.privacyPolicyTitle || '').trim(),
     url: String(config.privacyPolicyUrl || '').trim(),
+    text: String(config.privacyPolicyText || '').trim(),
   };
 }
 
 function hasPrivacyPolicyConfigured() {
-  return Boolean(getPrivacyPolicyConfig().url);
+  const policy = getPrivacyPolicyConfig();
+  return Boolean(policy.url || policy.text);
 }
 
 function renderCheckoutPrivacyPolicy() {
   const policy = getPrivacyPolicyConfig();
-  const hasPolicy = Boolean(policy.url);
+  const hasPolicy = Boolean(policy.url || policy.text);
   if (ui.policyConsentLabel) {
     ui.policyConsentLabel.classList.toggle('hidden', !hasPolicy);
   }
   if (ui.policyLink) {
-    ui.policyLink.href = hasPolicy ? policy.url : '#';
+    ui.policyLink.href = policy.text ? '#' : (hasPolicy ? policy.url : '#');
     ui.policyLink.textContent = policy.title || 'политикой конфиденциальности';
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
   }
+}
+
+function openPrivacyPolicyViewer() {
+  const policy = getPrivacyPolicyConfig();
+  if (!policy.text) return;
+  adminOpenReportModal(
+    policy.title || 'Политика конфиденциальности',
+    `<div style="white-space:pre-wrap;line-height:1.55;">${escapeHtml(policy.text)}</div>`
+  );
 }
 
 function renderPrivacyPolicySettings() {
@@ -2095,17 +2106,26 @@ function renderPrivacyPolicySettings() {
   if (!state.admin.enabled) return;
   const policy = getPrivacyPolicyConfig();
   if (ui.privacyPolicyTitleInput) ui.privacyPolicyTitleInput.value = policy.title;
-  if (ui.privacyPolicyUrlInput) ui.privacyPolicyUrlInput.value = policy.url;
+  if (ui.privacyPolicyTextInput) ui.privacyPolicyTextInput.value = policy.text;
   if (ui.privacyPolicyFileName) {
     const file = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
       ? ui.privacyPolicyFileInput.files[0]
       : null;
     ui.privacyPolicyFileName.textContent = file
       ? `${file.name} (${Math.max(1, Math.round((file.size || 0) / 1024))} КБ)`
-      : (policy.url ? 'Загруженный документ сохранен.' : 'Файл не выбран');
+      : (policy.url ? 'Документ политики уже загружен.' : 'Файл не выбран');
+  }
+  if (ui.privacyPolicyCurrentLink) {
+    if (policy.url) {
+      ui.privacyPolicyCurrentLink.innerHTML = `Текущий документ: <a href="${escapeHtml(policy.url)}" target="_blank" rel="noopener">открыть файл</a>`;
+      ui.privacyPolicyCurrentLink.classList.remove('hidden');
+    } else {
+      ui.privacyPolicyCurrentLink.textContent = '';
+      ui.privacyPolicyCurrentLink.classList.add('hidden');
+    }
   }
   if (ui.privacyPolicyStatus && !ui.privacyPolicyStatus.textContent.trim()) {
-    ui.privacyPolicyStatus.textContent = policy.url
+    ui.privacyPolicyStatus.textContent = (policy.url || policy.text)
       ? 'Политика подключена. Согласие на checkout обязательно.'
       : 'Политика пока не загружена.';
   }
@@ -2114,14 +2134,28 @@ function renderPrivacyPolicySettings() {
 async function savePrivacyPolicySettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
   if (!requireAdminFeatureAccess()) return;
+  const currentPolicy = getPrivacyPolicyConfig();
   const title = String(ui.privacyPolicyTitleInput?.value || '').trim();
-  const url = String(ui.privacyPolicyUrlInput?.value || '').trim();
-  if (url && !isValidHttpUrl(url)) {
-    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Введите корректную ссылку на политику.';
+  const text = String(ui.privacyPolicyTextInput?.value || '').trim();
+  const selectedFile = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
+    ? ui.privacyPolicyFileInput.files[0]
+    : null;
+  let url = currentPolicy.url;
+  if (!text && !selectedFile && !url) {
+    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Добавьте текст политики или выберите файл.';
     return;
   }
-  if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Сохраняем политику...';
+  if (ui.privacyPolicyStatus) {
+    ui.privacyPolicyStatus.textContent = selectedFile
+      ? 'Загружаем и сохраняем политику...'
+      : 'Сохраняем политику...';
+  }
   try {
+    if (selectedFile) {
+      const uploadedUrl = await adminUploadPolicyFile(selectedFile);
+      if (!uploadedUrl) throw new Error('empty upload url');
+      url = uploadedUrl;
+    }
     const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/config`, {
       method: 'PATCH',
       auth: true,
@@ -2129,46 +2163,24 @@ async function savePrivacyPolicySettings() {
         config: {
           privacyPolicyTitle: title,
           privacyPolicyUrl: url,
+          privacyPolicyText: text,
         },
       },
     });
     state.config = payload?.config && typeof payload.config === 'object'
       ? { ...state.config, ...payload.config }
-      : { ...state.config, privacyPolicyTitle: title, privacyPolicyUrl: url };
+      : { ...state.config, privacyPolicyTitle: title, privacyPolicyUrl: url, privacyPolicyText: text };
+    if (ui.privacyPolicyFileInput) ui.privacyPolicyFileInput.value = '';
     renderCheckoutPrivacyPolicy();
     renderPrivacyPolicySettings();
     if (ui.privacyPolicyStatus) {
-      ui.privacyPolicyStatus.textContent = url
+      ui.privacyPolicyStatus.textContent = (url || text)
         ? 'Политика сохранена.'
         : 'Политика очищена.';
     }
   } catch (error) {
     if (ui.privacyPolicyStatus) {
       ui.privacyPolicyStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
-    }
-  }
-}
-
-async function uploadPrivacyPolicyDocument() {
-  if (!state.admin.enabled || !state.saas.storeId) return;
-  if (!requireAdminFeatureAccess()) return;
-  const file = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
-    ? ui.privacyPolicyFileInput.files[0]
-    : null;
-  if (!file) {
-    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Сначала выберите файл политики.';
-    return;
-  }
-  if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Загружаем документ политики...';
-  try {
-    const url = await adminUploadPolicyFile(file);
-    if (!url) throw new Error('empty upload url');
-    if (ui.privacyPolicyUrlInput) ui.privacyPolicyUrlInput.value = url;
-    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Файл загружен. Теперь сохраните политику.';
-    renderPrivacyPolicySettings();
-  } catch (error) {
-    if (ui.privacyPolicyStatus) {
-      ui.privacyPolicyStatus.textContent = `Ошибка загрузки: ${String(error?.message || 'unknown')}`;
     }
   }
 }
@@ -8790,14 +8802,17 @@ function bindEvents() {
     e.preventDefault();
     await savePrivacyPolicySettings();
   });
-  on(ui.privacyPolicyUploadButton, 'click', async () => {
-    await uploadPrivacyPolicyDocument();
-  });
   on(ui.privacyPolicyFileInput, 'change', () => {
     renderPrivacyPolicySettings();
     if (ui.privacyPolicyStatus && ui.privacyPolicyFileInput?.files?.[0]) {
-      ui.privacyPolicyStatus.textContent = 'Файл выбран. Нажмите «Загрузить файл».';
+      ui.privacyPolicyStatus.textContent = 'Файл выбран. Нажмите «Сохранить политику».';
     }
+  });
+  on(ui.policyLink, 'click', (e) => {
+    const policy = getPrivacyPolicyConfig();
+    if (!policy.text) return;
+    e.preventDefault();
+    openPrivacyPolicyViewer();
   });
   on(ui.promoSettingsList, 'click', async (e) => {
     const btn = e.target.closest('[data-promo-remove]');

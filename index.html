@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-272" />
+    <link rel="stylesheet" href="/style.css?v=20260319-273" />
   </head>
   <body>
     <header class="header">
@@ -565,22 +565,22 @@
         </div>
         <div id="profilePrivacyPolicySection" class="profile-subscription-card hidden">
           <div class="section-title">Политика конфиденциальности</div>
-          <p class="feedback-note">Загрузите PDF/DOC/DOCX/TXT или вставьте ссылку. При наличии политики в оформлении заказа появится обязательная галочка согласия.</p>
+          <p class="feedback-note">Добавьте текст политики или загрузите файл. Если политика заполнена, при оформлении заказа появится обязательная галочка согласия.</p>
           <form id="privacyPolicyForm" class="order-form flat">
-            <label>Название ссылки
+            <label>Название политики
               <input id="privacyPolicyTitleInput" type="text" autocomplete="off" placeholder="Например: Политика конфиденциальности магазина" />
             </label>
-            <label>Ссылка на политику
-              <input id="privacyPolicyUrlInput" type="url" autocomplete="off" placeholder="https://... или загрузите файл ниже" />
+            <label>Текст политики
+              <textarea id="privacyPolicyTextInput" rows="8" placeholder="Вставьте сюда полный текст политики конфиденциальности."></textarea>
             </label>
             <div class="products-import-actions">
               <label class="products-import-pick">
                 <input id="privacyPolicyFileInput" class="products-import-file" type="file" accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
-                <span class="secondary-button products-import-pick-button">Файл политики</span>
+                <span class="secondary-button products-import-pick-button">Выбрать файл политики</span>
               </label>
-              <button id="privacyPolicyUploadButton" class="secondary-button" type="button">Загрузить файл</button>
             </div>
             <div id="privacyPolicyFileName" class="feedback-note">Файл не выбран</div>
+            <div id="privacyPolicyCurrentLink" class="feedback-note hidden"></div>
             <div id="privacyPolicyStatus" class="status"></div>
             <button id="privacyPolicySaveButton" class="primary-button" type="submit">Сохранить политику</button>
           </form>
@@ -937,9 +937,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-272"></script>
-    <script src="/platform.js?v=20260319-272"></script>
-    <script src="/telegram.js?v=20260319-272"></script>
-    <script src="/app.js?v=20260319-272"></script>
+    <script src="/vk-bridge.min.js?v=20260319-273"></script>
+    <script src="/platform.js?v=20260319-273"></script>
+    <script src="/telegram.js?v=20260319-273"></script>
+    <script src="/app.js?v=20260319-273"></script>
   </body>
 </html>

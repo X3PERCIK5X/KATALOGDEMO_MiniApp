@@ -2149,6 +2149,9 @@ function sanitizeConfigPatch(configPatch) {
     const rawUrl = String(configPatch.privacyPolicyUrl || '').trim();
     out.privacyPolicyUrl = rawUrl && isValidHttpUrl(rawUrl) ? rawUrl : '';
   }
+  if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyText')) {
+    out.privacyPolicyText = String(configPatch.privacyPolicyText || '').trim().slice(0, 40000);
+  }
   return out;
 }
 
