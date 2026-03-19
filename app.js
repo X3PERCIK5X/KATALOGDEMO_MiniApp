@@ -231,6 +231,7 @@ const ui = {
   inputComment: document.getElementById('inputComment'),
   policyConsentLabel: document.getElementById('policyConsentLabel'),
   policyCheck: document.getElementById('policyCheck'),
+  policyConsentText: document.getElementById('policyConsentText'),
   policyLink: document.getElementById('policyLink'),
   orderStatus: document.getElementById('orderStatus'),
   orderRetry: document.getElementById('orderRetry'),
@@ -387,6 +388,7 @@ const ui = {
   profilePromoSection: document.getElementById('profilePromoSection'),
   profilePrivacyPolicySection: document.getElementById('profilePrivacyPolicySection'),
   privacyPolicyForm: document.getElementById('privacyPolicyForm'),
+  privacyPolicyConsentTextInput: document.getElementById('privacyPolicyConsentTextInput'),
   privacyPolicyTitleInput: document.getElementById('privacyPolicyTitleInput'),
   privacyPolicyTextInput: document.getElementById('privacyPolicyTextInput'),
   privacyPolicyFileInput: document.getElementById('privacyPolicyFileInput'),
@@ -2035,6 +2037,7 @@ async function adminUploadPolicyFile(file) {
 function getPrivacyPolicyConfig() {
   const config = state.config && typeof state.config === 'object' ? state.config : {};
   return {
+    consentText: String(config.privacyPolicyConsentText || '').trim(),
     title: String(config.privacyPolicyTitle || '').trim(),
     url: String(config.privacyPolicyUrl || '').trim(),
     text: String(config.privacyPolicyText || '').trim(),
@@ -2057,6 +2060,9 @@ function renderCheckoutPrivacyPolicy() {
     ui.policyLink.textContent = policy.title || 'политикой конфиденциальности';
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
+  if (ui.policyConsentText) {
+    ui.policyConsentText.textContent = policy.consentText || 'Я даю согласие на обработку персональных данных и согласен(а) с';
+  }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
   }
@@ -2077,6 +2083,7 @@ function renderPrivacyPolicySettings() {
   }
   if (!state.admin.enabled) return;
   const policy = getPrivacyPolicyConfig();
+  if (ui.privacyPolicyConsentTextInput) ui.privacyPolicyConsentTextInput.value = policy.consentText;
   if (ui.privacyPolicyTitleInput) ui.privacyPolicyTitleInput.value = policy.title;
   if (ui.privacyPolicyTextInput) ui.privacyPolicyTextInput.value = policy.text;
   if (ui.privacyPolicyFileName) {
@@ -2107,6 +2114,7 @@ async function savePrivacyPolicySettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
   if (!requireAdminFeatureAccess()) return;
   const currentPolicy = getPrivacyPolicyConfig();
+  const consentText = String(ui.privacyPolicyConsentTextInput?.value || '').trim();
   const title = String(ui.privacyPolicyTitleInput?.value || '').trim();
   const text = String(ui.privacyPolicyTextInput?.value || '').trim();
   const selectedFile = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
@@ -2133,6 +2141,7 @@ async function savePrivacyPolicySettings() {
       auth: true,
       body: {
         config: {
+          privacyPolicyConsentText: consentText,
           privacyPolicyTitle: title,
           privacyPolicyUrl: url,
           privacyPolicyText: text,
@@ -2141,7 +2150,13 @@ async function savePrivacyPolicySettings() {
     });
     state.config = payload?.config && typeof payload.config === 'object'
       ? { ...state.config, ...payload.config }
-      : { ...state.config, privacyPolicyTitle: title, privacyPolicyUrl: url, privacyPolicyText: text };
+      : {
+          ...state.config,
+          privacyPolicyConsentText: consentText,
+          privacyPolicyTitle: title,
+          privacyPolicyUrl: url,
+          privacyPolicyText: text,
+        };
     if (ui.privacyPolicyFileInput) ui.privacyPolicyFileInput.value = '';
     renderCheckoutPrivacyPolicy();
     renderPrivacyPolicySettings();

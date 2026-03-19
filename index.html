@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-278" />
+    <link rel="stylesheet" href="/style.css?v=20260320-279" />
   </head>
   <body>
     <header class="header">
@@ -295,7 +295,7 @@
             <label>Комментарий к заказу<input id="inputComment" type="text" placeholder="Комментарий" /></label>
             <label id="policyConsentLabel" class="checkbox hidden">
               <input id="policyCheck" type="checkbox" />
-              <span>Согласен(а) с <a id="policyLink" href="#" target="_blank" rel="noopener">политикой конфиденциальности</a></span>
+              <span><span id="policyConsentText">Я даю согласие на обработку персональных данных и согласен(а) с</span> <a id="policyLink" href="#" target="_blank" rel="noopener">политикой конфиденциальности</a></span>
             </label>
             <div class="cart-totals">
               <div><span>Товаров</span><strong id="cartItemsCount">0</strong></div>
@@ -568,16 +568,19 @@
           <div class="section-title">Политика конфиденциальности</div>
           <p class="feedback-note">Добавьте текст политики или загрузите файл. Если политика заполнена, при оформлении заказа появится обязательная галочка согласия.</p>
           <form id="privacyPolicyForm" class="order-form flat">
+            <label>Текст перед ссылкой
+              <input id="privacyPolicyConsentTextInput" type="text" autocomplete="off" placeholder="Например: Я даю согласие на обработку персональных данных и согласен(а) с" />
+            </label>
             <label>Название политики
-              <input id="privacyPolicyTitleInput" type="text" autocomplete="off" placeholder="Например: Политика конфиденциальности магазина" />
+              <input id="privacyPolicyTitleInput" type="text" autocomplete="off" placeholder="Например: Политикой конфиденциальности магазина" />
             </label>
             <label>Текст политики
               <textarea id="privacyPolicyTextInput" rows="8" placeholder="Вставьте сюда полный текст политики конфиденциальности."></textarea>
             </label>
             <div class="products-import-actions">
-              <label class="products-import-pick">
+              <label class="products-import-pick-wrap" for="privacyPolicyFileInput">
                 <input id="privacyPolicyFileInput" class="products-import-file" type="file" accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
-                <span class="secondary-button products-import-pick-button">Выбрать файл политики</span>
+                <span class="products-import-pick">Загрузить файл</span>
               </label>
             </div>
             <div id="privacyPolicyFileName" class="feedback-note">Файл не выбран</div>
@@ -944,9 +947,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-278"></script>
-    <script src="/platform.js?v=20260319-278"></script>
-    <script src="/telegram.js?v=20260319-278"></script>
-    <script src="/app.js?v=20260319-278"></script>
+    <script src="/vk-bridge.min.js?v=20260320-279"></script>
+    <script src="/platform.js?v=20260320-279"></script>
+    <script src="/telegram.js?v=20260320-279"></script>
+    <script src="/app.js?v=20260320-279"></script>
   </body>
 </html>

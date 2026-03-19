@@ -2406,6 +2406,9 @@ function sanitizeConfigPatch(configPatch) {
   if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyTitle')) {
     out.privacyPolicyTitle = String(configPatch.privacyPolicyTitle || '').trim().slice(0, 200);
   }
+  if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyConsentText')) {
+    out.privacyPolicyConsentText = String(configPatch.privacyPolicyConsentText || '').trim().slice(0, 300);
+  }
   if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyUrl')) {
     const rawUrl = String(configPatch.privacyPolicyUrl || '').trim();
     out.privacyPolicyUrl = rawUrl && isValidHttpUrl(rawUrl) ? rawUrl : '';
