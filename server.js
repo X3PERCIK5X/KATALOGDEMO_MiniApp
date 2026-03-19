@@ -353,6 +353,25 @@ CREATE TABLE IF NOT EXISTS order_payments (
 );
 CREATE INDEX IF NOT EXISTS idx_order_payments_store_order_created
   ON order_payments(store_id, order_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS promo_code_usages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id TEXT NOT NULL,
+  promo_code TEXT NOT NULL,
+  usage_mode TEXT NOT NULL DEFAULT 'any_once',
+  promo_owner_key TEXT NOT NULL,
+  telegram_user_id TEXT NOT NULL DEFAULT '',
+  customer_identity TEXT NOT NULL DEFAULT '',
+  customer_phone TEXT NOT NULL DEFAULT '',
+  order_id TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(store_id, promo_code, promo_owner_key),
+  FOREIGN KEY(store_id) REFERENCES stores(store_id) ON DELETE CASCADE,
+  FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_promo_code_usages_store_owner
+  ON promo_code_usages(store_id, promo_owner_key, created_at DESC);
 `);
 
 function ensureStoresColumn(columnName, ddl) {
@@ -401,12 +420,16 @@ ensureOrdersColumn('payment_status', "payment_status TEXT NOT NULL DEFAULT ''");
 ensureOrdersColumn('customer_platform', "customer_platform TEXT NOT NULL DEFAULT 'telegram'");
 ensureOrdersColumn('customer_platform_user_id', "customer_platform_user_id TEXT NOT NULL DEFAULT ''");
 ensureOrdersColumn('customer_identity', "customer_identity TEXT NOT NULL DEFAULT ''");
+ensureOrdersColumn('customer_phone', "customer_phone TEXT NOT NULL DEFAULT ''");
+ensureOrdersColumn('promo_owner_key', "promo_owner_key TEXT NOT NULL DEFAULT ''");
 ensureEventsColumn('customer_platform', "customer_platform TEXT NOT NULL DEFAULT 'telegram'");
 ensureEventsColumn('customer_platform_user_id', "customer_platform_user_id TEXT NOT NULL DEFAULT ''");
 ensureEventsColumn('customer_identity', "customer_identity TEXT NOT NULL DEFAULT ''");
 db.exec(`
 CREATE INDEX IF NOT EXISTS idx_orders_store_customer_identity
   ON orders(store_id, customer_identity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_store_promo_owner
+  ON orders(store_id, promo_owner_key, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_store_customer_identity
   ON events(store_id, customer_identity, created_at DESC);
 `);
@@ -2016,6 +2039,21 @@ function normalizePromoCode(raw) {
   return String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
 }
 
+function normalizePromoUsageMode(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  return value === 'first_order_once' ? 'first_order_once' : 'any_once';
+}
+
+const BUILTIN_FIRST_ORDER_PROMO = {
+  code: 'ПЕРВЫЙ',
+  type: 'percent',
+  value: 10,
+  active: true,
+  usageMode: 'first_order_once',
+  builtin: true,
+  noSaleOnly: true,
+};
+
 function normalizePromoCodes(raw) {
   if (!Array.isArray(raw)) return [];
   const unique = new Map();
@@ -2028,9 +2066,232 @@ function normalizePromoCodes(raw) {
     const value = type === 'fixed'
       ? Math.max(1, Math.round(num))
       : Math.max(1, Math.min(100, Math.round(num)));
-    unique.set(code, { code, type, value, active: item?.active !== false });
+    unique.set(code, {
+      code,
+      type,
+      value,
+      active: item?.active !== false,
+      usageMode: normalizePromoUsageMode(item?.usageMode || item?.applyMode || item?.scope),
+    });
   });
   return Array.from(unique.values()).slice(0, 100);
+}
+
+function getStorePromoRules(settings = {}) {
+  return normalizePromoCodes(settings?.promoCodes || []);
+}
+
+function findStorePromoRule(settings = {}, codeRaw = '') {
+  const code = normalizePromoCode(codeRaw);
+  if (!code) return null;
+  const custom = getStorePromoRules(settings).find((rule) => rule.active !== false && rule.code === code) || null;
+  if (custom) return custom;
+  if (code === BUILTIN_FIRST_ORDER_PROMO.code) return { ...BUILTIN_FIRST_ORDER_PROMO };
+  return null;
+}
+
+function normalizePhoneDigits(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) return '';
+  return digits;
+}
+
+function buildPromoOwnerKey({ customerPlatform = '', telegramUserId = '', phone = '' } = {}) {
+  const normalizedPlatform = normalizeCustomerPlatform(customerPlatform);
+  const tgId = String(telegramUserId || '').trim();
+  if (normalizedPlatform === 'telegram' && tgId) return `tg:${tgId}`;
+  const phoneDigits = normalizePhoneDigits(phone);
+  if (phoneDigits) return `phone:${phoneDigits}`;
+  if (tgId) return `tg:${tgId}`;
+  return '';
+}
+
+function normalizeServerProductDiscountPercent(value) {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.max(1, Math.min(95, Math.round(raw)));
+}
+
+function getServerProductPromoPercent(product) {
+  return normalizeServerProductDiscountPercent(product?.discountPercent);
+}
+
+function hasServerProductPrice(product) {
+  return Number(product?.price || 0) > 0;
+}
+
+function getServerProductFinalPrice(product) {
+  if (!hasServerProductPrice(product)) return 0;
+  const basePrice = Number(product?.price || 0);
+  const promoPercent = getServerProductPromoPercent(product);
+  if (promoPercent <= 0) return basePrice;
+  return Math.max(0, Math.round(basePrice * (1 - promoPercent / 100)));
+}
+
+function isServerProductOnSale(product) {
+  if (!product) return false;
+  if (getServerProductPromoPercent(product) > 0) return true;
+  if (Number(product?.oldPrice || 0) > Number(product?.price || 0)) return true;
+  if (typeof product?.badge === 'string' && /скид|sale|promo/i.test(product.badge)) return true;
+  if (Array.isArray(product?.tags) && product.tags.some((tag) => /скид|sale|promo/i.test(String(tag)))) return true;
+  return false;
+}
+
+function buildCanonicalOrderItem(rawItem, productMap = new Map()) {
+  const productId = String(rawItem?.id || rawItem?.productId || '').trim();
+  const product = productId ? productMap.get(productId) || null : null;
+  const qtyRaw = Number(rawItem?.qty || 1);
+  const qty = Number.isFinite(qtyRaw) ? Math.max(1, Math.round(qtyRaw)) : 1;
+  if (product) {
+    const hasPrice = hasServerProductPrice(product);
+    return {
+      id: product.id,
+      title: String(product.title || rawItem?.title || 'Товар'),
+      sku: String(product.sku || rawItem?.sku || '').trim(),
+      qty,
+      price: hasPrice ? getServerProductFinalPrice(product) : 0,
+      basePrice: hasPrice ? Number(product.price || 0) : 0,
+      isRequestPrice: !hasPrice,
+      isSaleItem: isServerProductOnSale(product),
+      payloadProduct: product,
+    };
+  }
+  const rawPrice = Number(rawItem?.price || 0);
+  return {
+    id: productId,
+    title: String(rawItem?.title || 'Товар'),
+    sku: String(rawItem?.sku || '').trim(),
+    qty,
+    price: Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0,
+    basePrice: Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0,
+    isRequestPrice: Boolean(rawItem?.isRequestPrice) || !(Number.isFinite(rawPrice) && rawPrice > 0),
+    isSaleItem: false,
+    payloadProduct: null,
+  };
+}
+
+function findPromoUsageRecord(storeId, promoCode, promoOwnerKey) {
+  return db.prepare(`
+    SELECT id, order_id, created_at
+    FROM promo_code_usages
+    WHERE store_id = ? AND promo_code = ? AND promo_owner_key = ?
+    LIMIT 1
+  `).get(storeId, promoCode, promoOwnerKey) || null;
+}
+
+function countPriorOrdersForPromoOwner(storeId, promoOwnerKey, telegramUserId = '', phoneDigits = '') {
+  const key = String(promoOwnerKey || '').trim();
+  if (!key) return 0;
+  const tgId = String(telegramUserId || '').trim();
+  const phone = normalizePhoneDigits(phoneDigits);
+  if (key.startsWith('tg:')) {
+    return Number(db.prepare(`
+      SELECT COUNT(*) AS c
+      FROM orders
+      WHERE store_id = ?
+        AND workflow_status != 'canceled'
+        AND (
+          promo_owner_key = ?
+          OR (promo_owner_key = '' AND telegram_user_id = ?)
+        )
+    `).get(storeId, key, tgId)?.c || 0);
+  }
+  return Number(db.prepare(`
+    SELECT COUNT(*) AS c
+    FROM orders
+    WHERE store_id = ?
+      AND workflow_status != 'canceled'
+      AND (
+        promo_owner_key = ?
+        OR (promo_owner_key = '' AND customer_phone = ?)
+      )
+  `).get(storeId, key, phone)?.c || 0);
+}
+
+function buildPromoValidationResult({
+  storeId,
+  storeSettings = {},
+  promoCode = '',
+  identity = {},
+  customer = {},
+  canonicalItems = [],
+}) {
+  const normalizedPromoCode = normalizePromoCode(promoCode);
+  if (!normalizedPromoCode) {
+    const subtotal = canonicalItems.reduce((acc, item) => item.isRequestPrice ? acc : acc + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+    return {
+      ok: true,
+      promo: null,
+      subtotal,
+      discountAmount: 0,
+      total: subtotal,
+      promoOwnerKey: '',
+      customerPhone: normalizePhoneDigits(customer?.phone),
+    };
+  }
+
+  const rule = findStorePromoRule(storeSettings, normalizedPromoCode);
+  if (!rule || rule.active === false) {
+    return { ok: false, code: 'PROMO_NOT_FOUND', message: 'Промокод не найден.' };
+  }
+
+  const customerPhone = normalizePhoneDigits(customer?.phone);
+  const promoOwnerKey = buildPromoOwnerKey({
+    customerPlatform: identity.customerPlatform,
+    telegramUserId: identity.telegramUserId,
+    phone: customerPhone,
+  });
+  if (!promoOwnerKey) {
+    return { ok: false, code: 'PROMO_OWNER_REQUIRED', message: 'Для применения промокода нужен Telegram ID или корректный номер телефона.' };
+  }
+
+  const usage = findPromoUsageRecord(storeId, rule.code, promoOwnerKey);
+  if (usage) {
+    return { ok: false, code: 'PROMO_ALREADY_USED', message: 'Этот промокод уже использован для данного покупателя.' };
+  }
+
+  if (rule.usageMode === 'first_order_once') {
+    const priorOrdersCount = countPriorOrdersForPromoOwner(storeId, promoOwnerKey, identity.telegramUserId, customerPhone);
+    if (priorOrdersCount > 0) {
+      return { ok: false, code: 'PROMO_FIRST_ORDER_ONLY', message: 'Этот промокод доступен только на первую покупку в магазине.' };
+    }
+  }
+
+  const pricedItems = canonicalItems.filter((item) => !item.isRequestPrice);
+  const subtotal = pricedItems.reduce((acc, item) => acc + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+  const eligibleItems = rule.noSaleOnly
+    ? pricedItems.filter((item) => !item.isSaleItem)
+    : pricedItems;
+  const eligibleTotal = eligibleItems.reduce((acc, item) => acc + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+
+  if (subtotal <= 0) {
+    return { ok: false, code: 'PROMO_EMPTY_CART', message: 'В корзине нет товаров с ценой для применения промокода.' };
+  }
+  if (eligibleTotal <= 0) {
+    return { ok: false, code: 'PROMO_NOT_APPLICABLE', message: rule.noSaleOnly ? 'Промокод действует только на товары без скидки.' : 'Промокод не подходит для выбранных товаров.' };
+  }
+
+  const discountAmount = rule.type === 'fixed'
+    ? Math.min(subtotal, Math.max(1, Math.round(rule.value || 0)))
+    : Math.round(eligibleTotal * (Math.max(1, Math.min(100, Number(rule.value || 0))) / 100));
+  const total = Math.max(0, subtotal - discountAmount);
+
+  return {
+    ok: true,
+    promo: {
+      code: rule.code,
+      type: rule.type,
+      value: rule.value,
+      usageMode: normalizePromoUsageMode(rule.usageMode),
+      discountAmount,
+      noSaleOnly: Boolean(rule.noSaleOnly),
+    },
+    subtotal,
+    discountAmount,
+    total,
+    promoOwnerKey,
+    customerPhone,
+  };
 }
 
 function sanitizeSettingsPatch(settingsPatch) {
@@ -4500,14 +4761,6 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
 
   const orderId = String(incoming?.id || `ORD-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`);
   const orderNumber = getNextOrderNumber(req.storeId);
-  const computedTotal = items.reduce((acc, it) => {
-    if (it.isRequestPrice) return acc;
-    return acc + (Number(it.price || 0) * Number(it.qty || 1));
-  }, 0);
-  const total = Number(computedTotal.toFixed(2));
-  if (!Number.isFinite(total) || total <= 0) {
-    return res.status(400).json({ error: 'ORDER_TOTAL_REQUIRED' });
-  }
   const identity = resolveCustomerIdentity(
     {
       ...req.body,
@@ -4518,9 +4771,32 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     },
     customer,
   );
+  const storeSettings = getStoreSettings(req.store);
+  const productMap = new Map(listProducts(req.storeId).map((product) => [String(product?.id || '').trim(), product]));
+  const canonicalItems = items.map((item) => buildCanonicalOrderItem(item, productMap));
+  const promoValidation = buildPromoValidationResult({
+    storeId: req.storeId,
+    storeSettings,
+    promoCode: incoming?.promo?.code || incoming?.promoCode || '',
+    identity,
+    customer,
+    canonicalItems,
+  });
+  if (!promoValidation.ok) {
+    return res.status(400).json({
+      error: 'PROMO_NOT_ELIGIBLE',
+      code: promoValidation.code,
+      message: promoValidation.message,
+    });
+  }
+  const total = Number(Number(promoValidation.total || 0).toFixed(2));
+  if (!Number.isFinite(total) || total <= 0) {
+    return res.status(400).json({ error: 'ORDER_TOTAL_REQUIRED' });
+  }
   const workflowStatus = normalizeOrderWorkflowStatus(incoming?.status || incoming?.workflowStatus || 'new');
   const createdAt = String(incoming?.createdAt || nowIso());
   const ts = nowIso();
+  const customerPhone = promoValidation.customerPhone || normalizePhoneDigits(customer?.phone);
   const customerPayload = {
     ...customer,
     platform: identity.customerPlatform,
@@ -4528,13 +4804,14 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     platformUserId: identity.customerPlatformUserId,
     customerPlatformUserId: identity.customerPlatformUserId,
     customerIdentity: identity.customerIdentity,
+    phone: String(customer?.phone || '').trim(),
   };
   if (identity.telegramUserId && !customerPayload.telegramId) customerPayload.telegramId = identity.telegramUserId;
 
   const saveOrderTx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO orders (id, store_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, order_number, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 'RUB', ?, ?, ?, ?)
+      INSERT INTO orders (id, store_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, customer_phone, promo_owner_key, order_number, status, workflow_status, payment_status, total_amount, currency, customer_json, payload_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 'RUB', ?, ?, ?, ?)
     `).run(
       orderId,
       req.storeId,
@@ -4542,6 +4819,8 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
       identity.customerPlatform,
       identity.customerPlatformUserId,
       identity.customerIdentity,
+      customerPhone,
+      String(promoValidation.promoOwnerKey || ''),
       orderNumber,
       workflowStatus,
       workflowStatus,
@@ -4549,10 +4828,21 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
       JSON.stringify(customerPayload),
       JSON.stringify({
         ...incoming,
+        items: canonicalItems.map((item) => ({
+          id: item.id,
+          title: item.title,
+          sku: item.sku,
+          qty: item.qty,
+          price: item.isRequestPrice ? null : item.price,
+          basePrice: item.isRequestPrice ? null : item.basePrice,
+          isRequestPrice: item.isRequestPrice,
+        })),
         customerPlatform: identity.customerPlatform,
         customerPlatformUserId: identity.customerPlatformUserId,
         customerIdentity: identity.customerIdentity,
         telegramUserId: identity.telegramUserId || String(incoming?.telegramUserId || '').trim(),
+        promo: promoValidation.promo,
+        total,
       }),
       createdAt,
       ts,
@@ -4562,7 +4852,7 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
       INSERT INTO order_items (store_id, order_id, product_id, title, qty, price, is_request_price, payload_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    items.forEach((it) => {
+    canonicalItems.forEach((it) => {
       itemStmt.run(
         req.storeId,
         orderId,
@@ -4575,6 +4865,26 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
         ts,
       );
     });
+
+    if (promoValidation.promo) {
+      db.prepare(`
+        INSERT INTO promo_code_usages (
+          store_id, promo_code, usage_mode, promo_owner_key, telegram_user_id, customer_identity, customer_phone, order_id, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        req.storeId,
+        promoValidation.promo.code,
+        promoValidation.promo.usageMode,
+        String(promoValidation.promoOwnerKey || ''),
+        identity.telegramUserId,
+        identity.customerIdentity,
+        customerPhone,
+        orderId,
+        ts,
+        ts,
+      );
+    }
 
     db.prepare(`
       INSERT INTO events (store_id, event_type, product_id, telegram_user_id, customer_platform, customer_platform_user_id, customer_identity, session_id, payload_json, created_at)
@@ -4597,7 +4907,6 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     return res.status(409).json({ error: 'ORDER_ALREADY_EXISTS' });
   }
 
-  const storeSettings = getStoreSettings(req.store);
   const orderMode = normalizeOrderProcessingMode(storeSettings?.orderProcessingMode || '');
   const orderRequestChannel = resolveOrderRequestChannelConfig(storeSettings);
   const subscription = getStoreSubscriptionState(req.storeId);
@@ -4605,13 +4914,14 @@ app.post('/api/stores/:storeId/orders', storeParamMiddleware, async (req, res) =
     ? await notifyOrderRequest(req.store, {
       ...incoming,
       id: orderId,
-      items,
+      items: canonicalItems,
       customer: customerPayload,
       total,
       telegramUserId: identity.telegramUserId,
       customerPlatform: identity.customerPlatform,
       customerPlatformUserId: identity.customerPlatformUserId,
       customerIdentity: identity.customerIdentity,
+      promo: promoValidation.promo,
     })
     : { ok: false, skipped: true, reason: 'SUBSCRIPTION_INACTIVE' };
   let payment = { ok: false, provider: '', url: '', paymentId: '', error: 'PAYMENT_NOT_CONFIGURED' };

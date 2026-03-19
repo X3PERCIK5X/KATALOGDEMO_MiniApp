@@ -25,6 +25,7 @@ const state = {
   promoPercent: 0,
   promoAmount: 0,
   promoKind: '',
+  promoUsageMode: '',
   recentlyViewed: [],
   theme: 'dark',
   accent: 'rose',
@@ -396,6 +397,7 @@ const ui = {
   promoSettingsForm: document.getElementById('promoSettingsForm'),
   promoSettingsCodeInput: document.getElementById('promoSettingsCodeInput'),
   promoSettingsTypeInput: document.getElementById('promoSettingsTypeInput'),
+  promoSettingsUsageModeInput: document.getElementById('promoSettingsUsageModeInput'),
   promoSettingsValueInput: document.getElementById('promoSettingsValueInput'),
   promoSettingsStatus: document.getElementById('promoSettingsStatus'),
   promoSettingsList: document.getElementById('promoSettingsList'),
@@ -677,6 +679,10 @@ function normalizePromoCode(raw) {
     .replace(/\s+/g, '');
 }
 
+function normalizePromoUsageMode(raw) {
+  return String(raw || '').trim().toLowerCase() === 'first_order_once' ? 'first_order_once' : 'any_once';
+}
+
 function normalizeStorePromoRules(source) {
   if (!Array.isArray(source)) return [];
   const result = [];
@@ -692,6 +698,7 @@ function normalizeStorePromoRules(source) {
       type,
       value: type === 'percent' ? Math.min(100, Math.round(value)) : Math.round(value),
       active,
+      usageMode: normalizePromoUsageMode(item?.usageMode || item?.applyMode || item?.scope),
     });
   });
   return result;
@@ -718,6 +725,7 @@ function reconcileActivePromoState() {
       state.promoPercent = 0;
       state.promoAmount = 0;
       state.promoKind = '';
+      state.promoUsageMode = '';
       saveStorage();
     }
     return;
@@ -729,6 +737,7 @@ function reconcileActivePromoState() {
     state.promoPercent = 0;
     state.promoAmount = 0;
     state.promoKind = '';
+    state.promoUsageMode = '';
     saveStorage();
     return;
   }
@@ -737,6 +746,7 @@ function reconcileActivePromoState() {
   state.promoPercent = rule.type === 'percent' ? rule.value : 0;
   state.promoAmount = rule.type === 'fixed' ? rule.value : 0;
   state.promoKind = rule.type === 'fixed' ? 'custom_fixed' : 'custom_percent';
+  state.promoUsageMode = normalizePromoUsageMode(rule.usageMode);
 }
 
 const ADMIN_MARGIN_RATE = 0.3;
@@ -6736,10 +6746,15 @@ function renderCart() {
         : state.promoKind === 'custom_fixed'
           ? 'фиксированная сумма'
           : '';
+      const usageLabel = state.promoUsageMode === 'first_order_once'
+        ? 'только на первую покупку'
+        : state.promoCode
+          ? '1 раз на клиента'
+          : '';
       const discountLabel = state.promoKind === 'custom_fixed'
         ? `${formatPrice(state.promoAmount || 0)} ₽`
         : `${state.promoPercent}%`;
-      ui.promoStatus.textContent = `Скидка ${discountLabel} активна (${state.promoCode}) ${kindLabel}. Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
+      ui.promoStatus.textContent = `Скидка ${discountLabel} активна (${state.promoCode}) ${[kindLabel, usageLabel].filter(Boolean).join(', ')}. Экономия: ${formatPrice(summary.discountAmount || 0)} ₽.`;
     } else if (/актив/i.test(ui.promoStatus.textContent || '')) {
       ui.promoStatus.textContent = '';
     }
@@ -7929,7 +7944,11 @@ function renderAdminPromoSettings() {
       ui.promoSettingsList.innerHTML = rules.map((rule) => `
         <div class="promo-admin-item">
           <div class="promo-admin-title">${escapeHtml(rule.code)}</div>
-          <div class="promo-admin-meta">${rule.type === 'fixed' ? `Скидка ${formatPrice(rule.value)} ₽` : `Скидка ${rule.value}%`}</div>
+          <div class="promo-admin-meta">
+            ${rule.type === 'fixed' ? `Скидка ${formatPrice(rule.value)} ₽` : `Скидка ${rule.value}%`}
+            ·
+            ${rule.usageMode === 'first_order_once' ? 'только на первую покупку' : 'на любую покупку, 1 раз на клиента'}
+          </div>
           <button class="ghost-button promo-admin-delete" data-promo-remove="${escapeHtml(rule.code)}" type="button">Удалить</button>
         </div>
       `).join('');
@@ -7952,6 +7971,7 @@ async function saveAdminPromoCode() {
   if (!requireAdminFeatureAccess()) return;
   const code = normalizePromoCode(ui.promoSettingsCodeInput?.value || '');
   const type = String(ui.promoSettingsTypeInput?.value || 'percent').trim().toLowerCase() === 'fixed' ? 'fixed' : 'percent';
+  const usageMode = normalizePromoUsageMode(ui.promoSettingsUsageModeInput?.value || 'any_once');
   const rawValue = Number(ui.promoSettingsValueInput?.value || 0);
   const value = type === 'fixed'
     ? Math.max(1, Math.round(rawValue))
@@ -7967,7 +7987,7 @@ async function saveAdminPromoCode() {
   }
 
   const nextRules = getStorePromoRules().filter((rule) => rule.code !== code);
-  nextRules.push({ code, type, value, active: true });
+  nextRules.push({ code, type, value, active: true, usageMode });
   const patch = {
     ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
     promoCodes: nextRules,
@@ -7984,6 +8004,7 @@ async function saveAdminPromoCode() {
     state.promoPercent = 0;
     state.promoAmount = 0;
     state.promoKind = '';
+    state.promoUsageMode = '';
     saveStorage();
     renderCart();
     renderAdminPromoSettings();
@@ -8016,6 +8037,7 @@ async function removeAdminPromoCode(codeRaw) {
       state.promoPercent = 0;
       state.promoAmount = 0;
       state.promoKind = '';
+      state.promoUsageMode = '';
       saveStorage();
       renderCart();
     }
@@ -8150,6 +8172,7 @@ function applyPromoCode() {
     state.promoPercent = 0;
     state.promoAmount = 0;
     state.promoKind = '';
+    state.promoUsageMode = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод очищен.';
     saveStorage();
     renderCart();
@@ -8161,11 +8184,15 @@ function applyPromoCode() {
     state.promoPercent = customRule.type === 'percent' ? customRule.value : 0;
     state.promoAmount = customRule.type === 'fixed' ? customRule.value : 0;
     state.promoKind = customRule.type === 'fixed' ? 'custom_fixed' : 'custom_percent';
+    state.promoUsageMode = normalizePromoUsageMode(customRule.usageMode);
     if (ui.promoStatus) {
       const label = customRule.type === 'fixed'
         ? `${formatPrice(customRule.value)} ₽`
         : `${customRule.value}%`;
-      ui.promoStatus.textContent = `Промокод "${customRule.code}" активирован: скидка ${label}.`;
+      const modeLabel = state.promoUsageMode === 'first_order_once'
+        ? 'только на первую покупку'
+        : '1 раз на клиента';
+      ui.promoStatus.textContent = `Промокод "${customRule.code}" активирован: скидка ${label}, ${modeLabel}.`;
     }
     saveStorage();
     renderCart();
@@ -8177,6 +8204,7 @@ function applyPromoCode() {
     state.promoPercent = 0;
     state.promoAmount = 0;
     state.promoKind = '';
+    state.promoUsageMode = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод не найден.';
     saveStorage();
     renderCart();
@@ -8187,6 +8215,7 @@ function applyPromoCode() {
     state.promoPercent = 0;
     state.promoAmount = 0;
     state.promoKind = '';
+    state.promoUsageMode = '';
     if (ui.promoStatus) ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" уже использован для этого Telegram аккаунта.';
     saveStorage();
     renderCart();
@@ -8204,6 +8233,7 @@ function applyPromoCode() {
   state.promoPercent = FIRST_ORDER_PROMO.percent;
   state.promoAmount = 0;
   state.promoKind = 'first_order';
+  state.promoUsageMode = 'first_order_once';
   if (ui.promoStatus) {
     ui.promoStatus.textContent = 'Промокод "ПЕРВЫЙ" активирован: -10% на товары без скидки.';
   }
@@ -9754,6 +9784,7 @@ function bindEvents() {
       state.promoPercent = 0;
       state.promoAmount = 0;
       state.promoKind = '';
+      state.promoUsageMode = '';
       state.profile = profile;
       saveStorage();
       void syncCustomerOrdersFromServer();
@@ -9795,7 +9826,8 @@ function bindEvents() {
       }
     } catch (err) {
       saasTrackEvent('payment_fail', { payload: { reason: String(err?.message || 'unknown') } });
-      ui.orderStatus.textContent = 'Ошибка отправки заявки. Попробуйте ещё раз.';
+      const serverMessage = String(err?.payload?.message || '').trim();
+      ui.orderStatus.textContent = serverMessage || 'Ошибка отправки заявки. Попробуйте ещё раз.';
       if (ui.orderRetry) ui.orderRetry.classList.remove('hidden');
     } finally {
       if (ui.orderSubmit) ui.orderSubmit.disabled = false;
