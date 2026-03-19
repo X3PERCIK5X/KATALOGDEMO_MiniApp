@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-266" />
+    <link rel="stylesheet" href="/style.css?v=20260319-267" />
   </head>
   <body>
     <header class="header">
@@ -408,7 +408,7 @@
         <div class="settings-nav-list">
           <button class="settings-nav-card" data-admin-screen="settings-bots" type="button">
             <div class="section-title">1. Настройки бота</div>
-            <p class="feedback-note">Подключение платформ магазина и настройка сообщения в Telegram-боте.</p>
+            <p class="feedback-note">Настройка Telegram-бота и приветственного сообщения магазина.</p>
           </button>
           <button class="settings-nav-card" data-admin-screen="settings-checkout" type="button">
             <div class="section-title">2. Настройки оформления заказа</div>
@@ -432,55 +432,6 @@
         <div class="screen-head">
           <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
           <h2>Настройки бота</h2>
-        </div>
-        <div id="profileBotConnectSection" class="profile-subscription-card hidden">
-          <div class="section-title with-badge">
-            <span>Подключение мессенджеров и ботов</span>
-            <span class="feature-soon-badge">Скоро здесь</span>
-          </div>
-          <p class="feedback-note">Текущая платформа подсказывается автоматически при входе. Здесь же можно вручную доподключить любые другие мессенджеры и точки входа к этому же магазину.</p>
-          <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
-          <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
-          <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
-          <form id="profileBotConnectForm" class="order-form flat">
-            <label>Платформа
-              <select id="profileBotPlatformInput">
-                <option value="telegram">Telegram</option>
-                <option value="max">MAX</option>
-                <option value="custom">Другая площадка</option>
-              </select>
-            </label>
-            <label>Название подключения
-              <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
-            </label>
-            <label id="profileBotIdentifierLabel"><span id="profileBotIdentifierLabelText">ID / ссылка бота</span>
-              <input id="profileBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://vk.com/..." />
-            </label>
-            <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Bot Token Telegram</span>
-              <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
-            </label>
-            <div id="profileBotConnectStatus" class="status"></div>
-            <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
-          </form>
-          <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
-        </div>
-        <div id="profilePlatformBindingsSection" class="profile-subscription-card hidden">
-          <div class="section-title">Привязка каталога к VK</div>
-          <p class="feedback-note">Привяжите сообщество VK к текущему магазину. На следующем шаге каталог в VK будет открываться именно по этой привязке.</p>
-          <form id="platformBindingForm" class="order-form flat">
-            <input id="platformBindingPlatformInput" type="hidden" value="vk" />
-            <input id="platformBindingTypeInput" type="hidden" value="community" />
-            <label>Название привязки
-              <input id="platformBindingTitleInput" type="text" autocomplete="off" placeholder="Например: Основное сообщество VK" />
-            </label>
-            <label>ID сообщества VK или ссылка
-              <input id="platformBindingExternalIdInput" type="text" autocomplete="off" placeholder="club123456, public123456, 123456 или https://vk.com/club123456" />
-            </label>
-            <div id="platformBindingStatus" class="status"></div>
-            <button id="platformBindingSaveButton" class="primary-button" type="submit">Сохранить привязку VK</button>
-          </form>
-          <div id="platformBindingSetupInfo" class="catalog-bot-list"></div>
-          <div id="platformBindingsList" class="catalog-bot-list"></div>
         </div>
         <div class="bot-settings-card">
           <div class="section-title">Сообщение бота</div>
@@ -625,60 +576,54 @@
           </div>
           <p class="feedback-note">Здесь собраны дублирующие настройки подключения других платформ к этому же магазину. Основная логика уже работает в стандартных разделах выше.</p>
         </div>
-        <div id="platformsBotConnectSection" class="profile-subscription-card hidden">
+        <div id="profileBotConnectSection" class="profile-subscription-card hidden">
           <div class="section-title with-badge">
             <span>Подключение мессенджеров и ботов</span>
             <span class="feature-soon-badge">В разработке</span>
           </div>
-          <p class="feedback-note">Дублирующий раздел подключения Telegram, MAX и других площадок к текущему магазину.</p>
-          <div class="profile-admin-store">Store ID магазина: <strong id="platformsBotStoreIdValue">—</strong></div>
-          <div class="profile-admin-store">Ссылка каталога: <strong id="platformsBotCatalogUrlValue">—</strong></div>
-          <button id="platformsBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
-          <form id="platformsBotConnectForm" class="order-form flat">
+          <p class="feedback-note">Здесь вручную подключаются другие мессенджеры и точки входа к этому же магазину.</p>
+          <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
+          <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
+          <form id="profileBotConnectForm" class="order-form flat">
             <label>Платформа
-              <select id="platformsBotPlatformInput">
+              <select id="profileBotPlatformInput">
                 <option value="telegram">Telegram</option>
                 <option value="max">MAX</option>
                 <option value="custom">Другая площадка</option>
               </select>
             </label>
             <label>Название подключения
-              <input id="platformsBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
+              <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
             </label>
-            <label id="platformsBotIdentifierLabel"><span id="platformsBotIdentifierLabelText">ID / ссылка бота</span>
-              <input id="platformsBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://..." />
+            <label id="profileBotIdentifierLabel"><span id="profileBotIdentifierLabelText">ID / ссылка бота</span>
+              <input id="profileBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://..." />
             </label>
-            <label id="platformsBotTokenLabel"><span id="platformsBotTokenLabelText">Bot Token Telegram</span>
-              <input id="platformsBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
+            <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Bot Token Telegram</span>
+              <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
             </label>
-            <div id="platformsBotConnectStatus" class="status"></div>
-            <button id="platformsBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
+            <div id="profileBotConnectStatus" class="status"></div>
+            <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
           </form>
-          <div id="platformsBotConnectionsList" class="catalog-bot-list"></div>
+          <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
         </div>
-        <div class="bot-settings-card">
-          <div class="section-title with-badge">
-            <span>Сообщение бота</span>
-            <span class="feature-soon-badge">В разработке</span>
-          </div>
-          <p class="feedback-note">Дублирующая настройка приветственного сообщения бота для будущих интеграций с другими площадками.</p>
-          <div class="order-form flat">
-            <label>Ссылка каталога этого магазина
-              <input id="platformsBotCatalogUrlInput" type="text" readonly />
+        <div id="profilePlatformBindingsSection" class="profile-subscription-card hidden">
+          <div class="section-title">Привязка каталога к VK</div>
+          <p class="feedback-note">Привяжите сообщество VK к текущему магазину. На следующем шаге каталог в VK будет открываться именно по этой привязке.</p>
+          <form id="platformBindingForm" class="order-form flat">
+            <input id="platformBindingPlatformInput" type="hidden" value="vk" />
+            <input id="platformBindingTypeInput" type="hidden" value="community" />
+            <label>Название привязки
+              <input id="platformBindingTitleInput" type="text" autocomplete="off" placeholder="Например: Основное сообщество VK" />
             </label>
-            <button id="platformsBotCatalogUrlCopySecondaryButton" class="secondary-button" type="button">Скопировать ссылку</button>
-          </div>
-          <form id="platformsBotSettingsForm" class="order-form flat">
-            <label>Ссылка на приветственную картинку
-              <input id="platformsBotWelcomeImageInput" type="url" placeholder="https://..." />
+            <label>ID сообщества VK или ссылка
+              <input id="platformBindingExternalIdInput" type="text" autocomplete="off" placeholder="club123456, public123456, 123456 или https://vk.com/club123456" />
             </label>
-            <button id="platformsBotWelcomeImageUploadButton" class="secondary-button" type="button">Загрузить картинку</button>
-            <label>Приветственный текст
-              <textarea id="platformsBotWelcomeTextInput" rows="6" placeholder="Введите текст приветствия"></textarea>
-            </label>
-            <div id="platformsBotSettingsStatus" class="status"></div>
-            <button id="platformsBotSettingsSaveButton" class="primary-button" type="submit">Сохранить в боте</button>
+            <div id="platformBindingStatus" class="status"></div>
+            <button id="platformBindingSaveButton" class="primary-button" type="submit">Сохранить привязку VK</button>
           </form>
+          <div id="platformBindingSetupInfo" class="catalog-bot-list"></div>
+          <div id="platformBindingsList" class="catalog-bot-list"></div>
         </div>
       </section>
 
@@ -956,9 +901,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-266"></script>
-    <script src="/platform.js?v=20260319-266"></script>
-    <script src="/telegram.js?v=20260319-266"></script>
-    <script src="/app.js?v=20260319-266"></script>
+    <script src="/vk-bridge.min.js?v=20260319-267"></script>
+    <script src="/platform.js?v=20260319-267"></script>
+    <script src="/telegram.js?v=20260319-267"></script>
+    <script src="/app.js?v=20260319-267"></script>
   </body>
 </html>
