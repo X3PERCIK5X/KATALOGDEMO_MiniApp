@@ -10052,7 +10052,10 @@ async function loadConfig() {
   ui.inputPhone.value = normalizePhone(state.profile.phone || '');
   ui.inputEmail.value = state.profile.email || '';
   if (!ui.inputName.value) ui.inputName.value = getTelegramFirstName();
-  if (ui.inputTelegramId) ui.inputTelegramId.value = getTelegramId();
+  if (ui.inputTelegramId) {
+    const telegramUsername = String(getTelegramUsername() || '').trim().replace(/^@+/, '');
+    ui.inputTelegramId.value = telegramUsername ? `@${telegramUsername}` : '';
+  }
   saveProfileDraft();
   updateDeliveryAddressVisibility();
   renderProfile();
