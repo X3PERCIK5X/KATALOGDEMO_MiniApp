@@ -2576,6 +2576,28 @@ function resolveOwnerTelegramId(storeRow) {
   return '';
 }
 
+function resolveStoreAdminTelegramIds(storeRowOrStoreId) {
+  const storeId = typeof storeRowOrStoreId === 'string'
+    ? String(storeRowOrStoreId || '').trim().toUpperCase()
+    : String(storeRowOrStoreId?.store_id || '').trim().toUpperCase();
+  if (!isValidStoreId(storeId)) return [];
+  const recipients = new Set();
+  const storeRow = typeof storeRowOrStoreId === 'string' ? getStoreRow(storeId) : storeRowOrStoreId;
+  const directOwner = telegramIdFromIdentity(storeRow?.owner_user_id || '');
+  if (directOwner) recipients.add(directOwner);
+  const rows = db.prepare(`
+    SELECT user_id
+    FROM store_users
+    WHERE store_id = ?
+    ORDER BY id ASC
+  `).all(storeId);
+  for (const row of rows) {
+    const telegramId = telegramIdFromIdentity(row?.user_id || '');
+    if (telegramId) recipients.add(telegramId);
+  }
+  return Array.from(recipients);
+}
+
 function ensureStoreSubscriptionRow(storeId, anchorIso = '') {
   const sid = String(storeId || '').trim().toUpperCase();
   if (!isValidStoreId(sid)) return null;
@@ -3248,6 +3270,18 @@ async function notifySubscriptionViaAdminBot(ownerTelegramId, text) {
     payload: { chatId, extra: { reply_markup: getAdminStartKeyboard() } },
   });
   return sent;
+}
+
+async function notifySubscriptionReminderForStore(storeId, text) {
+  const recipients = resolveStoreAdminTelegramIds(storeId);
+  if (!recipients.length) return { ok: false, error: 'STORE_ADMIN_TELEGRAM_IDS_NOT_FOUND', sentCount: 0 };
+  let sentCount = 0;
+  for (const telegramUserId of recipients) {
+    // eslint-disable-next-line no-await-in-loop
+    const sent = await notifySubscriptionViaAdminBot(telegramUserId, text);
+    if (sent?.ok) sentCount += 1;
+  }
+  return { ok: sentCount > 0, sentCount };
 }
 
 async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
@@ -5387,32 +5421,45 @@ async function runSubscriptionReminderTick() {
     const storeId = String(row?.store_id || '').trim().toUpperCase();
     if (!isValidStoreId(storeId)) continue;
     const sub = getStoreSubscriptionState(storeId);
-    if (!sub.isGrace) continue;
+    let reminderType = '';
+    let text = '';
+    if (sub.isGrace) {
+      reminderType = 'grace';
+      text = [
+        'Напоминание об оплате подписки ⚠️',
+        `Store ID: ${storeId}`,
+        `Льготный период: ${sub.graceDaysLeft} дн.`,
+        'Продлите подписку, чтобы сохранить доступ к редактированию, статистике и уведомлениям.',
+      ].join('\n');
+    } else if ((sub.code === 'active' || sub.code === 'trial') && Number(sub.daysLeft || 0) === 1) {
+      reminderType = 'expiring';
+      text = [
+        'Подписка заканчивается завтра ⚠️',
+        `Store ID: ${storeId}`,
+        sub.code === 'trial'
+          ? 'Тестовый период заканчивается через 1 день.'
+          : 'Оплаченный период заканчивается через 1 день.',
+        'Продлите подписку заранее. Напоминание отправлено в admin-бот.',
+      ].join('\n');
+    } else {
+      continue;
+    }
 
     const exists = db.prepare(`
       SELECT 1 AS ok
       FROM subscription_reminders
-      WHERE store_id = ? AND reminder_date = ? AND reminder_type = 'grace'
+      WHERE store_id = ? AND reminder_date = ? AND reminder_type = ?
       LIMIT 1
-    `).get(storeId, today);
+    `).get(storeId, today, reminderType);
     if (exists?.ok) continue;
 
-    const ownerTg = resolveOwnerTelegramId(getStoreRow(storeId));
-    if (!ownerTg) continue;
-
-    const text = [
-      'Подписка скоро отключится ⚠️',
-      `Store: ${storeId}`,
-      `Льготный период: ${sub.graceDaysLeft} дн.`,
-      'Продлите подписку, чтобы не потерять доступ к редактированию и статистике.',
-    ].join('\n');
     // eslint-disable-next-line no-await-in-loop
-    const sent = await notifySubscriptionViaAdminBot(ownerTg, text);
+    const sent = await notifySubscriptionReminderForStore(storeId, text);
     if (sent?.ok) {
       db.prepare(`
         INSERT OR IGNORE INTO subscription_reminders (store_id, reminder_date, reminder_type, created_at)
-        VALUES (?, ?, 'grace', ?)
-      `).run(storeId, today, nowIso());
+        VALUES (?, ?, ?, ?)
+      `).run(storeId, today, reminderType, nowIso());
     }
   }
 }
