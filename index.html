@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-267" />
+    <link rel="stylesheet" href="/style.css?v=20260319-268" />
   </head>
   <body>
     <header class="header">
@@ -433,6 +433,27 @@
           <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
           <h2>Настройки бота</h2>
         </div>
+        <div id="telegramBotConnectSection" class="profile-subscription-card hidden">
+          <div class="section-title">Подключение другого Telegram-бота</div>
+          <p class="feedback-note">Здесь подключаются дополнительные Telegram-боты к этому же магазину.</p>
+          <div class="profile-admin-store">Store ID магазина: <strong id="telegramBotStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Ссылка каталога: <strong id="telegramBotCatalogUrlValue">—</strong></div>
+          <button id="telegramBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
+          <form id="telegramBotConnectForm" class="order-form flat">
+            <label>Название подключения
+              <input id="telegramBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #2" />
+            </label>
+            <label>Username / ссылка (необязательно)
+              <input id="telegramBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://t.me/shop_bot" />
+            </label>
+            <label>Bot Token Telegram
+              <input id="telegramBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
+            </label>
+            <div id="telegramBotConnectStatus" class="status"></div>
+            <button id="telegramBotConnectSaveButton" class="primary-button" type="submit">Добавить Telegram-бота</button>
+          </form>
+          <div id="telegramBotConnectionsList" class="catalog-bot-list"></div>
+        </div>
         <div class="bot-settings-card">
           <div class="section-title">Сообщение бота</div>
           <p class="feedback-note">Настройте, что получает пользователь при команде <code>/start</code>. Кнопка каталога сохраняется автоматически.</p>
@@ -581,25 +602,24 @@
             <span>Подключение мессенджеров и ботов</span>
             <span class="feature-soon-badge">В разработке</span>
           </div>
-          <p class="feedback-note">Здесь вручную подключаются другие мессенджеры и точки входа к этому же магазину.</p>
+          <p class="feedback-note">Здесь вручную подключаются MAX и другие внешние площадки к этому же магазину.</p>
           <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
           <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
           <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
           <form id="profileBotConnectForm" class="order-form flat">
             <label>Платформа
               <select id="profileBotPlatformInput">
-                <option value="telegram">Telegram</option>
                 <option value="max">MAX</option>
                 <option value="custom">Другая площадка</option>
               </select>
             </label>
             <label>Название подключения
-              <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
+              <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: MAX bot #1" />
             </label>
             <label id="profileBotIdentifierLabel"><span id="profileBotIdentifierLabelText">ID / ссылка бота</span>
               <input id="profileBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://..." />
             </label>
-            <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Bot Token Telegram</span>
+            <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Токен / ключ подключения</span>
               <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
             </label>
             <div id="profileBotConnectStatus" class="status"></div>
@@ -901,9 +921,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-267"></script>
-    <script src="/platform.js?v=20260319-267"></script>
-    <script src="/telegram.js?v=20260319-267"></script>
-    <script src="/app.js?v=20260319-267"></script>
+    <script src="/vk-bridge.min.js?v=20260319-268"></script>
+    <script src="/platform.js?v=20260319-268"></script>
+    <script src="/telegram.js?v=20260319-268"></script>
+    <script src="/app.js?v=20260319-268"></script>
   </body>
 </html>

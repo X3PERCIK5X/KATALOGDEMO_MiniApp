@@ -293,6 +293,17 @@ const ui = {
   adminCreateStoreButton: document.getElementById('adminCreateStoreButton'),
   adminConnectBotButton: document.getElementById('adminConnectBotButton'),
   adminLogoutButton: document.getElementById('adminLogoutButton'),
+  telegramBotConnectSection: document.getElementById('telegramBotConnectSection'),
+  telegramBotStoreIdValue: document.getElementById('telegramBotStoreIdValue'),
+  telegramBotCatalogUrlValue: document.getElementById('telegramBotCatalogUrlValue'),
+  telegramBotCatalogUrlCopyButton: document.getElementById('telegramBotCatalogUrlCopyButton'),
+  telegramBotConnectForm: document.getElementById('telegramBotConnectForm'),
+  telegramBotLabelInput: document.getElementById('telegramBotLabelInput'),
+  telegramBotIdentifierInput: document.getElementById('telegramBotIdentifierInput'),
+  telegramBotTokenInput: document.getElementById('telegramBotTokenInput'),
+  telegramBotConnectStatus: document.getElementById('telegramBotConnectStatus'),
+  telegramBotConnectSaveButton: document.getElementById('telegramBotConnectSaveButton'),
+  telegramBotConnectionsList: document.getElementById('telegramBotConnectionsList'),
   profileBotConnectSection: document.getElementById('profileBotConnectSection'),
   profileBotStoreIdValue: document.getElementById('profileBotStoreIdValue'),
   profileBotCatalogUrlValue: document.getElementById('profileBotCatalogUrlValue'),
@@ -1368,9 +1379,11 @@ function setScreen(name) {
   }
   if (name === 'settings-bots') {
     renderBotSettings();
+    renderTelegramBotConnectSection();
   }
   if (name === 'settings-platforms') {
     renderProfileBotConnectSection();
+    renderPlatformBindingsSection();
   }
   if (name === 'settings-checkout') {
     renderOrderChatSettings();
@@ -4526,7 +4539,7 @@ function hasCurrentPlatformPrimaryConnection(platform) {
 
 function focusPlatformConnectionTarget(platform) {
   const normalized = normalizeClientPlatform(platform);
-  setScreen('settings-bots');
+  setScreen(normalized === 'telegram' ? 'settings-bots' : 'settings-platforms');
   if (normalized === 'vk') {
     if (ui.profilePlatformBindingsSection) {
       ui.profilePlatformBindingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4541,16 +4554,20 @@ function focusPlatformConnectionTarget(platform) {
   if (ui.profileBotPlatformInput) {
     ui.profileBotPlatformInput.value = normalized === 'web' ? 'custom' : normalized;
   }
-  renderProfileBotConnectSection();
-  if (ui.profileBotConnectSection) {
-    ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
   if (normalized === 'telegram') {
-    if (ui.profileBotTokenInput) ui.profileBotTokenInput.focus();
-    if (ui.profileBotConnectStatus) {
-      ui.profileBotConnectStatus.textContent = 'Подключите Telegram: введите Bot Token, чтобы настроить меню и webhook каталога.';
+    renderTelegramBotConnectSection();
+    if (ui.telegramBotConnectSection) {
+      ui.telegramBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (ui.telegramBotTokenInput) ui.telegramBotTokenInput.focus();
+    if (ui.telegramBotConnectStatus) {
+      ui.telegramBotConnectStatus.textContent = 'Подключите Telegram: введите Bot Token, чтобы настроить меню и webhook каталога.';
     }
   } else {
+    renderProfileBotConnectSection();
+    if (ui.profileBotConnectSection) {
+      ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     if (ui.profileBotIdentifierInput) ui.profileBotIdentifierInput.focus();
     const label = getCatalogBotPlatformMeta(normalized).label;
     if (ui.profileBotConnectStatus) {
@@ -4623,6 +4640,46 @@ function getCatalogBotSummaryText(connections) {
   const first = items[0];
   const label = String(first?.platformLabel || getCatalogBotPlatformMeta(first?.platform).label || 'Подключение').trim();
   return items.length > 1 ? `${label} +${items.length - 1}` : label;
+}
+
+function getCatalogConnectionsByPlatform(platform) {
+  const normalized = normalizeCatalogBotPlatform(platform);
+  return (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
+    return normalizeCatalogBotPlatform(connection?.platform) === normalized;
+  });
+}
+
+function renderCatalogBotConnectionsList(target, connections, catalogUrl) {
+  if (!target) return;
+  if (state.catalogBotConnectionsLoading) {
+    target.innerHTML = '<div class="catalog-bot-empty">Загружаем подключения...</div>';
+    return;
+  }
+  if (!connections.length) {
+    target.innerHTML = '<div class="catalog-bot-empty">Подключения каталога пока не добавлены.</div>';
+    return;
+  }
+  target.innerHTML = connections.map((connection) => {
+    const platformLabel = escapeHtml(String(connection?.platformLabel || getCatalogBotPlatformMeta(connection?.platform).label || 'Платформа'));
+    const title = escapeHtml(String(connection?.title || 'Подключение'));
+    const identifier = escapeHtml(String(connection?.botUsername || connection?.identifier || '—'));
+    const modeLabel = connection?.managed ? 'Автоподключение' : 'Внешняя точка входа';
+    const safeId = Number(connection?.id || 0);
+    return `
+      <div class="catalog-bot-card">
+        <div class="catalog-bot-card-head">
+          <span class="catalog-bot-badge">${platformLabel}</span>
+          <strong>${title}</strong>
+        </div>
+        <div class="catalog-bot-card-line"><span>Бот:</span><span>${identifier}</span></div>
+        <div class="catalog-bot-card-line"><span>Режим:</span><span>${escapeHtml(modeLabel)}</span></div>
+        <div class="catalog-bot-card-line"><span>Каталог:</span><span class="catalog-bot-card-url">${escapeHtml(String(connection?.catalogUrl || catalogUrl || '—'))}</span></div>
+        <div class="catalog-bot-card-actions">
+          <button class="secondary-button" type="button" data-catalog-bot-remove="${safeId}">Удалить</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function normalizePlatformBindingPlatform(raw) {
@@ -4876,6 +4933,71 @@ function renderBotSettings() {
   if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = '';
 }
 
+function getCatalogConnectionsByPlatform(platform) {
+  const normalized = normalizeCatalogBotPlatform(platform);
+  return (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
+    return normalizeCatalogBotPlatform(connection?.platform) === normalized;
+  });
+}
+
+function renderCatalogBotConnectionsList(target, connections, catalogUrl) {
+  if (!target) return;
+  if (state.catalogBotConnectionsLoading) {
+    target.innerHTML = '<div class="catalog-bot-empty">Загружаем подключения...</div>';
+    return;
+  }
+  if (!connections.length) {
+    target.innerHTML = '<div class="catalog-bot-empty">Подключения каталога пока не добавлены.</div>';
+    return;
+  }
+  target.innerHTML = connections.map((connection) => {
+    const platformLabel = escapeHtml(String(connection?.platformLabel || getCatalogBotPlatformMeta(connection?.platform).label || 'Платформа'));
+    const title = escapeHtml(String(connection?.title || 'Подключение'));
+    const identifier = escapeHtml(String(connection?.botUsername || connection?.identifier || '—'));
+    const modeLabel = connection?.managed ? 'Автоподключение' : 'Внешняя точка входа';
+    const safeId = Number(connection?.id || 0);
+    return `
+      <div class="catalog-bot-card">
+        <div class="catalog-bot-card-head">
+          <span class="catalog-bot-badge">${platformLabel}</span>
+          <strong>${title}</strong>
+        </div>
+        <div class="catalog-bot-card-line"><span>Бот:</span><span>${identifier}</span></div>
+        <div class="catalog-bot-card-line"><span>Режим:</span><span>${escapeHtml(modeLabel)}</span></div>
+        <div class="catalog-bot-card-line"><span>Каталог:</span><span class="catalog-bot-card-url">${escapeHtml(String(connection?.catalogUrl || catalogUrl || '—'))}</span></div>
+        <div class="catalog-bot-card-actions">
+          <button class="secondary-button" type="button" data-catalog-bot-remove="${safeId}">Удалить</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTelegramBotConnectSection() {
+  if (!ui.telegramBotConnectSection) return;
+  const show = Boolean(state.admin.enabled);
+  ui.telegramBotConnectSection.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const storeId = String(state.saas.storeId || '').trim().toUpperCase();
+  const catalogUrl = getCurrentStoreCatalogUrl();
+  if (ui.telegramBotStoreIdValue) ui.telegramBotStoreIdValue.textContent = storeId || '—';
+  if (ui.telegramBotCatalogUrlValue) ui.telegramBotCatalogUrlValue.textContent = catalogUrl || '—';
+  renderCatalogBotConnectionsList(ui.telegramBotConnectionsList, getCatalogConnectionsByPlatform('telegram'), catalogUrl);
+
+  if (ui.telegramBotConnectStatus && !String(ui.telegramBotConnectStatus.textContent || '').trim()) {
+    ui.telegramBotConnectStatus.textContent = storeId
+      ? 'Подключите дополнительного Telegram-бота: укажите название и Bot Token.'
+      : 'Сначала выберите магазин (Store ID), затем добавьте Telegram-бота.';
+  }
+
+  if (storeId && state.catalogBotConnectionsStoreId !== storeId && !state.catalogBotConnectionsLoading) {
+    void loadCatalogBotConnections({ force: true }).then(() => {
+      renderTelegramBotConnectSection();
+    });
+  }
+}
+
 async function saveBotSettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
   if (!requireAdminFeatureAccess()) return;
@@ -4908,8 +5030,8 @@ function renderProfileBotConnectSection() {
 
   const storeId = String(state.saas.storeId || '').trim().toUpperCase();
   const catalogUrl = getCurrentStoreCatalogUrl();
-  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
-  if (platform === 'vk') platform = 'custom';
+  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'max');
+  if (platform === 'telegram' || platform === 'vk') platform = 'max';
   const platformMeta = getCatalogBotPlatformMeta(platform);
 
   if (ui.profileBotStoreIdValue) {
@@ -4936,35 +5058,14 @@ function renderProfileBotConnectSection() {
   if (ui.profileBotTokenLabel) {
     ui.profileBotTokenLabel.classList.toggle('hidden', !platformMeta.tokenRequired);
   }
-  if (ui.profileBotConnectionsList) {
-    if (state.catalogBotConnectionsLoading) {
-      ui.profileBotConnectionsList.innerHTML = '<div class="catalog-bot-empty">Загружаем подключения...</div>';
-    } else if (!state.catalogBotConnections.length) {
-      ui.profileBotConnectionsList.innerHTML = '<div class="catalog-bot-empty">Подключения каталога пока не добавлены.</div>';
-    } else {
-      ui.profileBotConnectionsList.innerHTML = state.catalogBotConnections.map((connection) => {
-        const platformLabel = escapeHtml(String(connection?.platformLabel || getCatalogBotPlatformMeta(connection?.platform).label || 'Платформа'));
-        const title = escapeHtml(String(connection?.title || 'Подключение'));
-        const identifier = escapeHtml(String(connection?.botUsername || connection?.identifier || '—'));
-        const modeLabel = connection?.managed ? 'Автоподключение' : 'Внешняя точка входа';
-        const safeId = Number(connection?.id || 0);
-        return `
-          <div class="catalog-bot-card">
-            <div class="catalog-bot-card-head">
-              <span class="catalog-bot-badge">${platformLabel}</span>
-              <strong>${title}</strong>
-            </div>
-            <div class="catalog-bot-card-line"><span>Бот:</span><span>${identifier}</span></div>
-            <div class="catalog-bot-card-line"><span>Режим:</span><span>${escapeHtml(modeLabel)}</span></div>
-            <div class="catalog-bot-card-line"><span>Каталог:</span><span class="catalog-bot-card-url">${escapeHtml(String(connection?.catalogUrl || catalogUrl || '—'))}</span></div>
-            <div class="catalog-bot-card-actions">
-              <button class="secondary-button" type="button" data-catalog-bot-remove="${safeId}">Удалить</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-  }
+  renderCatalogBotConnectionsList(
+    ui.profileBotConnectionsList,
+    (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
+      const itemPlatform = normalizeCatalogBotPlatform(connection?.platform);
+      return itemPlatform !== 'telegram' && itemPlatform !== 'vk';
+    }),
+    catalogUrl,
+  );
   if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
     if (!storeId) {
       ui.profileBotConnectStatus.textContent = 'Сначала выберите магазин (Store ID), затем добавьте подключение.';
@@ -4975,9 +5076,61 @@ function renderProfileBotConnectSection() {
   if (storeId && state.catalogBotConnectionsStoreId !== storeId && !state.catalogBotConnectionsLoading) {
     void loadCatalogBotConnections({ force: true }).then(() => {
       renderProfileBotConnectSection();
+      renderTelegramBotConnectSection();
     });
   }
   renderPlatformBindingsSection();
+}
+
+async function saveTelegramBotConnection() {
+  if (!state.admin.enabled) return;
+  if (!state.saas.storeId) {
+    if (ui.telegramBotConnectStatus) ui.telegramBotConnectStatus.textContent = 'Сначала выберите магазин (Store ID).';
+    return;
+  }
+  if (!requireAdminFeatureAccess()) return;
+  const title = String(ui.telegramBotLabelInput?.value || '').trim();
+  const identifier = String(ui.telegramBotIdentifierInput?.value || '').trim();
+  const botToken = String(ui.telegramBotTokenInput?.value || '').trim();
+  if (!botToken || !botToken.includes(':')) {
+    if (ui.telegramBotConnectStatus) ui.telegramBotConnectStatus.textContent = 'Введите корректный Bot Token Telegram (формат 123456:ABC...).';
+    return;
+  }
+  if (ui.telegramBotConnectStatus) ui.telegramBotConnectStatus.textContent = 'Сохраняем Telegram-бота...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/catalog-bots`, {
+      method: 'POST',
+      auth: true,
+      body: { platform: 'telegram', title, identifier, botToken },
+    });
+    state.catalogBotConnections = Array.isArray(payload?.connections) ? payload.connections : state.catalogBotConnections;
+    state.catalogBotConnectionsStoreId = String(state.saas.storeId || '').trim().toUpperCase();
+    const botUsername = String(payload?.botUsername || '').trim();
+    const summary = getCatalogBotSummaryText(state.catalogBotConnections);
+    if (ui.telegramBotTokenInput) ui.telegramBotTokenInput.value = '';
+    if (ui.telegramBotLabelInput) ui.telegramBotLabelInput.value = '';
+    if (ui.telegramBotIdentifierInput) ui.telegramBotIdentifierInput.value = '';
+    if (Array.isArray(state.saas.stores)) {
+      state.saas.stores = state.saas.stores.map((store) => {
+        if (String(store?.storeId || '').trim().toUpperCase() !== String(state.saas.storeId || '').trim().toUpperCase()) return store;
+        return {
+          ...store,
+          botUsername: summary || botUsername || store.botUsername || '',
+        };
+      });
+    }
+    if (ui.telegramBotConnectStatus) {
+      ui.telegramBotConnectStatus.textContent = botUsername
+        ? `Telegram-бот добавлен: ${botUsername}`
+        : 'Telegram-бот добавлен.';
+    }
+    await saasLoadStoresList();
+    renderTelegramBotConnectSection();
+  } catch (error) {
+    if (ui.telegramBotConnectStatus) {
+      ui.telegramBotConnectStatus.textContent = `Ошибка подключения: ${String(error?.message || 'unknown')}`;
+    }
+  }
 }
 
 async function saveProfileBotConnection() {
@@ -4987,7 +5140,8 @@ async function saveProfileBotConnection() {
     return;
   }
   if (!requireAdminFeatureAccess()) return;
-  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'max');
+  if (platform === 'telegram') platform = 'max';
   if (platform === 'vk') {
     if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'VK настраивается отдельно через блок привязки сообщества ниже.';
     setScreen('settings-platforms');
@@ -5075,6 +5229,7 @@ async function removeProfileBotConnection(connectionId) {
       ui.profileBotConnectStatus.textContent = `Ошибка удаления: ${String(error?.message || 'unknown')}`;
     }
   }
+  renderTelegramBotConnectSection();
 }
 
 function getRequestedStoreId() {
@@ -8365,12 +8520,12 @@ function bindEvents() {
   });
   on(ui.adminConnectBotButton, 'click', () => {
     if (!state.admin.enabled) return;
-    setScreen('settings-platforms');
-    if (ui.profileBotConnectSection && !ui.profileBotConnectSection.classList.contains('hidden')) {
-      ui.profileBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      if (ui.profileBotPlatformInput) ui.profileBotPlatformInput.focus();
-      if (ui.profileBotConnectStatus && !String(ui.profileBotConnectStatus.textContent || '').trim()) {
-        ui.profileBotConnectStatus.textContent = 'Выберите платформу, заполните данные бота и добавьте подключение.';
+    setScreen('settings-bots');
+    if (ui.telegramBotConnectSection && !ui.telegramBotConnectSection.classList.contains('hidden')) {
+      ui.telegramBotConnectSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (ui.telegramBotTokenInput) ui.telegramBotTokenInput.focus();
+      if (ui.telegramBotConnectStatus && !String(ui.telegramBotConnectStatus.textContent || '').trim()) {
+        ui.telegramBotConnectStatus.textContent = 'Введите Bot Token и добавьте дополнительного Telegram-бота.';
       }
       return;
     }
@@ -8404,6 +8559,35 @@ function bindEvents() {
   on(ui.orderChatSettingsForm, 'submit', async (e) => {
     e.preventDefault();
     await saveOrderChatSettings();
+  });
+  on(ui.telegramBotCatalogUrlCopyButton, 'click', async () => {
+    const value = getCurrentStoreCatalogUrl();
+    if (!value) {
+      if (ui.telegramBotConnectStatus) ui.telegramBotConnectStatus.textContent = 'Ссылка каталога пока недоступна.';
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        window.prompt('Скопируйте ссылку каталога:', value);
+      }
+      if (ui.telegramBotConnectStatus) ui.telegramBotConnectStatus.textContent = 'Ссылка каталога скопирована.';
+    } catch {
+      window.prompt('Скопируйте ссылку каталога:', value);
+    }
+  });
+  on(ui.telegramBotConnectForm, 'submit', async (e) => {
+    e.preventDefault();
+    await saveTelegramBotConnection();
+  });
+  on(ui.telegramBotConnectionsList, 'click', async (e) => {
+    const removeButton = e.target.closest('[data-catalog-bot-remove]');
+    if (!removeButton) return;
+    const connectionId = Number(removeButton.dataset.catalogBotRemove || 0);
+    if (!connectionId) return;
+    await removeProfileBotConnection(connectionId);
+    renderTelegramBotConnectSection();
   });
   on(ui.profileBotPlatformInput, 'change', () => {
     renderProfileBotConnectSection();
