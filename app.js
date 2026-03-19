@@ -1394,10 +1394,13 @@ function setScreen(name) {
   if (name === 'settings-bots') {
     renderBotSettings();
     renderTelegramBotConnectSection();
+    if (ui.profileBotConnectSection) ui.profileBotConnectSection.classList.add('hidden');
+    if (ui.profilePlatformBindingsSection) ui.profilePlatformBindingsSection.classList.add('hidden');
   }
   if (name === 'settings-platforms') {
     renderProfileBotConnectSection();
     renderPlatformBindingsSection();
+    if (ui.telegramBotConnectSection) ui.telegramBotConnectSection.classList.add('hidden');
   }
   if (name === 'settings-checkout') {
     renderOrderChatSettings();
@@ -1484,49 +1487,6 @@ function closeDrawer() {
 function ensureProfileAdminSections() {
   const profileScreen = document.getElementById('screen-profile');
   if (!profileScreen) return;
-
-  if (!ui.profileBotConnectSection) {
-    const section = document.createElement('div');
-    section.id = 'profileBotConnectSection';
-    section.className = 'profile-subscription-card hidden';
-    section.innerHTML = `
-      <div class="section-title with-badge">
-        <span>Подключение Telegram, MAX и других площадок</span>
-        <span class="feature-soon-badge">Скоро здесь</span>
-      </div>
-      <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким платформам. VK настраивается отдельно через привязку сообщества ниже. Здесь подключаются Telegram, MAX и другие внешние точки входа к этому же магазину.</p>
-      <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
-      <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
-      <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
-      <form id="profileBotConnectForm" class="order-form flat">
-        <label>Платформа
-          <select id="profileBotPlatformInput">
-            <option value="telegram">Telegram</option>
-            <option value="max">MAX</option>
-            <option value="custom">Другая площадка</option>
-          </select>
-        </label>
-        <label>Название подключения
-          <input id="profileBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
-        </label>
-        <label id="profileBotIdentifierLabel"><span id="profileBotIdentifierLabelText">ID / ссылка бота</span>
-          <input id="profileBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://vk.com/..." />
-        </label>
-        <label id="profileBotTokenLabel"><span id="profileBotTokenLabelText">Bot Token Telegram</span>
-          <input id="profileBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
-        </label>
-        <div id="profileBotConnectStatus" class="status"></div>
-        <button id="profileBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
-      </form>
-      <div id="profileBotConnectionsList" class="catalog-bot-list"></div>
-    `;
-    const anchor = ui.profilePromoSection || ui.profilePaymentIntegrationSection || ui.profileSubscriptionSection || ui.profileHistorySection;
-    if (anchor && anchor.parentNode === profileScreen) {
-      profileScreen.insertBefore(section, anchor);
-    } else {
-      profileScreen.appendChild(section);
-    }
-  }
 
   if (!ui.profileOrderChatSection) {
     const section = document.createElement('div');
@@ -2968,8 +2928,13 @@ function renderProductImportPanel(scope = 'category') {
 function clearProductImportFile(scope = 'category') {
   const importState = getImportScopeState(scope);
   const scopeOptions = getImportScopeOptions(scope);
+  const importUi = getImportScopeUi(scope);
   resetProductImportState(scope);
   importState.status = scopeOptions.idleStatus;
+  if (importUi.preview) {
+    importUi.preview.innerHTML = '';
+    importUi.preview.classList.add('hidden');
+  }
   renderProductImportPanel(scope);
 }
 
@@ -5094,6 +5059,8 @@ function renderBotSettings() {
   if (ui.botWelcomeTextInput) ui.botWelcomeTextInput.value = settings.botWelcomeText;
   if (ui.botCatalogUrlInput) ui.botCatalogUrlInput.value = getCurrentStoreCatalogUrl();
   if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = '';
+  if (ui.profileBotConnectSection) ui.profileBotConnectSection.classList.add('hidden');
+  if (ui.profilePlatformBindingsSection) ui.profilePlatformBindingsSection.classList.add('hidden');
 }
 
 function renderTelegramBotConnectSection() {
@@ -7770,7 +7737,6 @@ function renderProfile() {
       ui.adminStoreIdValue.textContent = state.saas.storeId;
     }
   }
-  renderProfileBotConnectSection();
   if (ui.profileSubscriptionSection) {
     ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
   }
@@ -9132,6 +9098,7 @@ function bindEvents() {
 
   on(ui.catalogImportFile, 'change', () => {
     const importState = getImportScopeState('catalog');
+    const importUi = getImportScopeUi('catalog');
     const [file] = Array.from(ui.catalogImportFile?.files || []);
     importState.previewRequestId += 1;
     importState.file = file || null;
@@ -9139,6 +9106,11 @@ function bindEvents() {
     importState.fileLabel = formatImportFileLabel(file);
     importState.previewRows = [];
     importState.summary = null;
+    importState.previewToken = '';
+    if (importUi.preview) {
+      importUi.preview.innerHTML = '';
+      importUi.preview.classList.add('hidden');
+    }
     importState.status = file
       ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
@@ -9159,6 +9131,7 @@ function bindEvents() {
 
   on(ui.productsImportFile, 'change', () => {
     const importState = getImportScopeState('category');
+    const importUi = getImportScopeUi('category');
     const [file] = Array.from(ui.productsImportFile?.files || []);
     importState.previewRequestId += 1;
     importState.file = file || null;
@@ -9166,6 +9139,11 @@ function bindEvents() {
     importState.fileLabel = formatImportFileLabel(file);
     importState.previewRows = [];
     importState.summary = null;
+    importState.previewToken = '';
+    if (importUi.preview) {
+      importUi.preview.innerHTML = '';
+      importUi.preview.classList.add('hidden');
+    }
     importState.status = file
       ? `Файл выбран: ${importState.fileLabel || importState.fileName}. Нажмите «Проверить».`
       : 'Файл не выбран.';
