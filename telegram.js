@@ -136,6 +136,20 @@ console.log('telegram.js loaded');
         console.log('disableVerticalSwipes failed', error);
       }
       try {
+        if (typeof window.Telegram.WebApp.postEvent === 'function') {
+          window.Telegram.WebApp.postEvent('web_app_setup_swipe_behavior', false, { allow_vertical_swipe: false });
+        }
+      } catch (error) {
+        console.log('web_app_setup_swipe_behavior via WebApp.postEvent failed', error);
+      }
+      try {
+        if (window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function') {
+          window.TelegramWebviewProxy.postEvent('web_app_setup_swipe_behavior', JSON.stringify({ allow_vertical_swipe: false }));
+        }
+      } catch (error) {
+        console.log('web_app_setup_swipe_behavior via TelegramWebviewProxy failed', error);
+      }
+      try {
         if (typeof window.Telegram.WebApp.enableClosingConfirmation === 'function') {
           window.Telegram.WebApp.enableClosingConfirmation();
         }
