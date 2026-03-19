@@ -226,6 +226,7 @@ const ui = {
   inputDeliveryType: document.getElementById('inputDeliveryType'),
   inputDeliveryAddress: document.getElementById('inputDeliveryAddress'),
   deliveryAddressWrap: document.getElementById('deliveryAddressWrap'),
+  deliveryPriceNote: document.getElementById('deliveryPriceNote'),
   inputComment: document.getElementById('inputComment'),
   policyConsentLabel: document.getElementById('policyConsentLabel'),
   policyCheck: document.getElementById('policyCheck'),
@@ -1183,6 +1184,7 @@ function updateDeliveryAddressVisibility() {
   if (!ui.inputDeliveryType || !ui.deliveryAddressWrap || !ui.inputDeliveryAddress) return;
   const isDelivery = ui.inputDeliveryType.value === 'delivery';
   ui.deliveryAddressWrap.classList.toggle('hidden', !isDelivery);
+  if (ui.deliveryPriceNote) ui.deliveryPriceNote.classList.toggle('hidden', !isDelivery);
   ui.inputDeliveryAddress.required = isDelivery;
 }
 

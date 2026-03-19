@@ -4106,6 +4106,14 @@ html[data-theme="light"] #screen-product .recommended-card img {
   padding-top: 1px;
 }
 
+#screen-checkout #deliveryPriceNote {
+  margin-top: -4px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 #screen-checkout .cart-totals {
   padding: 10px 14px;
   margin-top: 4px;
