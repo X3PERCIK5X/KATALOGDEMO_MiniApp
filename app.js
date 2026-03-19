@@ -225,6 +225,7 @@ const ui = {
   inputDeliveryAddress: document.getElementById('inputDeliveryAddress'),
   deliveryAddressWrap: document.getElementById('deliveryAddressWrap'),
   inputComment: document.getElementById('inputComment'),
+  policyConsentLabel: document.getElementById('policyConsentLabel'),
   policyCheck: document.getElementById('policyCheck'),
   policyLink: document.getElementById('policyLink'),
   orderStatus: document.getElementById('orderStatus'),
@@ -380,6 +381,15 @@ const ui = {
   paymentIntegrationStatus: document.getElementById('paymentIntegrationStatus'),
   paymentIntegrationSaveButton: document.getElementById('paymentIntegrationSaveButton'),
   profilePromoSection: document.getElementById('profilePromoSection'),
+  profilePrivacyPolicySection: document.getElementById('profilePrivacyPolicySection'),
+  privacyPolicyForm: document.getElementById('privacyPolicyForm'),
+  privacyPolicyTitleInput: document.getElementById('privacyPolicyTitleInput'),
+  privacyPolicyUrlInput: document.getElementById('privacyPolicyUrlInput'),
+  privacyPolicyFileInput: document.getElementById('privacyPolicyFileInput'),
+  privacyPolicyUploadButton: document.getElementById('privacyPolicyUploadButton'),
+  privacyPolicyFileName: document.getElementById('privacyPolicyFileName'),
+  privacyPolicyStatus: document.getElementById('privacyPolicyStatus'),
+  privacyPolicySaveButton: document.getElementById('privacyPolicySaveButton'),
   promoSettingsForm: document.getElementById('promoSettingsForm'),
   promoSettingsCodeInput: document.getElementById('promoSettingsCodeInput'),
   promoSettingsTypeInput: document.getElementById('promoSettingsTypeInput'),
@@ -1924,6 +1934,13 @@ function extractUploadedImageUrl(payload) {
   return '';
 }
 
+function getDocumentUploadEndpoint() {
+  if (!state.saas.enabled) return '';
+  const sid = String(state.saas.storeId || '').trim().toUpperCase();
+  if (!sid) return '';
+  return `/upload-policy?storeId=${encodeURIComponent(sid)}`;
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2025,6 +2042,131 @@ async function adminUploadImageFile(file) {
     } catch {
       reportStatus('Ошибка загрузки фото');
       return null;
+    }
+  }
+}
+
+async function adminUploadPolicyFile(file) {
+  if (!file) return '';
+  const endpoint = getDocumentUploadEndpoint();
+  if (!endpoint) {
+    throw new Error('UPLOAD_ENDPOINT_NOT_AVAILABLE');
+  }
+  const form = new FormData();
+  form.append('file', file, file.name || `policy-${Date.now()}.pdf`);
+  const payload = await saasRequestWithForm(endpoint, form, { auth: true });
+  return extractUploadedImageUrl(payload);
+}
+
+function getPrivacyPolicyConfig() {
+  const config = state.config && typeof state.config === 'object' ? state.config : {};
+  return {
+    title: String(config.privacyPolicyTitle || '').trim(),
+    url: String(config.privacyPolicyUrl || '').trim(),
+  };
+}
+
+function hasPrivacyPolicyConfigured() {
+  return Boolean(getPrivacyPolicyConfig().url);
+}
+
+function renderCheckoutPrivacyPolicy() {
+  const policy = getPrivacyPolicyConfig();
+  const hasPolicy = Boolean(policy.url);
+  if (ui.policyConsentLabel) {
+    ui.policyConsentLabel.classList.toggle('hidden', !hasPolicy);
+  }
+  if (ui.policyLink) {
+    ui.policyLink.href = hasPolicy ? policy.url : '#';
+    ui.policyLink.textContent = policy.title || 'политикой конфиденциальности';
+    ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
+  }
+  if (!hasPolicy && ui.policyCheck) {
+    ui.policyCheck.checked = false;
+  }
+}
+
+function renderPrivacyPolicySettings() {
+  if (ui.profilePrivacyPolicySection) {
+    ui.profilePrivacyPolicySection.classList.toggle('hidden', !state.admin.enabled);
+  }
+  if (!state.admin.enabled) return;
+  const policy = getPrivacyPolicyConfig();
+  if (ui.privacyPolicyTitleInput) ui.privacyPolicyTitleInput.value = policy.title;
+  if (ui.privacyPolicyUrlInput) ui.privacyPolicyUrlInput.value = policy.url;
+  if (ui.privacyPolicyFileName) {
+    const file = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
+      ? ui.privacyPolicyFileInput.files[0]
+      : null;
+    ui.privacyPolicyFileName.textContent = file
+      ? `${file.name} (${Math.max(1, Math.round((file.size || 0) / 1024))} КБ)`
+      : (policy.url ? 'Загруженный документ сохранен.' : 'Файл не выбран');
+  }
+  if (ui.privacyPolicyStatus && !ui.privacyPolicyStatus.textContent.trim()) {
+    ui.privacyPolicyStatus.textContent = policy.url
+      ? 'Политика подключена. Согласие на checkout обязательно.'
+      : 'Политика пока не загружена.';
+  }
+}
+
+async function savePrivacyPolicySettings() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const title = String(ui.privacyPolicyTitleInput?.value || '').trim();
+  const url = String(ui.privacyPolicyUrlInput?.value || '').trim();
+  if (url && !isValidHttpUrl(url)) {
+    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Введите корректную ссылку на политику.';
+    return;
+  }
+  if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Сохраняем политику...';
+  try {
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/config`, {
+      method: 'PATCH',
+      auth: true,
+      body: {
+        config: {
+          privacyPolicyTitle: title,
+          privacyPolicyUrl: url,
+        },
+      },
+    });
+    state.config = payload?.config && typeof payload.config === 'object'
+      ? { ...state.config, ...payload.config }
+      : { ...state.config, privacyPolicyTitle: title, privacyPolicyUrl: url };
+    renderCheckoutPrivacyPolicy();
+    renderPrivacyPolicySettings();
+    if (ui.privacyPolicyStatus) {
+      ui.privacyPolicyStatus.textContent = url
+        ? 'Политика сохранена.'
+        : 'Политика очищена.';
+    }
+  } catch (error) {
+    if (ui.privacyPolicyStatus) {
+      ui.privacyPolicyStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    }
+  }
+}
+
+async function uploadPrivacyPolicyDocument() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const file = ui.privacyPolicyFileInput?.files && ui.privacyPolicyFileInput.files[0]
+    ? ui.privacyPolicyFileInput.files[0]
+    : null;
+  if (!file) {
+    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Сначала выберите файл политики.';
+    return;
+  }
+  if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Загружаем документ политики...';
+  try {
+    const url = await adminUploadPolicyFile(file);
+    if (!url) throw new Error('empty upload url');
+    if (ui.privacyPolicyUrlInput) ui.privacyPolicyUrlInput.value = url;
+    if (ui.privacyPolicyStatus) ui.privacyPolicyStatus.textContent = 'Файл загружен. Теперь сохраните политику.';
+    renderPrivacyPolicySettings();
+  } catch (error) {
+    if (ui.privacyPolicyStatus) {
+      ui.privacyPolicyStatus.textContent = `Ошибка загрузки: ${String(error?.message || 'unknown')}`;
     }
   }
 }
@@ -4642,13 +4784,6 @@ function getCatalogBotSummaryText(connections) {
   return items.length > 1 ? `${label} +${items.length - 1}` : label;
 }
 
-function getCatalogConnectionsByPlatform(platform) {
-  const normalized = normalizeCatalogBotPlatform(platform);
-  return (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
-    return normalizeCatalogBotPlatform(connection?.platform) === normalized;
-  });
-}
-
 function renderCatalogBotConnectionsList(target, connections, catalogUrl) {
   if (!target) return;
   if (state.catalogBotConnectionsLoading) {
@@ -4931,46 +5066,6 @@ function renderBotSettings() {
   if (ui.botWelcomeTextInput) ui.botWelcomeTextInput.value = settings.botWelcomeText;
   if (ui.botCatalogUrlInput) ui.botCatalogUrlInput.value = getCurrentStoreCatalogUrl();
   if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = '';
-}
-
-function getCatalogConnectionsByPlatform(platform) {
-  const normalized = normalizeCatalogBotPlatform(platform);
-  return (Array.isArray(state.catalogBotConnections) ? state.catalogBotConnections : []).filter((connection) => {
-    return normalizeCatalogBotPlatform(connection?.platform) === normalized;
-  });
-}
-
-function renderCatalogBotConnectionsList(target, connections, catalogUrl) {
-  if (!target) return;
-  if (state.catalogBotConnectionsLoading) {
-    target.innerHTML = '<div class="catalog-bot-empty">Загружаем подключения...</div>';
-    return;
-  }
-  if (!connections.length) {
-    target.innerHTML = '<div class="catalog-bot-empty">Подключения каталога пока не добавлены.</div>';
-    return;
-  }
-  target.innerHTML = connections.map((connection) => {
-    const platformLabel = escapeHtml(String(connection?.platformLabel || getCatalogBotPlatformMeta(connection?.platform).label || 'Платформа'));
-    const title = escapeHtml(String(connection?.title || 'Подключение'));
-    const identifier = escapeHtml(String(connection?.botUsername || connection?.identifier || '—'));
-    const modeLabel = connection?.managed ? 'Автоподключение' : 'Внешняя точка входа';
-    const safeId = Number(connection?.id || 0);
-    return `
-      <div class="catalog-bot-card">
-        <div class="catalog-bot-card-head">
-          <span class="catalog-bot-badge">${platformLabel}</span>
-          <strong>${title}</strong>
-        </div>
-        <div class="catalog-bot-card-line"><span>Бот:</span><span>${identifier}</span></div>
-        <div class="catalog-bot-card-line"><span>Режим:</span><span>${escapeHtml(modeLabel)}</span></div>
-        <div class="catalog-bot-card-line"><span>Каталог:</span><span class="catalog-bot-card-url">${escapeHtml(String(connection?.catalogUrl || catalogUrl || '—'))}</span></div>
-        <div class="catalog-bot-card-actions">
-          <button class="secondary-button" type="button" data-catalog-bot-remove="${safeId}">Удалить</button>
-        </div>
-      </div>
-    `;
-  }).join('');
 }
 
 function renderTelegramBotConnectSection() {
@@ -7854,6 +7949,7 @@ function renderStoreSettingsSection() {
   }
   if (ui.themeSelect) ui.themeSelect.value = normalizeThemeCode(state.theme);
   if (ui.accentSelect) ui.accentSelect.value = normalizeAccentCode(state.accent);
+  renderPrivacyPolicySettings();
   renderAdminPromoSettings();
 }
 
@@ -8676,6 +8772,19 @@ function bindEvents() {
     e.preventDefault();
     await saveAdminPromoCode();
   });
+  on(ui.privacyPolicyForm, 'submit', async (e) => {
+    e.preventDefault();
+    await savePrivacyPolicySettings();
+  });
+  on(ui.privacyPolicyUploadButton, 'click', async () => {
+    await uploadPrivacyPolicyDocument();
+  });
+  on(ui.privacyPolicyFileInput, 'change', () => {
+    renderPrivacyPolicySettings();
+    if (ui.privacyPolicyStatus && ui.privacyPolicyFileInput?.files?.[0]) {
+      ui.privacyPolicyStatus.textContent = 'Файл выбран. Нажмите «Загрузить файл».';
+    }
+  });
   on(ui.promoSettingsList, 'click', async (e) => {
     const btn = e.target.closest('[data-promo-remove]');
     if (!btn) return;
@@ -9444,7 +9553,7 @@ function bindEvents() {
 
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
-    if (!ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой.'; return; }
+    if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой.'; return; }
     const items = cartItems();
     if (!items.length) { ui.orderStatus.textContent = 'Корзина пуста.'; return; }
     const profile = {
@@ -9857,7 +9966,7 @@ async function loadConfig() {
   }
   renderHeaderStore();
   renderStores();
-  ui.policyLink.href = state.config.privacyPolicyUrl || '#';
+  renderCheckoutPrivacyPolicy();
   if (ui.aboutText) {
     const aboutRaw = state.config.aboutText || 'Текст будет добавлен позже.';
     if (!ui.aboutText.innerHTML.trim()) {

@@ -2139,6 +2139,19 @@ function sanitizeSettingsPatch(settingsPatch) {
   return out;
 }
 
+function sanitizeConfigPatch(configPatch) {
+  if (!configPatch || typeof configPatch !== 'object') return {};
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyTitle')) {
+    out.privacyPolicyTitle = String(configPatch.privacyPolicyTitle || '').trim().slice(0, 200);
+  }
+  if (Object.prototype.hasOwnProperty.call(configPatch, 'privacyPolicyUrl')) {
+    const rawUrl = String(configPatch.privacyPolicyUrl || '').trim();
+    out.privacyPolicyUrl = rawUrl && isValidHttpUrl(rawUrl) ? rawUrl : '';
+  }
+  return out;
+}
+
 function listCategories(storeId) {
   const rows = db.prepare(`
     SELECT category_id, title, image, group_id, payload_json, sort_order
@@ -4147,6 +4160,32 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   });
 });
 
+app.patch('/api/admin/stores/:storeId/config', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, (req, res) => {
+  const configPatch = sanitizeConfigPatch(req.body?.config && typeof req.body.config === 'object' ? req.body.config : {});
+  if (!Object.keys(configPatch).length) {
+    return res.status(400).json({ error: 'CONFIG_PATCH_REQUIRED' });
+  }
+  const currentConfig = safeJsonParse(req.store?.config_json || '{}', {});
+  const nextConfig = {
+    ...(currentConfig && typeof currentConfig === 'object' ? currentConfig : {}),
+    ...configPatch,
+  };
+  db.prepare(`
+    UPDATE stores
+    SET config_json = ?, updated_at = ?
+    WHERE store_id = ?
+  `).run(
+    JSON.stringify(nextConfig),
+    nowIso(),
+    req.storeId,
+  );
+  return res.json({
+    ok: true,
+    storeId: req.storeId,
+    config: nextConfig,
+  });
+});
+
 app.get('/api/admin/data', authMiddleware, (req, res) => {
   const row = getStoreRow(req.auth.storeId);
   if (!row) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
@@ -4350,6 +4389,49 @@ app.post('/api/upload-image', authMiddleware, upload.single('file'), (req, res) 
   const finalPath = path.join(storeUploadsDir, finalName);
   fs.renameSync(req.file.path, finalPath);
   const url = `${req.protocol}://${req.get('host')}/uploads/${requestedStoreId}/${finalName}`;
+  return res.json({ ok: true, url });
+});
+
+app.post('/api/upload-policy', authMiddleware, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'FILE_REQUIRED' });
+  const requestedStoreId = String(req.query?.storeId || req.auth.storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(requestedStoreId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
+  const targetStore = getStoreRow(requestedStoreId);
+  if (!targetStore) return res.status(404).json({ error: 'STORE_NOT_FOUND' });
+  const authUserId = String(req.auth?.userId || '').trim();
+  if (authUserId) {
+    if (!hasStoreAccess(authUserId, requestedStoreId)) return res.status(403).json({ error: 'FORBIDDEN' });
+  } else if (String(req.auth?.storeId || '').trim().toUpperCase() !== requestedStoreId) {
+    return res.status(403).json({ error: 'FORBIDDEN' });
+  }
+  const subscription = getStoreSubscriptionState(requestedStoreId);
+  if (!subscription.featureAccess) {
+    return res.status(402).json({ error: 'SUBSCRIPTION_REQUIRED', storeId: requestedStoreId, subscription });
+  }
+  const allowedMime = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+  ]);
+  const allowedExt = new Set(['.pdf', '.doc', '.docx', '.txt']);
+  const originalExt = String(path.extname(req.file.originalname || '') || '').toLowerCase();
+  if (!allowedMime.has(String(req.file.mimetype || '').toLowerCase()) && !allowedExt.has(originalExt)) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(400).json({ error: 'UNSUPPORTED_POLICY_FILE_TYPE' });
+  }
+  const ext = allowedExt.has(originalExt) ? originalExt : (
+    req.file.mimetype === 'application/pdf' ? '.pdf'
+      : req.file.mimetype === 'application/msword' ? '.doc'
+        : req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? '.docx'
+          : '.txt'
+  );
+  const storeUploadsDir = path.join(UPLOADS_DIR, requestedStoreId, 'policies');
+  fs.mkdirSync(storeUploadsDir, { recursive: true });
+  const finalName = `policy-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+  const finalPath = path.join(storeUploadsDir, finalName);
+  fs.renameSync(req.file.path, finalPath);
+  const url = `${req.protocol}://${req.get('host')}/uploads/${requestedStoreId}/policies/${finalName}`;
   return res.json({ ok: true, url });
 });
 
