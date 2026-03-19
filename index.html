@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260317-259" />
+    <link rel="stylesheet" href="/style.css?v=20260319-260" />
   </head>
   <body>
     <header class="header">
@@ -358,7 +358,7 @@
           </span>
         </button>
         <div id="adminProfilePanel" class="profile-admin-panel hidden">
-          <div class="profile-admin-store">Bot ID: <strong id="adminStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Store ID: <strong id="adminStoreIdValue">—</strong></div>
           <div class="profile-admin-actions">
             <button id="adminReloadStoresButton" class="secondary-button profile-admin-logout" type="button">Мои магазины</button>
             <button id="adminOpenBotSectionButton" class="secondary-button profile-admin-logout" type="button">Раздел настроек</button>
@@ -405,7 +405,7 @@
         <div class="settings-nav-list">
           <button class="settings-nav-card" data-admin-screen="settings-bots" type="button">
             <div class="section-title">1. Настройки бота</div>
-            <p class="feedback-note">Подключение ботов каталога и настройка сообщения в Telegram-боте.</p>
+            <p class="feedback-note">Подключение платформ магазина и настройка сообщения в Telegram-боте.</p>
           </button>
           <button class="settings-nav-card" data-admin-screen="settings-checkout" type="button">
             <div class="section-title">2. Настройки оформления заказа</div>
@@ -426,14 +426,13 @@
         <div id="profileBotConnectSection" class="profile-subscription-card hidden">
           <div class="section-title">Подключение мессенджеров и ботов</div>
           <p class="feedback-note">Текущая платформа подсказывается автоматически при входе. Здесь же можно вручную доподключить любые другие мессенджеры и точки входа к этому же магазину.</p>
-          <div class="profile-admin-store">Bot ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
           <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
           <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
           <form id="profileBotConnectForm" class="order-form flat">
             <label>Платформа
               <select id="profileBotPlatformInput">
                 <option value="telegram">Telegram</option>
-                <option value="vk">VK</option>
                 <option value="max">MAX</option>
                 <option value="custom">Другая площадка</option>
               </select>
@@ -540,7 +539,7 @@
             <label id="paymentIntegrationSecretLabel">Секретный ключ / пароль API
               <input id="paymentIntegrationSecretKeyInput" type="password" autocomplete="off" placeholder="Секрет провайдера" />
             </label>
-            <p id="paymentIntegrationHint" class="feedback-note">Выберите кассу и заполните обязательные поля. Return URL формируется автоматически по Bot ID магазина.</p>
+            <p id="paymentIntegrationHint" class="feedback-note">Выберите кассу и заполните обязательные поля. Return URL формируется автоматически по Store ID магазина.</p>
             <p class="feedback-note">Webhook URL (если поддерживается): <code id="paymentIntegrationWebhookUrl">—</code></p>
             <div id="paymentIntegrationStatus" class="status"></div>
             <button id="paymentIntegrationSaveButton" class="primary-button" type="submit">Сохранить подключение</button>
@@ -875,9 +874,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260317-259"></script>
-    <script src="/platform.js?v=20260317-259"></script>
-    <script src="/telegram.js?v=20260317-259"></script>
-    <script src="/app.js?v=20260317-259"></script>
+    <script src="/vk-bridge.min.js?v=20260319-260"></script>
+    <script src="/platform.js?v=20260319-260"></script>
+    <script src="/telegram.js?v=20260319-260"></script>
+    <script src="/app.js?v=20260319-260"></script>
   </body>
 </html>

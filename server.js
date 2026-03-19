@@ -2880,7 +2880,7 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
   if (!base) return { ok: false, error: 'WEBAPP_URL_NOT_CONFIGURED' };
   const webAppUrl = appendWebAppVersion(`${base}/store/${encodeURIComponent(storeId)}`);
   const settings = getStoreSettings(storeRow);
-  const ownerNote = isOwner ? '\n\nДля админки используйте ваш Bot ID + пароль в Admin mini app.' : '';
+  const ownerNote = isOwner ? '\n\nДля админки используйте ваш Store ID + пароль в Admin mini app.' : '';
   const welcomeTextRaw = String(settings?.botWelcomeText || '').trim();
   const welcomeText = welcomeTextRaw ? `${welcomeTextRaw}${ownerNote}` : '';
   const welcomeImage = String(settings?.botWelcomeImage || '').trim();
@@ -3057,7 +3057,7 @@ function getAdminBotIntroText() {
     'ADMIN KATALOG BOT',
     '',
     'Этот бот управляет вашей SaaS-витриной.',
-    'Здесь вы получаете Bot ID магазина и быстрый вход в admin mini app.',
+    'Здесь вы получаете Store ID магазина и быстрый вход в admin mini app.',
     '',
     'Нажмите «Инструкция», чтобы открыть пошаговое руководство.',
   ].join('\n');
@@ -3075,8 +3075,8 @@ function getAdminBotInstructionsText() {
     '  2. Команда /newbot -> задайте имя и username бота.',
     '  3. BotFather выдаст token вида 123456:ABC...',
     '  4. Скопируйте token без пробелов и вставьте в регистрацию.',
-    '• После регистрации система выдаст Bot ID (6 символов).',
-    '• Для входа в админку используйте: Bot ID + пароль.',
+    '• После регистрации система выдаст Store ID (6 символов).',
+    '• Для входа в админку используйте: Store ID + пароль.',
     '',
     '2) Как редактировать внутри админки',
     '• Главная: баннеры, статьи, блоки акций/популярного.',
@@ -3126,11 +3126,11 @@ async function notifyBotIdToOwner({ ownerTelegramId, storeId, botUsername = '', 
   if (!chatId) return { ok: false, error: 'OWNER_TELEGRAM_ID_NOT_FOUND', via: '' };
   const text = [
     'Регистрация магазина выполнена.',
-    `Ваш Bot ID: ${storeId}`,
+    `Ваш Store ID: ${storeId}`,
     botUsername ? `Подключён бот: ${botUsername}` : '',
     catalogUrl ? `Ссылка на каталог: ${catalogUrl}` : '',
     '',
-    'Для входа в админку используйте Bot ID + пароль.',
+    'Для входа в админку используйте Store ID + пароль.',
   ].filter(Boolean).join('\n');
   if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED', via: '' };
   const extra = { reply_markup: getAdminStartKeyboard() };

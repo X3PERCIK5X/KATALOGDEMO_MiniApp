@@ -430,7 +430,7 @@ const PAYMENT_PROVIDER_META = {
     accountPlaceholder: 'Например: 123456',
     secretLabel: 'Secret Key',
     secretPlaceholder: 'live_xxxxx или test_xxxxx',
-    hint: 'ЮKassa: используется API платежей и webhook. Return URL подставляется автоматически по Bot ID.',
+    hint: 'ЮKassa: используется API платежей и webhook. Return URL подставляется автоматически по Store ID магазина.',
     defaultApiUrl: 'https://api.yookassa.ru/v3/payments',
     needsSecret: true,
     needsAccount: true,
@@ -479,15 +479,6 @@ const CATALOG_BOT_PLATFORM_META = {
     tokenPlaceholder: '123456:ABC...',
     tokenRequired: true,
     hint: 'Для Telegram бот подключается автоматически: настраиваются меню и webhook каталога.',
-  },
-  vk: {
-    label: 'VK',
-    identifierLabel: 'ID / ссылка бота VK',
-    identifierPlaceholder: 'vk.com/club..., bot id или ссылка на сообщество',
-    tokenLabel: '',
-    tokenPlaceholder: '',
-    tokenRequired: false,
-    hint: 'Для VK сохраняется точка входа и общий URL каталога этого магазина.',
   },
   max: {
     label: 'MAX',
@@ -1471,8 +1462,8 @@ function ensureProfileAdminSections() {
     section.id = 'profileBotConnectSection';
     section.className = 'profile-subscription-card hidden';
     section.innerHTML = `
-      <div class="section-title">Подключение ботов каталога</div>
-      <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким ботам и площадкам. Telegram-боты подключаются по токену автоматически, а VK/MAX и другие платформы сохраняются как внешние точки входа в каталог.</p>
+      <div class="section-title">Подключение Telegram, MAX и других площадок</div>
+      <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким платформам. VK настраивается отдельно через привязку сообщества ниже. Здесь подключаются Telegram, MAX и другие внешние точки входа к этому же магазину.</p>
       <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
       <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
       <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
@@ -1480,7 +1471,6 @@ function ensureProfileAdminSections() {
         <label>Платформа
           <select id="profileBotPlatformInput">
             <option value="telegram">Telegram</option>
-            <option value="vk">VK</option>
             <option value="max">MAX</option>
             <option value="custom">Другая площадка</option>
           </select>
@@ -3920,7 +3910,7 @@ function ensureSaasAuthModal() {
       </div>
       <div class="saas-auth-platform-hint hidden"></div>
       <form class="saas-auth-form" autocomplete="on" novalidate>
-        <label class="saas-auth-label saas-auth-store-id">Bot ID
+        <label class="saas-auth-label saas-auth-store-id">Store ID
           <input class="admin-modal-input" name="storeId" placeholder="например: A1B2C3" required maxlength="6" />
         </label>
         <label class="saas-auth-label saas-auth-store-name hidden">Название магазина
@@ -4057,7 +4047,7 @@ function openSaasAuthModal() {
           : 'Войти';
     if (storeWrap) {
       const label = storeWrap.querySelector('.admin-modal-input') ? storeWrap.firstChild : null;
-      storeWrap.childNodes[0].textContent = directStoreRegistration ? 'Store ID' : 'Bot ID';
+      storeWrap.childNodes[0].textContent = 'Store ID';
       if (storeInput) {
         storeInput.placeholder = directStoreRegistration ? 'например: A1B2C3' : 'например: A1B2C3';
       }
@@ -4113,7 +4103,7 @@ function openSaasAuthModal() {
       const password = String(passwordInput?.value || '').trim();
       const passwordRepeat = String(repeatInput?.value || '').trim();
       const codeValue = String(resetCodeInput?.value || '').trim();
-      if (mode !== 'register' && !/^[A-Z0-9]{6}$/.test(storeId)) return showError(`${directStoreRegistration ? 'Store ID' : 'Bot ID'} должен быть ровно 6 символов (A-Z, 0-9).`);
+      if (mode !== 'register' && !/^[A-Z0-9]{6}$/.test(storeId)) return showError('Store ID должен быть ровно 6 символов (A-Z, 0-9).');
       if (mode === 'recover_code') {
         if (!/^[0-9]{6}$/.test(codeValue)) return showError('Код должен быть из 6 цифр.');
         resetCode = codeValue;
@@ -4203,7 +4193,7 @@ function openSaasAuthModal() {
 
     const onRecover = async () => {
       const storeId = String(storeInput?.value || '').trim().toUpperCase();
-      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Bot ID перед восстановлением.');
+      if (!/^[A-Z0-9]{6}$/.test(storeId)) return showError('Введите корректный Store ID перед восстановлением.');
       const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
       try {
         await saasRequest('/auth/password-reset/request', {
@@ -4880,7 +4870,8 @@ function renderProfileBotConnectSection() {
 
   const storeId = String(state.saas.storeId || '').trim().toUpperCase();
   const catalogUrl = getCurrentStoreCatalogUrl();
-  const platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  if (platform === 'vk') platform = 'custom';
   const platformMeta = getCatalogBotPlatformMeta(platform);
 
   if (ui.profileBotStoreIdValue) {
@@ -4958,7 +4949,14 @@ async function saveProfileBotConnection() {
     return;
   }
   if (!requireAdminFeatureAccess()) return;
-  const platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  let platform = normalizeCatalogBotPlatform(ui.profileBotPlatformInput?.value || 'telegram');
+  if (platform === 'vk') {
+    if (ui.profileBotConnectStatus) ui.profileBotConnectStatus.textContent = 'VK настраивается отдельно через блок привязки сообщества ниже.';
+    if (ui.profilePlatformBindingsSection) {
+      ui.profilePlatformBindingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return;
+  }
   const title = String(ui.profileBotLabelInput?.value || '').trim();
   const identifier = String(ui.profileBotIdentifierInput?.value || '').trim();
   const botToken = String(ui.profileBotTokenInput?.value || '').trim();
@@ -5146,11 +5144,11 @@ async function saasEnsureAdminSession() {
           const queued = String(registration?.botIdSendError || '').trim() === 'BOT_ID_SEND_FAILED';
           if (sent) {
             const channelLabel = via === 'admin_bot' ? 'в admin-бот владельца' : 'в admin-бот';
-            window.alert(`Регистрация завершена.\n\nBot ID отправлен ${channelLabel}.\nBot ID: ${issuedBotId}\n\nВойдите по Bot ID и паролю.`);
+            window.alert(`Регистрация завершена.\n\nStore ID отправлен ${channelLabel}.\nStore ID: ${issuedBotId}\n\nВойдите по Store ID и паролю.`);
           } else if (queued) {
-            window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nОтправка в admin-бот поставлена в очередь и будет доставлена автоматически.`);
+            window.alert(`Регистрация завершена.\n\nStore ID: ${issuedBotId}\n\nОтправка в admin-бот поставлена в очередь и будет доставлена автоматически.`);
           } else {
-            window.alert(`Регистрация завершена.\n\nBot ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Bot ID для входа.`);
+            window.alert(`Регистрация завершена.\n\nStore ID: ${issuedBotId}\n\nСообщение в бот временно не отправлено. Используйте Store ID для входа.`);
           }
           continue;
         }
@@ -5176,14 +5174,14 @@ async function saasEnsureAdminSession() {
     } catch (error) {
       const code = String(error?.message || '');
       const messageMap = {
-        STORE_NOT_FOUND: `${directStoreRegistration ? 'Store ID' : 'Bot ID'} не найден.`,
+        STORE_NOT_FOUND: 'Store ID не найден.',
         WRONG_PASSWORD: 'Неверный пароль.',
-        STORE_ALREADY_ACTIVE: 'Этот Bot ID уже активирован. Используйте вкладку "Вход".',
-        STORE_NOT_ACTIVATED: 'Bot ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
+        STORE_ALREADY_ACTIVE: 'Этот Store ID уже активирован. Используйте вкладку "Вход".',
+        STORE_NOT_ACTIVATED: 'Store ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
         BOT_TOKEN_INVALID: 'Bot token неверный.',
         BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
         TELEGRAM_ID_REQUIRED: 'Не удалось определить Telegram ID. Откройте mini app из Telegram.',
-        BOT_ID_SEND_FAILED: 'Не удалось отправить Bot ID в бот.',
+        BOT_ID_SEND_FAILED: 'Не удалось отправить Store ID в бот.',
         INVALID_REGISTER_PAYLOAD: 'Введите название магазина и пароль.',
         STORE_ID_NOT_ISSUED: 'Сервер не выдал Store ID для нового магазина.',
         ADMIN_BOT_NOT_CONFIGURED: 'Admin-бот не настроен на сервере.',
