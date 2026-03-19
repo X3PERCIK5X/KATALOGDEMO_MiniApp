@@ -1462,7 +1462,10 @@ function ensureProfileAdminSections() {
     section.id = 'profileBotConnectSection';
     section.className = 'profile-subscription-card hidden';
     section.innerHTML = `
-      <div class="section-title">Подключение Telegram, MAX и других площадок</div>
+      <div class="section-title with-badge">
+        <span>Подключение Telegram, MAX и других площадок</span>
+        <span class="feature-soon-badge">Скоро здесь</span>
+      </div>
       <p class="feedback-note">Один и тот же магазин можно подключить сразу к нескольким платформам. VK настраивается отдельно через привязку сообщества ниже. Здесь подключаются Telegram, MAX и другие внешние точки входа к этому же магазину.</p>
       <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
       <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
