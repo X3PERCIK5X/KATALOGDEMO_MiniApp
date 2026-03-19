@@ -2713,33 +2713,42 @@ function renderProductImportPanel(scope = 'category') {
   importUi.panel.classList.toggle('hidden', !show);
   if (!show) return;
 
-  const canUseImport = !!(
+  const hasAdminSession = !!(
     state.saas.enabled
     && state.saas.storeId
     && state.saas.token
-    && subscriptionAllowsAdminFeatures()
-    && (scope !== 'category' || scopeOptions.categoryId)
   );
+  const hasScopeTarget = scope !== 'category' || scopeOptions.categoryId;
+  const canPickFile = !importState.loading && !importState.importing;
+  const canPreview = hasAdminSession && hasScopeTarget && !!importState.file && !importState.loading && !importState.importing;
+  const canSubmit = hasAdminSession && hasScopeTarget && !!getProductImportReadyRows(scope).length && !importState.loading && !importState.importing;
 
-  if (importUi.file) importUi.file.disabled = !canUseImport || importState.loading || importState.importing;
+  if (importUi.file) importUi.file.disabled = !canPickFile;
   if (importUi.pickButton) {
-    importUi.pickButton.classList.toggle('is-disabled', !canUseImport || importState.loading || importState.importing);
-    importUi.pickButton.setAttribute('aria-disabled', (!canUseImport || importState.loading || importState.importing) ? 'true' : 'false');
+    importUi.pickButton.classList.toggle('is-disabled', !canPickFile);
+    importUi.pickButton.setAttribute('aria-disabled', canPickFile ? 'false' : 'true');
   }
   if (importUi.fileName) {
     importUi.fileName.textContent = importState.fileLabel || importState.fileName || 'Не выбран';
     importUi.fileName.classList.toggle('is-empty', !importState.fileName && !importState.fileLabel);
   }
   if (importUi.previewButton) {
-    importUi.previewButton.disabled = !canUseImport || !importState.file || importState.loading || importState.importing;
-    importUi.previewButton.textContent = importState.loading ? 'Проверяем...' : 'Обновить';
+    importUi.previewButton.disabled = !canPreview;
+    importUi.previewButton.textContent = importState.loading
+      ? 'Проверяем...'
+      : (importState.summary ? 'Обновить' : 'Проверить');
   }
   if (importUi.submitButton) {
-    importUi.submitButton.disabled = !canUseImport || !getProductImportReadyRows(scope).length || importState.loading || importState.importing;
+    importUi.submitButton.disabled = !canSubmit;
     importUi.submitButton.textContent = importState.importing ? 'Импортируем...' : 'Импортировать';
   }
 
-  const defaultStatus = canUseImport ? '' : 'Импорт недоступен';
+  let defaultStatus = '';
+  if (!hasAdminSession) {
+    defaultStatus = 'Сначала войдите в админку магазина по Store ID и паролю.';
+  } else if (!hasScopeTarget) {
+    defaultStatus = 'Сначала откройте нужную категорию.';
+  }
   const statusText = importState.status || defaultStatus;
   if (importUi.status) {
     importUi.status.textContent = statusText;
@@ -2789,7 +2798,11 @@ async function previewProductImportFile(scope = 'category') {
   const importState = getImportScopeState(scope);
   const scopeOptions = getImportScopeOptions(scope);
   if (!state.admin.enabled || !state.saas.storeId || !importState.file) return;
-  if (!requireAdminFeatureAccess()) return;
+  if (!state.saas.token) {
+    importState.status = 'Сначала войдите в админку магазина по Store ID и паролю.';
+    renderProductImportPanel(scope);
+    return;
+  }
   const requestId = importState.previewRequestId + 1;
   importState.previewRequestId = requestId;
   const requestFile = importState.file;
@@ -2835,7 +2848,11 @@ async function importProductsFromPreview(scope = 'category') {
   const importState = getImportScopeState(scope);
   const scopeOptions = getImportScopeOptions(scope);
   if (!state.admin.enabled || !state.saas.storeId) return;
-  if (!requireAdminFeatureAccess()) return;
+  if (!state.saas.token) {
+    importState.status = 'Сначала войдите в админку магазина по Store ID и паролю.';
+    renderProductImportPanel(scope);
+    return;
+  }
   const readyRows = getProductImportReadyRows(scope);
   if (!readyRows.length) {
     importState.status = 'Нет строк, готовых к импорту.';

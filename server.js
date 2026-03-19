@@ -4196,7 +4196,7 @@ app.put('/api/stores/:storeId/admin/data', authMiddleware, storeParamMiddleware,
   return res.json({ ok: true, storeId: req.storeId });
 });
 
-app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, productImportUploadMiddleware, (req, res) => {
+app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, productImportUploadMiddleware, (req, res) => {
   try {
     const preview = previewImport({
       file: req.file,
@@ -4225,7 +4225,7 @@ app.post('/api/stores/:storeId/admin/import-products/preview', authMiddleware, s
   }
 });
 
-app.post('/api/stores/:storeId/admin/import-products', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, requireActiveSubscriptionForAdmin, async (req, res) => {
+app.post('/api/stores/:storeId/admin/import-products', authMiddleware, storeParamMiddleware, storeAdminAccessMiddleware, async (req, res) => {
   try {
     const previewToken = String(req.body?.previewToken || '').trim();
     const cachedPreview = previewToken ? consumeImportPreviewToken(previewToken, req.storeId) : null;
