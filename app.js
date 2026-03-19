@@ -1369,7 +1369,6 @@ function setScreen(name) {
   if (name === 'settings-bots') {
     renderBotSettings();
     renderProfileBotConnectSection();
-    void maybeOpenCurrentPlatformConnectionPrompt();
   }
   if (name === 'settings-checkout') {
     renderOrderChatSettings();
@@ -9867,7 +9866,6 @@ async function init() {
           const onboardingShown = await runPendingPlatformOnboarding();
           if (!onboardingShown) {
             reportStatus(`SaaS магазин подключен: ${state.saas.storeId}`);
-            void maybeOpenCurrentPlatformConnectionPrompt();
           }
         } else if (state.saas.stores.length > 1) {
           reportStatus('Выберите магазин для продолжения работы в админке.');
