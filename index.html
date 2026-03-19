@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-268" />
+    <link rel="stylesheet" href="/style.css?v=20260319-269" />
   </head>
   <body>
     <header class="header">
@@ -408,7 +408,7 @@
         <div class="settings-nav-list">
           <button class="settings-nav-card" data-admin-screen="settings-bots" type="button">
             <div class="section-title">1. Настройки бота</div>
-            <p class="feedback-note">Настройка Telegram-бота и приветственного сообщения магазина.</p>
+            <p class="feedback-note">Настройка Telegram-бота, дополнительных Telegram-подключений и приветственного сообщения магазина.</p>
           </button>
           <button class="settings-nav-card" data-admin-screen="settings-checkout" type="button">
             <div class="section-title">2. Настройки оформления заказа</div>
@@ -423,7 +423,7 @@
               <span>4. Другие площадки</span>
               <span class="feature-soon-badge">В разработке</span>
             </div>
-            <p class="feedback-note">Отдельный раздел для подключения других платформ и дублирующих настроек бота.</p>
+            <p class="feedback-note">Подключение VK, MAX и других внешних площадок к этому же магазину.</p>
           </button>
         </div>
       </section>
@@ -590,19 +590,12 @@
           <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
           <h2>Другие площадки</h2>
         </div>
-        <div class="bot-settings-card">
-          <div class="section-title with-badge">
-            <span>Другие площадки и точки входа</span>
-            <span class="feature-soon-badge">В разработке</span>
-          </div>
-          <p class="feedback-note">Здесь собраны дублирующие настройки подключения других платформ к этому же магазину. Основная логика уже работает в стандартных разделах выше.</p>
-        </div>
         <div id="profileBotConnectSection" class="profile-subscription-card hidden">
           <div class="section-title with-badge">
             <span>Подключение мессенджеров и ботов</span>
             <span class="feature-soon-badge">В разработке</span>
           </div>
-          <p class="feedback-note">Здесь вручную подключаются MAX и другие внешние площадки к этому же магазину.</p>
+          <p class="feedback-note">Здесь подключаются MAX и другие внешние площадки к этому же магазину.</p>
           <div class="profile-admin-store">Store ID магазина: <strong id="profileBotStoreIdValue">—</strong></div>
           <div class="profile-admin-store">Ссылка каталога: <strong id="profileBotCatalogUrlValue">—</strong></div>
           <button id="profileBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
@@ -921,9 +914,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-268"></script>
-    <script src="/platform.js?v=20260319-268"></script>
-    <script src="/telegram.js?v=20260319-268"></script>
-    <script src="/app.js?v=20260319-268"></script>
+    <script src="/vk-bridge.min.js?v=20260319-269"></script>
+    <script src="/platform.js?v=20260319-269"></script>
+    <script src="/telegram.js?v=20260319-269"></script>
+    <script src="/app.js?v=20260319-269"></script>
   </body>
 </html>
