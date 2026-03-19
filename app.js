@@ -2723,8 +2723,8 @@ function renderProductImportPanel(scope = 'category') {
   );
   const hasScopeTarget = scope !== 'category' || scopeOptions.categoryId;
   const canPickFile = !importState.loading && !importState.importing;
-  const canPreview = hasAdminSession && hasScopeTarget && !!importState.file && !importState.loading && !importState.importing;
-  const canSubmit = hasAdminSession && hasScopeTarget && !!getProductImportReadyRows(scope).length && !importState.loading && !importState.importing;
+  const canPreview = hasScopeTarget && !!importState.file && !importState.loading && !importState.importing;
+  const canSubmit = hasScopeTarget && !!getProductImportReadyRows(scope).length && !importState.loading && !importState.importing;
 
   if (importUi.file) importUi.file.disabled = !canPickFile;
   if (importUi.pickButton) {
@@ -2747,10 +2747,10 @@ function renderProductImportPanel(scope = 'category') {
   }
 
   let defaultStatus = '';
-  if (!hasAdminSession) {
-    defaultStatus = 'Сначала войдите в админку магазина по Store ID и паролю.';
-  } else if (!hasScopeTarget) {
+  if (!hasScopeTarget) {
     defaultStatus = 'Сначала откройте нужную категорию.';
+  } else if (!hasAdminSession && importState.file) {
+    defaultStatus = 'Для проверки файла потребуется действующая сессия админки.';
   }
   const statusText = importState.status || defaultStatus;
   if (importUi.status) {
@@ -2797,15 +2797,36 @@ function renderProductImportPanel(scope = 'category') {
   importUi.preview.classList.remove('hidden');
 }
 
+async function ensureImportSession(scope = 'category') {
+  if (!state.admin.enabled) return false;
+  if (state.saas.token && state.saas.storeId) return true;
+  const ready = await saasEnsureAdminSession();
+  if (!ready) {
+    const importState = getImportScopeState(scope);
+    importState.status = 'Войдите в админку магазина по Store ID и паролю.';
+    renderProductImportPanel(scope);
+    return false;
+  }
+  await saasLoadStoresList();
+  const storeReady = await saasEnsureCurrentAdminStoreSelection({
+    interactive: true,
+    title: 'Выберите магазин для импорта',
+  });
+  if (!storeReady || !state.saas.storeId || !state.saas.token) {
+    const importState = getImportScopeState(scope);
+    importState.status = 'Сначала выберите магазин для импорта.';
+    renderProductImportPanel(scope);
+    return false;
+  }
+  return true;
+}
+
 async function previewProductImportFile(scope = 'category') {
   const importState = getImportScopeState(scope);
   const scopeOptions = getImportScopeOptions(scope);
-  if (!state.admin.enabled || !state.saas.storeId || !importState.file) return;
-  if (!state.saas.token) {
-    importState.status = 'Сначала войдите в админку магазина по Store ID и паролю.';
-    renderProductImportPanel(scope);
-    return;
-  }
+  if (!state.admin.enabled || !importState.file) return;
+  const sessionReady = await ensureImportSession(scope);
+  if (!sessionReady) return;
   const requestId = importState.previewRequestId + 1;
   importState.previewRequestId = requestId;
   const requestFile = importState.file;
@@ -2850,12 +2871,9 @@ async function previewProductImportFile(scope = 'category') {
 async function importProductsFromPreview(scope = 'category') {
   const importState = getImportScopeState(scope);
   const scopeOptions = getImportScopeOptions(scope);
-  if (!state.admin.enabled || !state.saas.storeId) return;
-  if (!state.saas.token) {
-    importState.status = 'Сначала войдите в админку магазина по Store ID и паролю.';
-    renderProductImportPanel(scope);
-    return;
-  }
+  if (!state.admin.enabled) return;
+  const sessionReady = await ensureImportSession(scope);
+  if (!sessionReady) return;
   const readyRows = getProductImportReadyRows(scope);
   if (!readyRows.length) {
     importState.status = 'Нет строк, готовых к импорту.';
