@@ -5224,6 +5224,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 /* 2026-03-02: admin bot form readability + dock stability */
 #screen-bot .bot-settings-card,
 #screen-settings-bots .bot-settings-card,
+#screen-settings-platforms .bot-settings-card,
 #screen-settings-checkout .bot-settings-card,
 #screen-settings-store .bot-settings-card {
   width: 100%;
@@ -5239,6 +5240,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .section-title,
 #screen-settings-bots .section-title,
+#screen-settings-platforms .section-title,
 #screen-settings-checkout .section-title,
 #screen-settings-store .section-title {
   font-size: 20px;
@@ -5251,6 +5253,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .feedback-note,
 #screen-settings-bots .feedback-note,
+#screen-settings-platforms .feedback-note,
 #screen-settings-checkout .feedback-note,
 #screen-settings-store .feedback-note {
   color: var(--muted);
@@ -5260,6 +5263,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .order-form,
 #screen-settings-bots .order-form,
+#screen-settings-platforms .order-form,
 #screen-settings-checkout .order-form,
 #screen-settings-store .order-form {
   margin-top: 2px;
@@ -5267,6 +5271,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .order-form.flat label,
 #screen-settings-bots .order-form.flat label,
+#screen-settings-platforms .order-form.flat label,
 #screen-settings-checkout .order-form.flat label,
 #screen-settings-store .order-form.flat label {
   font-size: 14px;
@@ -5282,6 +5287,9 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 #screen-settings-bots .order-form.flat input,
 #screen-settings-bots .order-form.flat textarea,
 #screen-settings-bots .order-form.flat select,
+#screen-settings-platforms .order-form.flat input,
+#screen-settings-platforms .order-form.flat textarea,
+#screen-settings-platforms .order-form.flat select,
 #screen-settings-checkout .order-form.flat input,
 #screen-settings-checkout .order-form.flat textarea,
 #screen-settings-checkout .order-form.flat select,
@@ -5299,6 +5307,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .order-form.flat textarea,
 #screen-settings-bots .order-form.flat textarea,
+#screen-settings-platforms .order-form.flat textarea,
 #screen-settings-checkout .order-form.flat textarea,
 #screen-settings-store .order-form.flat textarea {
   min-height: 124px;
@@ -5310,6 +5319,8 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 #screen-bot .order-form.flat textarea::placeholder,
 #screen-settings-bots .order-form.flat input::placeholder,
 #screen-settings-bots .order-form.flat textarea::placeholder,
+#screen-settings-platforms .order-form.flat input::placeholder,
+#screen-settings-platforms .order-form.flat textarea::placeholder,
 #screen-settings-checkout .order-form.flat input::placeholder,
 #screen-settings-checkout .order-form.flat textarea::placeholder,
 #screen-settings-store .order-form.flat input::placeholder,
@@ -5319,6 +5330,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .order-form.flat input[readonly],
 #screen-settings-bots .order-form.flat input[readonly],
+#screen-settings-platforms .order-form.flat input[readonly],
 #screen-settings-checkout .order-form.flat input[readonly],
 #screen-settings-store .order-form.flat input[readonly] {
   color: rgba(224, 233, 248, 0.72) !important;
@@ -5328,6 +5340,8 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 #screen-bot .primary-button,
 #screen-settings-bots .secondary-button,
 #screen-settings-bots .primary-button,
+#screen-settings-platforms .secondary-button,
+#screen-settings-platforms .primary-button,
 #screen-settings-checkout .secondary-button,
 #screen-settings-checkout .primary-button,
 #screen-settings-store .secondary-button,
@@ -5337,6 +5351,7 @@ html[data-theme="light"] .saas-auth-card .admin-modal-input:focus {
 
 #screen-bot .status,
 #screen-settings-bots .status,
+#screen-settings-platforms .status,
 #screen-settings-checkout .status,
 #screen-settings-store .status {
   color: var(--text);
@@ -5349,6 +5364,9 @@ html[data-theme="light"] #screen-bot .order-form.flat select,
 html[data-theme="light"] #screen-settings-bots .order-form.flat input,
 html[data-theme="light"] #screen-settings-bots .order-form.flat textarea,
 html[data-theme="light"] #screen-settings-bots .order-form.flat select,
+html[data-theme="light"] #screen-settings-platforms .order-form.flat input,
+html[data-theme="light"] #screen-settings-platforms .order-form.flat textarea,
+html[data-theme="light"] #screen-settings-platforms .order-form.flat select,
 html[data-theme="light"] #screen-settings-checkout .order-form.flat input,
 html[data-theme="light"] #screen-settings-checkout .order-form.flat textarea,
 html[data-theme="light"] #screen-settings-checkout .order-form.flat select,
@@ -5364,6 +5382,8 @@ html[data-theme="light"] #screen-bot .order-form.flat input::placeholder,
 html[data-theme="light"] #screen-bot .order-form.flat textarea::placeholder,
 html[data-theme="light"] #screen-settings-bots .order-form.flat input::placeholder,
 html[data-theme="light"] #screen-settings-bots .order-form.flat textarea::placeholder,
+html[data-theme="light"] #screen-settings-platforms .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-settings-platforms .order-form.flat textarea::placeholder,
 html[data-theme="light"] #screen-settings-checkout .order-form.flat input::placeholder,
 html[data-theme="light"] #screen-settings-checkout .order-form.flat textarea::placeholder,
 html[data-theme="light"] #screen-settings-store .order-form.flat input::placeholder,
@@ -5373,6 +5393,7 @@ html[data-theme="light"] #screen-settings-store .order-form.flat textarea::place
 
 html[data-theme="light"] #screen-bot .feedback-note,
 html[data-theme="light"] #screen-settings-bots .feedback-note,
+html[data-theme="light"] #screen-settings-platforms .feedback-note,
 html[data-theme="light"] #screen-settings-checkout .feedback-note,
 html[data-theme="light"] #screen-settings-store .feedback-note {
   color: #58677d;

@@ -1370,6 +1370,11 @@ function setScreen(name) {
     renderBotSettings();
     renderProfileBotConnectSection();
   }
+  if (name === 'settings-platforms') {
+    renderBotSettings();
+    renderProfileBotConnectSection();
+    renderPlatformsSettingsMirror();
+  }
   if (name === 'settings-checkout') {
     renderOrderChatSettings();
     renderPaymentIntegrationSettings();
@@ -1575,6 +1580,62 @@ function ensureProfileAdminSections() {
   ui.orderChatSaveButton = document.getElementById('orderChatSaveButton');
 }
 
+function syncFormValue(source, target) {
+  if (!source || !target) return;
+  if (target.value !== source.value) target.value = source.value;
+}
+
+function renderPlatformsSettingsMirror() {
+  const platformsSection = document.getElementById('platformsBotConnectSection');
+  if (platformsSection) {
+    const sourceSection = ui.profileBotConnectSection;
+    platformsSection.classList.toggle('hidden', !sourceSection || sourceSection.classList.contains('hidden'));
+  }
+
+  const storeId = ui.profileBotStoreIdValue?.textContent || '—';
+  const catalogUrl = ui.profileBotCatalogUrlValue?.textContent || '—';
+
+  const platformsStoreIdValue = document.getElementById('platformsBotStoreIdValue');
+  const platformsCatalogUrlValue = document.getElementById('platformsBotCatalogUrlValue');
+  const platformsBotCatalogUrlInput = document.getElementById('platformsBotCatalogUrlInput');
+  if (platformsStoreIdValue) platformsStoreIdValue.textContent = storeId;
+  if (platformsCatalogUrlValue) platformsCatalogUrlValue.textContent = catalogUrl;
+  if (platformsBotCatalogUrlInput) platformsBotCatalogUrlInput.value = catalogUrl === '—' ? '' : catalogUrl;
+
+  syncFormValue(ui.profileBotPlatformInput, document.getElementById('platformsBotPlatformInput'));
+  syncFormValue(ui.profileBotLabelInput, document.getElementById('platformsBotLabelInput'));
+  syncFormValue(ui.profileBotIdentifierInput, document.getElementById('platformsBotIdentifierInput'));
+  syncFormValue(ui.profileBotTokenInput, document.getElementById('platformsBotTokenInput'));
+  syncFormValue(ui.botWelcomeImageInput, document.getElementById('platformsBotWelcomeImageInput'));
+  syncFormValue(ui.botWelcomeTextInput, document.getElementById('platformsBotWelcomeTextInput'));
+
+  const sourceIdentifierLabel = ui.profileBotIdentifierLabelText?.textContent || 'ID / ссылка бота';
+  const sourceTokenLabel = ui.profileBotTokenLabelText?.textContent || 'Bot Token Telegram';
+  const targetIdentifierLabel = document.getElementById('platformsBotIdentifierLabelText');
+  const targetTokenLabel = document.getElementById('platformsBotTokenLabelText');
+  if (targetIdentifierLabel) targetIdentifierLabel.textContent = sourceIdentifierLabel;
+  if (targetTokenLabel) targetTokenLabel.textContent = sourceTokenLabel;
+
+  const sourceConnectStatus = ui.profileBotConnectStatus?.textContent || '';
+  const sourceBotStatus = ui.botSettingsStatus?.textContent || '';
+  const targetConnectStatus = document.getElementById('platformsBotConnectStatus');
+  const targetBotStatus = document.getElementById('platformsBotSettingsStatus');
+  if (targetConnectStatus) {
+    targetConnectStatus.textContent = sourceConnectStatus;
+    targetConnectStatus.className = ui.profileBotConnectStatus?.className || 'status';
+  }
+  if (targetBotStatus) {
+    targetBotStatus.textContent = sourceBotStatus;
+    targetBotStatus.className = ui.botSettingsStatus?.className || 'status';
+  }
+
+  const sourceList = ui.profileBotConnectionsList;
+  const targetList = document.getElementById('platformsBotConnectionsList');
+  if (sourceList && targetList) {
+    targetList.innerHTML = sourceList.innerHTML;
+  }
+}
+
 function updateBottomNav(screen) {
   const map = {
     home: ui.homeButton,
@@ -1586,6 +1647,7 @@ function updateBottomNav(screen) {
     profile: ui.profileButton,
     bot: ui.botButton,
     'settings-bots': ui.botButton,
+    'settings-platforms': ui.botButton,
     'settings-checkout': ui.botButton,
     'settings-store': ui.botButton,
     orders: ui.statsButton,
@@ -4871,6 +4933,7 @@ function renderBotSettings() {
   if (ui.botWelcomeTextInput) ui.botWelcomeTextInput.value = settings.botWelcomeText;
   if (ui.botCatalogUrlInput) ui.botCatalogUrlInput.value = getCurrentStoreCatalogUrl();
   if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = '';
+  renderPlatformsSettingsMirror();
 }
 
 async function saveBotSettings() {
@@ -4975,6 +5038,7 @@ function renderProfileBotConnectSection() {
     });
   }
   renderPlatformBindingsSection();
+  renderPlatformsSettingsMirror();
 }
 
 async function saveProfileBotConnection() {
@@ -8532,6 +8596,65 @@ function bindEvents() {
     e.preventDefault();
     if (!state.admin.enabled) return;
     await saveBotSettings();
+  });
+  on(document.getElementById('platformsBotCatalogUrlCopyButton'), 'click', () => {
+    ui.profileBotCatalogUrlCopyButton?.click();
+  });
+  on(document.getElementById('platformsBotCatalogUrlCopySecondaryButton'), 'click', () => {
+    ui.botCatalogUrlCopyButton?.click();
+  });
+  on(document.getElementById('platformsBotPlatformInput'), 'change', (e) => {
+    if (ui.profileBotPlatformInput) ui.profileBotPlatformInput.value = e.target.value;
+    renderProfileBotConnectSection();
+  });
+  on(document.getElementById('platformsBotLabelInput'), 'input', (e) => {
+    if (ui.profileBotLabelInput) ui.profileBotLabelInput.value = e.target.value;
+  });
+  on(document.getElementById('platformsBotIdentifierInput'), 'input', (e) => {
+    if (ui.profileBotIdentifierInput) ui.profileBotIdentifierInput.value = e.target.value;
+  });
+  on(document.getElementById('platformsBotTokenInput'), 'input', (e) => {
+    if (ui.profileBotTokenInput) ui.profileBotTokenInput.value = e.target.value;
+  });
+  on(document.getElementById('platformsBotConnectForm'), 'submit', async (e) => {
+    e.preventDefault();
+    const platformInput = document.getElementById('platformsBotPlatformInput');
+    const labelInput = document.getElementById('platformsBotLabelInput');
+    const identifierInput = document.getElementById('platformsBotIdentifierInput');
+    const tokenInput = document.getElementById('platformsBotTokenInput');
+    if (ui.profileBotPlatformInput && platformInput) ui.profileBotPlatformInput.value = platformInput.value;
+    if (ui.profileBotLabelInput && labelInput) ui.profileBotLabelInput.value = labelInput.value;
+    if (ui.profileBotIdentifierInput && identifierInput) ui.profileBotIdentifierInput.value = identifierInput.value;
+    if (ui.profileBotTokenInput && tokenInput) ui.profileBotTokenInput.value = tokenInput.value;
+    await saveProfileBotConnection();
+    renderPlatformsSettingsMirror();
+  });
+  on(document.getElementById('platformsBotConnectionsList'), 'click', async (e) => {
+    const removeButton = e.target.closest('[data-catalog-bot-remove]');
+    if (!removeButton) return;
+    const connectionId = Number(removeButton.dataset.catalogBotRemove || 0);
+    if (!connectionId) return;
+    await removeProfileBotConnection(connectionId);
+    renderPlatformsSettingsMirror();
+  });
+  on(document.getElementById('platformsBotWelcomeImageInput'), 'input', (e) => {
+    if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = e.target.value;
+  });
+  on(document.getElementById('platformsBotWelcomeTextInput'), 'input', (e) => {
+    if (ui.botWelcomeTextInput) ui.botWelcomeTextInput.value = e.target.value;
+  });
+  on(document.getElementById('platformsBotWelcomeImageUploadButton'), 'click', async () => {
+    ui.botWelcomeImageUploadButton?.click();
+    window.setTimeout(() => renderPlatformsSettingsMirror(), 50);
+  });
+  on(document.getElementById('platformsBotSettingsForm'), 'submit', async (e) => {
+    e.preventDefault();
+    const imageInput = document.getElementById('platformsBotWelcomeImageInput');
+    const textInput = document.getElementById('platformsBotWelcomeTextInput');
+    if (ui.botWelcomeImageInput && imageInput) ui.botWelcomeImageInput.value = imageInput.value;
+    if (ui.botWelcomeTextInput && textInput) ui.botWelcomeTextInput.value = textInput.value;
+    await saveBotSettings();
+    renderPlatformsSettingsMirror();
   });
   on(document, 'click', (e) => {
     const addBtn = e.target.closest('[data-admin-add]');

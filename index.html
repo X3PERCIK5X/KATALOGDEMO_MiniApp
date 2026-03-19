@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Demo Catalog</title>
-    <link rel="stylesheet" href="/style.css?v=20260319-265" />
+    <link rel="stylesheet" href="/style.css?v=20260319-266" />
   </head>
   <body>
     <header class="header">
@@ -418,6 +418,13 @@
             <div class="section-title">3. Настройки магазина</div>
             <p class="feedback-note">Темы, цвета кнопок и промокоды текущего магазина.</p>
           </button>
+          <button class="settings-nav-card" data-admin-screen="settings-platforms" type="button">
+            <div class="section-title with-badge">
+              <span>4. Другие площадки</span>
+              <span class="feature-soon-badge">В разработке</span>
+            </div>
+            <p class="feedback-note">Отдельный раздел для подключения других платформ и дублирующих настроек бота.</p>
+          </button>
         </div>
       </section>
 
@@ -603,6 +610,75 @@
             <button class="primary-button" type="submit">Сохранить промокод</button>
           </form>
           <div id="promoSettingsList" class="promo-admin-list"></div>
+        </div>
+      </section>
+
+      <section id="screen-settings-platforms" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="bot" aria-label="Назад">←</button>
+          <h2>Другие площадки</h2>
+        </div>
+        <div class="bot-settings-card">
+          <div class="section-title with-badge">
+            <span>Другие площадки и точки входа</span>
+            <span class="feature-soon-badge">В разработке</span>
+          </div>
+          <p class="feedback-note">Здесь собраны дублирующие настройки подключения других платформ к этому же магазину. Основная логика уже работает в стандартных разделах выше.</p>
+        </div>
+        <div id="platformsBotConnectSection" class="profile-subscription-card hidden">
+          <div class="section-title with-badge">
+            <span>Подключение мессенджеров и ботов</span>
+            <span class="feature-soon-badge">В разработке</span>
+          </div>
+          <p class="feedback-note">Дублирующий раздел подключения Telegram, MAX и других площадок к текущему магазину.</p>
+          <div class="profile-admin-store">Store ID магазина: <strong id="platformsBotStoreIdValue">—</strong></div>
+          <div class="profile-admin-store">Ссылка каталога: <strong id="platformsBotCatalogUrlValue">—</strong></div>
+          <button id="platformsBotCatalogUrlCopyButton" class="secondary-button profile-bot-copy-button" type="button">Копировать ссылку каталога</button>
+          <form id="platformsBotConnectForm" class="order-form flat">
+            <label>Платформа
+              <select id="platformsBotPlatformInput">
+                <option value="telegram">Telegram</option>
+                <option value="max">MAX</option>
+                <option value="custom">Другая площадка</option>
+              </select>
+            </label>
+            <label>Название подключения
+              <input id="platformsBotLabelInput" type="text" autocomplete="off" placeholder="Например: Telegram bot #1" />
+            </label>
+            <label id="platformsBotIdentifierLabel"><span id="platformsBotIdentifierLabelText">ID / ссылка бота</span>
+              <input id="platformsBotIdentifierInput" type="text" autocomplete="off" placeholder="@shop_bot или https://..." />
+            </label>
+            <label id="platformsBotTokenLabel"><span id="platformsBotTokenLabelText">Bot Token Telegram</span>
+              <input id="platformsBotTokenInput" type="text" autocomplete="off" placeholder="123456:ABC..." />
+            </label>
+            <div id="platformsBotConnectStatus" class="status"></div>
+            <button id="platformsBotConnectSaveButton" class="primary-button" type="submit">Добавить подключение</button>
+          </form>
+          <div id="platformsBotConnectionsList" class="catalog-bot-list"></div>
+        </div>
+        <div class="bot-settings-card">
+          <div class="section-title with-badge">
+            <span>Сообщение бота</span>
+            <span class="feature-soon-badge">В разработке</span>
+          </div>
+          <p class="feedback-note">Дублирующая настройка приветственного сообщения бота для будущих интеграций с другими площадками.</p>
+          <div class="order-form flat">
+            <label>Ссылка каталога этого магазина
+              <input id="platformsBotCatalogUrlInput" type="text" readonly />
+            </label>
+            <button id="platformsBotCatalogUrlCopySecondaryButton" class="secondary-button" type="button">Скопировать ссылку</button>
+          </div>
+          <form id="platformsBotSettingsForm" class="order-form flat">
+            <label>Ссылка на приветственную картинку
+              <input id="platformsBotWelcomeImageInput" type="url" placeholder="https://..." />
+            </label>
+            <button id="platformsBotWelcomeImageUploadButton" class="secondary-button" type="button">Загрузить картинку</button>
+            <label>Приветственный текст
+              <textarea id="platformsBotWelcomeTextInput" rows="6" placeholder="Введите текст приветствия"></textarea>
+            </label>
+            <div id="platformsBotSettingsStatus" class="status"></div>
+            <button id="platformsBotSettingsSaveButton" class="primary-button" type="submit">Сохранить в боте</button>
+          </form>
         </div>
       </section>
 
@@ -880,9 +956,9 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260319-265"></script>
-    <script src="/platform.js?v=20260319-265"></script>
-    <script src="/telegram.js?v=20260319-265"></script>
-    <script src="/app.js?v=20260319-265"></script>
+    <script src="/vk-bridge.min.js?v=20260319-266"></script>
+    <script src="/platform.js?v=20260319-266"></script>
+    <script src="/telegram.js?v=20260319-266"></script>
+    <script src="/app.js?v=20260319-266"></script>
   </body>
 </html>
