@@ -267,6 +267,9 @@ const ui = {
   platformOfferConsentLabel: document.getElementById('platformOfferConsentLabel'),
   platformOfferCheck: document.getElementById('platformOfferCheck'),
   platformOfferLink: document.getElementById('platformOfferLink'),
+  platformPrivacyConsentLabel: document.getElementById('platformPrivacyConsentLabel'),
+  platformPrivacyCheck: document.getElementById('platformPrivacyCheck'),
+  platformPrivacyLink: document.getElementById('platformPrivacyLink'),
   policyConsentLabel: document.getElementById('policyConsentLabel'),
   policyCheck: document.getElementById('policyCheck'),
   policyConsentText: document.getElementById('policyConsentText'),
@@ -2019,11 +2022,11 @@ function renderCheckoutPrivacyPolicy() {
   }
   if (ui.policyLink) {
     ui.policyLink.href = policy.text ? '#' : (hasPolicy ? policy.url : '#');
-    ui.policyLink.textContent = policy.title || 'политикой конфиденциальности';
+    ui.policyLink.textContent = policy.title || 'документом магазина';
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
   if (ui.policyConsentText) {
-    ui.policyConsentText.textContent = policy.consentText || 'Я даю согласие на обработку персональных данных и согласен(а) с';
+    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) и принимаю условия';
   }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
@@ -9584,7 +9587,8 @@ function bindEvents() {
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
     if (ui.platformOfferCheck && !ui.platformOfferCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с публичной офертой площадки.'; return; }
-    if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой.'; return; }
+    if (ui.platformPrivacyCheck && !ui.platformPrivacyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой конфиденциальности площадки.'; return; }
+    if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с документом магазина.'; return; }
     const items = cartItems();
     if (!items.length) { ui.orderStatus.textContent = 'Корзина пуста.'; return; }
     const profile = {
