@@ -123,6 +123,41 @@ const state = {
   },
 };
 
+const {
+  on,
+  debounce,
+  safeSrc,
+  escapeHtml,
+  formatMultiline,
+  safeParse,
+  normalizeSearchQuery,
+} = window.HORECA_UTILS || {};
+
+const {
+  resolveSaasApiBase,
+  buildSaasUrl: buildSaasUrlFromBase,
+  resolveRequestedStoreId,
+  resolveStorageScopeStoreId,
+  buildScopedStorageKey,
+  buildOrderHistoryStorageKey: buildOrderHistoryStorageKeyForScopes,
+  shouldUseLegacyStorageFallback,
+  readScopedStorageValue,
+} = window.HORECA_ROUTING || {};
+
+const {
+  formatPrice: formatPriceValue,
+  hasPrice: hasPriceValue,
+  normalizeProductDiscountPercent: normalizeProductDiscountPercentValue,
+  getProductPromoPercent: getProductPromoPercentValue,
+  getProductPromoPrice: getProductPromoPriceValue,
+  getProductPriceView: getProductPriceViewValue,
+  discountedPrice: discountedPriceValue,
+  priceLabel: priceLabelValue,
+  normalizeThemeCode: normalizeThemeCodeValue,
+  normalizeAccentCode: normalizeAccentCodeValue,
+  normalizeAppearanceConfig: normalizeAppearanceConfigValue,
+} = window.HORECA_PRESENTATION || {};
+
 const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
 const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
 const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
@@ -229,6 +264,9 @@ const ui = {
   deliveryAddressWrap: document.getElementById('deliveryAddressWrap'),
   deliveryPriceNote: document.getElementById('deliveryPriceNote'),
   inputComment: document.getElementById('inputComment'),
+  platformOfferConsentLabel: document.getElementById('platformOfferConsentLabel'),
+  platformOfferCheck: document.getElementById('platformOfferCheck'),
+  platformOfferLink: document.getElementById('platformOfferLink'),
   policyConsentLabel: document.getElementById('policyConsentLabel'),
   policyCheck: document.getElementById('policyCheck'),
   policyConsentText: document.getElementById('policyConsentText'),
@@ -625,19 +663,6 @@ function requireAdminFeatureAccess(message = 'Функция недоступн�
   reportStatus(message);
   if (ui.subscriptionStatus) ui.subscriptionStatus.textContent = message;
   return false;
-}
-
-function on(el, event, handler, options) {
-  if (!el) return;
-  el.addEventListener(event, handler, options);
-}
-
-function debounce(fn, delay = 220) {
-  let timer = null;
-  return (...args) => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(() => fn(...args), delay);
-  };
 }
 
 function isAdminModeRequested() {
@@ -1283,10 +1308,6 @@ function openGlobalSearch(query) {
   openCategoryBundle(allCategoryIds, q ? `Поиск: ${q}` : 'Каталог');
 }
 
-function normalizeSearchQuery(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
 function addSearchHistory(query) {
   const q = normalizeSearchQuery(query);
   if (!q) return;
@@ -1610,63 +1631,29 @@ function updateBottomNav(screen) {
   });
 }
 
-function formatPrice(v) { return Number(v || 0).toLocaleString('ru-RU'); }
-function hasPrice(p) { return Number(p && p.price) > 0; }
+function formatPrice(v) { return formatPriceValue(v); }
+function hasPrice(p) { return hasPriceValue(p); }
 function priceLabel(p) {
-  const view = getProductPriceView(p, { withOldPrice: false });
-  return view.hasPrice ? `${formatPrice(view.finalPrice)} ₽` : 'Цена по запросу';
+  return priceLabelValue(p);
 }
 function discountedPrice(p, percent) {
-  if (!hasPrice(p)) return null;
-  const factor = 1 - (percent || 0) / 100;
-  return Math.round(Number(p.price) * factor);
+  return discountedPriceValue(p, percent);
 }
 
 function normalizeProductDiscountPercent(value) {
-  const raw = Number(value || 0);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  return Math.max(1, Math.min(95, Math.round(raw)));
+  return normalizeProductDiscountPercentValue(value);
 }
 
 function getProductPromoPercent(product) {
-  return normalizeProductDiscountPercent(product?.discountPercent);
+  return getProductPromoPercentValue(product);
 }
 
 function getProductPromoPrice(product, percent = getProductPromoPercent(product)) {
-  if (!hasPrice(product)) return null;
-  const normalized = normalizeProductDiscountPercent(percent);
-  if (normalized <= 0) return Number(product.price || 0);
-  return Math.max(0, Math.round(Number(product.price || 0) * (1 - normalized / 100)));
+  return getProductPromoPriceValue(product, percent);
 }
 
 function getProductPriceView(product, { withOldPrice = true } = {}) {
-  if (!hasPrice(product)) {
-    return {
-      hasPrice: false,
-      hasPromo: false,
-      promoPercent: 0,
-      finalPrice: null,
-      oldPrice: null,
-      html: 'Цена по запросу',
-      badgeHtml: '',
-    };
-  }
-  const oldPrice = Number(product.price || 0);
-  const promoPercent = getProductPromoPercent(product);
-  const hasPromo = promoPercent > 0;
-  const finalPrice = hasPromo ? getProductPromoPrice(product, promoPercent) : oldPrice;
-  const html = hasPromo && withOldPrice
-    ? `<span class="promo-new">${formatPrice(finalPrice)} ₽</span><span class="promo-old">${formatPrice(oldPrice)} ₽</span>`
-    : `${formatPrice(finalPrice)} ₽`;
-  return {
-    hasPrice: true,
-    hasPromo,
-    promoPercent,
-    finalPrice,
-    oldPrice,
-    html,
-    badgeHtml: hasPromo ? `<div class="promo-badge promo-badge-inline">-${promoPercent}%</div>` : '',
-  };
+  return getProductPriceViewValue(product, { withOldPrice });
 }
 
 function normalizePromoCatalogConfig(raw) {
@@ -1695,22 +1682,6 @@ function setProductPromoPercent(product, percent) {
   } else {
     product.discountPercent = 0;
   }
-}
-function safeSrc(src) {
-  try {
-    return encodeURI(src);
-  } catch {
-    return src;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function normalizeHomeBanners(list) {
@@ -1836,15 +1807,6 @@ function renderHomeBanners() {
 // Статьи главной также приходят из конфига и готовы к редактированию через админку.
 function renderHomeArticles() {
   if (ui.homeArticleTrack) ui.homeArticleTrack.innerHTML = '';
-}
-
-function formatMultiline(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return '';
-  const parts = raw.split(/\n{2,}/g);
-  return parts
-    .map((part) => `<p>${part.replace(/\n/g, '<br>')}</p>`)
-    .join('');
 }
 
 function adminDownloadJson(filename, payload) {
@@ -3856,39 +3818,17 @@ function getSku(p) {
   return '';
 }
 
-function safeParse(value, fallback) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
 function getSaasApiBase() {
-  const normalize = (value) => String(value || '').trim().replace(/\/$/, '');
-  const remapLegacyApi = (value) => {
-    const raw = normalize(value);
-    if (!raw) return '';
-    // Автомиграция со старого lambriz API на единый SaaS API.
-    if (raw.includes('lambrizsel.duckdns.org')) return SAAS_DEFAULT_REMOTE_API;
-    return raw;
-  };
-  try {
-    const params = new URLSearchParams(window.location.search || '');
-    const queryApi = String(params.get('api') || '').trim();
-    if (queryApi) {
-      const normalized = remapLegacyApi(queryApi);
-      localStorage.setItem(SAAS_API_BASE_KEY, normalized);
-      return normalized;
-    }
-  } catch {}
-  const fromStorage = remapLegacyApi(localStorage.getItem(SAAS_API_BASE_KEY) || '');
-  if (fromStorage) {
-    localStorage.setItem(SAAS_API_BASE_KEY, fromStorage);
-    return fromStorage;
+  const resolved = resolveSaasApiBase({
+    search: window.location.search || '',
+    storageValue: localStorage.getItem(SAAS_API_BASE_KEY) || '',
+    origin: window.location.origin || '',
+    defaultRemoteApi: SAAS_DEFAULT_REMOTE_API,
+  });
+  if (resolved?.persistedBase) {
+    localStorage.setItem(SAAS_API_BASE_KEY, resolved.persistedBase);
   }
-  const fallback = `${window.location.origin}/api`;
-  return remapLegacyApi(fallback);
+  return String(resolved?.base || '').trim();
 }
 
 function clearSaasAuth() {
@@ -4132,6 +4072,16 @@ function ensureSaasAuthModal() {
         <label class="saas-auth-label saas-auth-repeat hidden">Повторите пароль
           <input class="admin-modal-input" name="passwordRepeat" type="password" placeholder="повторите пароль" />
         </label>
+        <div class="saas-auth-legal hidden">
+          <label class="checkbox saas-auth-legal-check">
+            <input type="checkbox" name="acceptOffer" />
+            <span>Я ознакомлен(а) и принимаю условия <a href="/offer" target="_blank" rel="noopener">Публичной оферты сервиса «МессКаталог»</a></span>
+          </label>
+          <label class="checkbox saas-auth-legal-check">
+            <input type="checkbox" name="acceptPrivacyPolicy" />
+            <span>Я ознакомлен(а) с <a href="/privacy" target="_blank" rel="noopener">Политикой конфиденциальности</a> и даю согласие на обработку персональных данных</span>
+          </label>
+        </div>
         <div class="saas-auth-error hidden"></div>
         <div class="admin-modal-actions">
           <button type="button" class="secondary-button" data-auth-cancel>Отмена</button>
@@ -4163,6 +4113,9 @@ function openSaasAuthModal() {
   const passwordInput = modal.querySelector('input[name="password"]');
   const repeatWrap = modal.querySelector('.saas-auth-repeat');
   const repeatInput = modal.querySelector('input[name="passwordRepeat"]');
+  const legalWrap = modal.querySelector('.saas-auth-legal');
+  const offerCheck = modal.querySelector('input[name="acceptOffer"]');
+  const privacyCheck = modal.querySelector('input[name="acceptPrivacyPolicy"]');
   const platformHint = modal.querySelector('.saas-auth-platform-hint');
   const errorBox = modal.querySelector('.saas-auth-error');
   const submitBtn = modal.querySelector('[data-auth-submit]');
@@ -4222,6 +4175,7 @@ function openSaasAuthModal() {
     botTokenWrap.classList.toggle('hidden', mode !== 'register' || directStoreRegistration);
     resetCodeWrap.classList.toggle('hidden', mode !== 'recover_code');
     repeatWrap.classList.toggle('hidden', !(mode === 'register' || mode === 'recover_password'));
+    if (legalWrap) legalWrap.classList.toggle('hidden', mode !== 'register');
     passwordInput.parentElement.classList.toggle('hidden', mode === 'recover_code');
     const needStore = mode !== 'register';
     const needBotToken = mode === 'register' && !directStoreRegistration;
@@ -4235,12 +4189,16 @@ function openSaasAuthModal() {
     passwordInput.required = needPassword;
     resetCodeInput.required = needResetCode;
     repeatInput.required = needRepeat;
+    if (offerCheck) offerCheck.required = mode === 'register';
+    if (privacyCheck) privacyCheck.required = mode === 'register';
     storeInput.disabled = !needStore;
     botTokenInput.disabled = !needBotToken;
     if (storeNameInput) storeNameInput.disabled = !needStoreName;
     passwordInput.disabled = !needPassword;
     resetCodeInput.disabled = !needResetCode;
     repeatInput.disabled = !needRepeat;
+    if (offerCheck) offerCheck.disabled = mode !== 'register';
+    if (privacyCheck) privacyCheck.disabled = mode !== 'register';
     recoverBtn.classList.toggle('hidden', mode !== 'login' || directStoreRegistration);
     submitBtn.textContent = mode === 'register'
       ? directStoreRegistration ? 'Создать магазин' : 'Сохранить пароль'
@@ -4264,6 +4222,10 @@ function openSaasAuthModal() {
     if (mode !== 'register') botTokenInput.value = '';
     if (mode !== 'register' && storeNameInput) storeNameInput.value = '';
     if (mode !== 'recover_code') resetCodeInput.value = '';
+    if (mode !== 'register') {
+      if (offerCheck) offerCheck.checked = false;
+      if (privacyCheck) privacyCheck.checked = false;
+    }
   };
 
   setMode('login');
@@ -4321,6 +4283,8 @@ function openSaasAuthModal() {
       if ((mode === 'register' || mode === 'recover_password') && password !== passwordRepeat) return showError('Пароли не совпадают.');
       if (mode === 'register' && directStoreRegistration && storeName.length < 2) return showError('Введите название магазина.');
       if (mode === 'register' && !directStoreRegistration && !botToken.includes(':')) return showError('Введите корректный bot token.');
+      if (mode === 'register' && !offerCheck?.checked) return showError('Подтвердите согласие с публичной офертой.');
+      if (mode === 'register' && !privacyCheck?.checked) return showError('Подтвердите согласие с политикой конфиденциальности.');
       if (mode === 'recover_password') {
         const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
         try {
@@ -4347,7 +4311,16 @@ function openSaasAuthModal() {
         }
       }
       cleanup();
-      resolve({ mode, storeId, storeName, password, botToken, directStoreRegistration });
+      resolve({
+        mode,
+        storeId,
+        storeName,
+        password,
+        botToken,
+        directStoreRegistration,
+        acceptOffer: Boolean(offerCheck?.checked),
+        acceptPrivacyPolicy: Boolean(privacyCheck?.checked),
+      });
     };
 
     const triggerSubmit = (event) => {
@@ -4434,7 +4407,7 @@ function openSaasAuthModal() {
 
 function buildSaasUrl(path) {
   const base = state.saas.apiBase || getSaasApiBase();
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  return buildSaasUrlFromBase(base, path);
 }
 
 async function saasRequest(path, { method = 'GET', body, auth = false } = {}) {
@@ -5348,27 +5321,22 @@ async function removeProfileBotConnection(connectionId) {
 }
 
 function getRequestedStoreId() {
-  const params = new URLSearchParams(window.location.search || '');
-  const storeParam = String(params.get('store') || '').trim();
-  if (storeParam) return storeParam;
-  const path = String(window.location.pathname || '');
-  const match = path.match(/\/store\/([A-Za-z0-9]{6})/);
-  if (match && match[1]) return String(match[1]).trim();
-  const tgStore = String(window.HORECA_TG?.initDataUnsafe?.start_param || '').trim();
-  if (tgStore && !tgStore.toLowerCase().includes('admin')) return tgStore;
-  return '';
+  return resolveRequestedStoreId({
+    search: window.location.search || '',
+    pathname: window.location.pathname || '',
+    telegramStartParam: window.HORECA_TG?.initDataUnsafe?.start_param || '',
+  });
 }
 
 function getStorageScopeStoreId() {
-  const fromState = String(state.saas.storeId || '').trim().toUpperCase();
-  if (fromState) return fromState;
-  const fromQuery = String(getRequestedStoreId() || '').trim().toUpperCase();
-  if (fromQuery) return fromQuery;
-  return 'GLOBAL';
+  return resolveStorageScopeStoreId({
+    currentStoreId: state.saas.storeId || '',
+    requestedStoreId: getRequestedStoreId() || '',
+  });
 }
 
 function scopedStorageKey(baseKey) {
-  return `${baseKey}_${getStorageScopeStoreId()}`;
+  return buildScopedStorageKey(baseKey, getStorageScopeStoreId());
 }
 
 function getOrderHistoryStorageKey() {
@@ -5376,22 +5344,20 @@ function getOrderHistoryStorageKey() {
   const context = getClientPlatformContext();
   const telegramId = String(state.saas.userId || '').startsWith('tg:') ? String(state.saas.userId).slice(3).trim() : '';
   const userScope = context.customerIdentity || (telegramId ? `telegram:${telegramId}` : 'guest');
-  return `demo_catalog_orders_${storeScope}_${userScope}`;
+  return buildOrderHistoryStorageKeyForScopes({ storeScope, userScope });
 }
 
 function canUseLegacyStorageFallback() {
-  const scope = getStorageScopeStoreId();
-  return scope === 'GLOBAL' || scope === '111111';
+  return shouldUseLegacyStorageFallback(getStorageScopeStoreId());
 }
 
 function readScopedStorage(baseKey, defaultRaw) {
-  const scoped = localStorage.getItem(scopedStorageKey(baseKey));
-  if (scoped != null) return scoped;
-  if (canUseLegacyStorageFallback()) {
-    const legacy = localStorage.getItem(baseKey);
-    if (legacy != null) return legacy;
-  }
-  return defaultRaw;
+  return readScopedStorageValue({
+    storage: localStorage,
+    baseKey,
+    scopeStoreId: getStorageScopeStoreId(),
+    defaultRaw,
+  });
 }
 
 async function saasEnsureAdminSession() {
@@ -5427,7 +5393,16 @@ async function saasEnsureAdminSession() {
   while (true) {
     const authData = await openSaasAuthModal();
     if (!authData) return false;
-    const { mode, storeId, storeName, password, botToken, directStoreRegistration } = authData;
+    const {
+      mode,
+      storeId,
+      storeName,
+      password,
+      botToken,
+      directStoreRegistration,
+      acceptOffer,
+      acceptPrivacyPolicy,
+    } = authData;
     const { telegramUserId, telegramInitData } = await resolveTelegramIdentity();
     const email = String(state.profile?.email || '').trim().toLowerCase();
     try {
@@ -5436,7 +5411,7 @@ async function saasEnsureAdminSession() {
         if (directStoreRegistration) {
           const registration = await saasRequest('/auth/register', {
             method: 'POST',
-            body: { storeName, password, email },
+            body: { storeName, password, email, acceptOffer, acceptPrivacyPolicy },
           });
           const issuedStoreId = String(registration?.storeId || '').trim().toUpperCase();
           if (!issuedStoreId) throw new Error('STORE_ID_NOT_ISSUED');
@@ -5445,7 +5420,7 @@ async function saasEnsureAdminSession() {
         } else {
           const registration = await saasRequest('/auth/register-by-bot', {
             method: 'POST',
-            body: { botToken, password, telegramUserId, telegramInitData, email },
+            body: { botToken, password, telegramUserId, telegramInitData, email, acceptOffer, acceptPrivacyPolicy },
           });
           const issuedBotId = String(registration?.botId || registration?.storeId || '').trim().toUpperCase();
           const via = String(registration?.botIdSentVia || '').trim();
@@ -5487,6 +5462,7 @@ async function saasEnsureAdminSession() {
         WRONG_PASSWORD: 'Неверный пароль.',
         STORE_ALREADY_ACTIVE: 'Этот Store ID уже активирован. Используйте вкладку "Вход".',
         STORE_NOT_ACTIVATED: 'Store ID еще не зарегистрирован. Используйте вкладку "Регистрация".',
+        LEGAL_CONSENT_REQUIRED: 'Для регистрации нужно принять оферту и политику конфиденциальности.',
         BOT_TOKEN_INVALID: 'Bot token неверный.',
         BOT_TOKEN_VALIDATION_FAILED: 'Не удалось проверить bot token.',
         TELEGRAM_ID_REQUIRED: 'Не удалось определить Telegram ID. Откройте mini app из Telegram.',
@@ -5662,27 +5638,19 @@ async function saasTrackEvent(eventType, { productId = '', payload = {} } = {}) 
 }
 
 function normalizeThemeCode(rawTheme) {
-  const value = String(rawTheme || '').trim().toLowerCase();
-  if (value === 'light') return 'white';
-  if (THEME_OPTIONS[value]) return value;
-  return 'dark';
+  return normalizeThemeCodeValue(rawTheme, THEME_OPTIONS);
 }
 
 function normalizeAccentCode(rawAccent) {
-  const value = String(rawAccent || '').trim().toLowerCase();
-  if (value === 'pink') return 'rose';
-  if (ACCENT_OPTIONS[value]) return value;
-  return 'rose';
+  return normalizeAccentCodeValue(rawAccent, ACCENT_OPTIONS);
 }
 
 function normalizeAppearanceConfig(rawAppearance, fallbackAppearance = DEFAULT_APPEARANCE) {
-  const fallbackTheme = normalizeThemeCode(fallbackAppearance?.theme || DEFAULT_APPEARANCE.theme);
-  const fallbackAccent = normalizeAccentCode(fallbackAppearance?.accent || DEFAULT_APPEARANCE.accent);
-  const source = rawAppearance && typeof rawAppearance === 'object' ? rawAppearance : {};
-  return {
-    theme: normalizeThemeCode(source.theme || fallbackTheme),
-    accent: normalizeAccentCode(source.accent || fallbackAccent),
-  };
+  return normalizeAppearanceConfigValue(rawAppearance, {
+    themeOptions: THEME_OPTIONS,
+    accentOptions: ACCENT_OPTIONS,
+    defaultAppearance: fallbackAppearance || DEFAULT_APPEARANCE,
+  });
 }
 
 function ensureConfigAppearance({ fallbackToState = false } = {}) {
@@ -9615,6 +9583,7 @@ function bindEvents() {
 
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
+    if (ui.platformOfferCheck && !ui.platformOfferCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с публичной офертой площадки.'; return; }
     if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой.'; return; }
     const items = cartItems();
     if (!items.length) { ui.orderStatus.textContent = 'Корзина пуста.'; return; }

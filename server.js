@@ -65,6 +65,146 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 app.set('trust proxy', 1);
 
+const PUBLIC_OFFER_TEXT = `ПУБЛИЧНАЯ ОФЕРТА
+на оказание услуг по предоставлению доступа к программному обеспечению (SaaS)
+
+1. Общие положения
+1.1. Настоящий документ является публичной офертой самозанятого гражданина Санчес-Перес Максима Евгеньевича (ИНН 772459579260), далее — Исполнитель.
+1.2. Оферта адресована любому дееспособному лицу (далее — Пользователь).
+1.3. Акцепт оферты осуществляется путём регистрации в Сервисе и/или оплаты услуг.
+1.4. С момента акцепта договор считается заключённым.
+
+2. Термины
+Сервис — программное обеспечение «МессКаталог», доступное по адресу https://api.saaskatalog.ru
+Пользователь — лицо, использующее Сервис для управления каталогом товаров
+Покупатель — третье лицо, оформляющее заказ через каталог Пользователя
+
+3. Предмет договора
+3.1. Исполнитель предоставляет Пользователю доступ к Сервису на условиях подписки.
+3.2. Сервис предназначен для:
+— создания каталога товаров
+— управления заказами
+— администрирования магазина
+
+4. Условия предоставления
+4.1. Доступ предоставляется после регистрации.
+4.2. Предусмотрен пробный период 14 дней.
+4.3. После окончания пробного периода доступ осуществляется на платной основе.
+4.4. Сервис предоставляется «как есть» (as is).
+4.5. Обработка и хранение данных осуществляется на территории РФ с использованием инфраструктуры Яндекс Облако (Yandex Cloud).
+
+5. Стоимость и оплата
+5.1. Тарифы:
+— 30 дней — 4000 руб.
+— 180 дней — 20000 руб.
+— 365 дней — 30000 руб.
+5.2. Оплата производится через платёжный сервис ЮKassa.
+5.3. Услуги оказываются по предоплате.
+5.4. Денежные средства за оплаченный период не возвращаются, за исключением случаев, предусмотренных законодательством РФ.
+
+6. Права и обязанности сторон
+6.1. Исполнитель обязуется:
+— обеспечивать доступ к Сервису
+— поддерживать работоспособность
+
+6.2. Пользователь обязуется:
+— соблюдать законодательство РФ
+— не размещать запрещённый контент
+— самостоятельно обрабатывать данные своих клиентов
+
+7. Ответственность
+7.1. Исполнитель не является продавцом товаров.
+7.2. Все сделки совершаются между Пользователем и Покупателем.
+7.3. Пользователь самостоятельно несёт ответственность за:
+— товары
+— расчёты
+— исполнение заказов
+7.4. Исполнитель не несёт ответственности за:
+— убытки
+— упущенную выгоду
+— действия третьих лиц
+
+8. Ограничение ответственности
+8.1. Исполнитель не гарантирует бесперебойную работу Сервиса.
+8.2. Максимальная ответственность ограничена суммой оплаченного тарифа за последний период.
+
+9. Персональные данные
+9.1. Пользователь является оператором персональных данных своих клиентов.
+9.2. Исполнитель обрабатывает данные только в рамках функционирования Сервиса.
+
+10. Срок действия
+10.1. Договор действует до момента прекращения использования Сервиса.
+
+11. Заключительные положения
+11.1. Применяется законодательство РФ.
+11.2. Споры решаются в судебном порядке по месту регистрации Исполнителя.
+
+Исполнитель:
+Санчес-Перес Максим Евгеньевич
+ИНН 772459579260
+Email: MessKatalogSaaS@yandex.ru`;
+
+const PRIVACY_POLICY_TEXT = `ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ
+
+1. Общие положения
+1.1. Оператор персональных данных — Санчес-Перес Максим Евгеньевич, ИНН 772459579260.
+1.2. Настоящая политика разработана в соответствии с Федеральным законом №152-ФЗ.
+
+2. Персональные данные
+2.1. Данные Пользователя:
+— email
+— идентификаторы (store_id)
+— настройки
+
+2.2. Данные Покупателей:
+— имя
+— телефон
+— email
+— адрес
+— данные заказа
+
+2.3. Технические данные:
+— IP-адрес
+— cookies
+— логи действий
+
+3. Цели обработки
+— функционирование Сервиса
+— обработка заказов
+— передача данных владельцу магазина
+— обеспечение безопасности
+
+4. Правовые основания
+— согласие субъекта данных
+— исполнение договора
+— требования законодательства РФ
+
+5. Передача данных
+5.1. Данные Покупателей передаются Пользователю.
+5.2. Исполнитель не передаёт данные третьим лицам, кроме предусмотренных законом случаев.
+
+6. Хранение данных
+6.1. Данные хранятся на территории РФ.
+6.2. Используется инфраструктура Яндекс Облако (Yandex Cloud).
+
+7. Защита данных
+Исполнитель применяет технические и организационные меры защиты.
+
+8. Права субъектов
+Пользователь имеет право:
+— запросить данные
+— изменить данные
+— удалить данные
+— отозвать согласие
+
+9. Срок хранения
+Данные хранятся до достижения целей обработки либо до удаления по запросу.
+
+10. Согласие
+Использование Сервиса означает согласие с Политикой.
+
+Email: MessKatalogSaaS@yandex.ru`;
+
 function cleanupImportPreviewCache() {
   const now = Date.now();
   for (const [token, entry] of importPreviewCache.entries()) {
@@ -97,6 +237,10 @@ function consumeImportPreviewToken(token, storeId) {
     return null;
   }
   return entry;
+}
+
+function hasAcceptedLegalConsents(payload) {
+  return Boolean(payload?.acceptOffer) && Boolean(payload?.acceptPrivacyPolicy);
 }
 
 db.exec(`
@@ -3540,6 +3684,9 @@ app.post('/api/auth/activate', (req, res) => {
 });
 
 app.post('/api/auth/register-by-store', (req, res) => {
+  if (!hasAcceptedLegalConsents(req.body)) {
+    return res.status(400).json({ error: 'LEGAL_CONSENT_REQUIRED' });
+  }
   const storeId = String(req.body?.storeId || '').trim().toUpperCase();
   const password = String(req.body?.password || '').trim();
   const identity = userIdentityFromRequest(req.body);
@@ -3568,6 +3715,9 @@ app.post('/api/auth/register-by-store', (req, res) => {
 });
 
 app.post('/api/auth/register-by-bot', async (req, res) => {
+  if (!hasAcceptedLegalConsents(req.body)) {
+    return res.status(400).json({ error: 'LEGAL_CONSENT_REQUIRED' });
+  }
   const botToken = String(req.body?.botToken || '').trim();
   const password = String(req.body?.password || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
@@ -3671,6 +3821,9 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
 });
 
 app.post('/api/auth/register', (req, res) => {
+  if (!hasAcceptedLegalConsents(req.body)) {
+    return res.status(400).json({ error: 'LEGAL_CONSENT_REQUIRED' });
+  }
   const storeName = String(req.body?.storeName || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '').trim();
@@ -5475,8 +5628,118 @@ function sendNoCacheFile(res, filePath, contentType) {
   res.sendFile(filePath);
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function renderLegalPage({ title, documentTitle, text }) {
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(documentTitle)}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0d111b;
+      --card: #151b29;
+      --text: #eef2fb;
+      --muted: #b3bfd6;
+      --stroke: rgba(255,255,255,.12);
+      --accent: #e95cb4;
+      --accent-dark: #b33b83;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f7fc;
+        --card: #ffffff;
+        --text: #182033;
+        --muted: #51607c;
+        --stroke: rgba(24,32,51,.14);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 84%, #000));
+      color: var(--text);
+      padding: 24px 16px 48px;
+    }
+    .legal-wrap {
+      width: min(920px, 100%);
+      margin: 0 auto;
+    }
+    .legal-card {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 48px rgba(0,0,0,.18);
+    }
+    .legal-title {
+      margin: 0 0 18px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.05;
+      font-weight: 800;
+    }
+    .legal-text {
+      margin: 0;
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 15px;
+      color: var(--muted);
+    }
+    .legal-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .legal-back:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="legal-wrap">
+    <a class="legal-back" href="/">← Вернуться в сервис</a>
+    <article class="legal-card">
+      <h1 class="legal-title">${escapeHtml(title)}</h1>
+      <div class="legal-text">${escapeHtml(text)}</div>
+    </article>
+  </div>
+</body>
+</html>`;
+}
+
 app.get(/^\/store\/[A-Za-z0-9]{6}$/u, (_req, res) => {
   sendNoCacheFile(res, path.join(ROOT, 'index.html'), 'html');
+});
+
+app.get('/offer', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.type('html').send(renderLegalPage({
+    title: 'Публичная оферта',
+    documentTitle: 'Публичная оферта | МессКаталог',
+    text: PUBLIC_OFFER_TEXT,
+  }));
+});
+
+app.get('/privacy', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.type('html').send(renderLegalPage({
+    title: 'Политика конфиденциальности',
+    documentTitle: 'Политика конфиденциальности | МессКаталог',
+    text: PRIVACY_POLICY_TEXT,
+  }));
 });
 
 app.get('/admin', (_req, res) => {

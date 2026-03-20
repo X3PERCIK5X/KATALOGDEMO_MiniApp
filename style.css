@@ -5143,6 +5143,31 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
   gap: 10px;
 }
 
+.saas-auth-legal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.saas-auth-legal-check {
+  margin: 0;
+}
+
+.saas-auth-legal-check span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.saas-auth-legal-check a {
+  color: var(--text);
+  font-weight: 700;
+}
+
 .saas-auth-label {
   display: flex;
   flex-direction: column;
@@ -5199,6 +5224,11 @@ html[data-theme="light"] .saas-auth-modal {
 html[data-theme="light"] .saas-auth-card {
   background: #ffffff;
   border-color: rgba(18, 42, 62, 0.2);
+}
+
+html[data-theme="light"] .saas-auth-legal {
+  border-color: rgba(18, 42, 62, 0.14);
+  background: rgba(18, 42, 62, 0.04);
 }
 
 html[data-theme="light"] .saas-auth-platform-hint {
