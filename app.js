@@ -330,6 +330,7 @@ const ui = {
   profileManagerButton: document.getElementById('profileManagerButton'),
   profileStatsSection: document.getElementById('profileStatsSection'),
   profileOpenStatsButton: document.getElementById('profileOpenStatsButton'),
+  profileLegalSection: document.getElementById('profileLegalSection'),
   adminProfilePanel: document.getElementById('adminProfilePanel'),
   adminStoreIdValue: document.getElementById('adminStoreIdValue'),
   adminReloadStoresButton: document.getElementById('adminReloadStoresButton'),
@@ -7734,6 +7735,9 @@ function renderProfile() {
     if (showAdminPanel && ui.adminStoreIdValue) {
       ui.adminStoreIdValue.textContent = state.saas.storeId;
     }
+  }
+  if (ui.profileLegalSection) {
+    ui.profileLegalSection.classList.toggle('hidden', !state.admin.enabled);
   }
   if (ui.profileSubscriptionSection) {
     ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
