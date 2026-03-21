@@ -164,46 +164,15 @@ const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
 const SAAS_DEFAULT_REMOTE_API = 'https://api.saaskatalog.ru/api';
 
 // Базовые баннеры главной страницы.
-const DEFAULT_HOME_BANNERS = [
-  {
-    id: 'home-ad-1',
-    image: '/assets/banners/home-ad-v2.svg',
-    kicker: 'Реклама',
-    title: 'Запусти продажи в Telegram Mini App',
-    text: 'Каталог, корзина и оплата в одном окне. Готовое решение для магазина.',
-    cta: 'Запустить под ключ',
-  },
-  {
-    id: 'home-promo-1',
-    image: '/assets/banners/home-promo-v2.svg',
-    kicker: 'Промокод',
-    title: 'ПЕРВЫЙ -10% на первый заказ',
-    text: 'Скидка для новых клиентов. Промокод применяется в корзине автоматически.',
-    cta: 'Активировать',
-  },
-];
+const DEFAULT_HOME_BANNERS = [];
 const DEFAULT_HOME_ARTICLES = [];
 const DEFAULT_PROMO_CATALOG = {
   title: 'Акции',
   image: '',
 };
 
-const menuCatalogTree = [
-  { title: 'Женская одежда' },
-  { title: 'Мужская одежда' },
-  { title: 'Обувь' },
-  { title: 'Сумки' },
-  { title: 'Аксессуары' },
-  { title: 'Сезонные подборки' },
-];
-const menuCatalogFallback = new Map([
-  ['Женская одежда', 'catalog-1'],
-  ['Мужская одежда', 'catalog-2'],
-  ['Обувь', 'catalog-3'],
-  ['Сумки', 'catalog-4'],
-  ['Аксессуары', 'catalog-5'],
-  ['Сезонные подборки', 'catalog-6'],
-]);
+const menuCatalogTree = [];
+const menuCatalogFallback = new Map();
 
 const ui = {
   screens: document.querySelectorAll('.screen'),
@@ -1405,7 +1374,21 @@ function openManagerChat() {
 
 function buildMenuCatalog() {
   if (!ui.menuCatalogList) return;
-  if (ui.menuCatalogList.children.length) return;
+  const categories = getVisibleCategories();
+  if (!categories.length) {
+    ui.menuCatalogList.innerHTML = '';
+    ui.menuCatalogList.classList.add('hidden');
+    return;
+  }
+  ui.menuCatalogList.innerHTML = `
+    <div class="menu-catalog-card">
+      ${categories.map((category, index) => `
+        <button class="menu-catalog-item" data-menu-index="${index}" data-category="${escapeHtml(String(category.id || ''))}" data-has-children="0">
+          <span>${escapeHtml(String(category.title || 'Категория'))}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
 }
 
 function setScreen(name) {
@@ -1686,17 +1669,16 @@ function setProductPromoPercent(product, percent) {
 }
 
 function normalizeHomeBanners(list) {
-  const source = Array.isArray(list) && list.length ? list : DEFAULT_HOME_BANNERS;
+  const source = Array.isArray(list) ? list : DEFAULT_HOME_BANNERS;
   return source
     .map((item, index) => {
-      const fallback = DEFAULT_HOME_BANNERS[index % DEFAULT_HOME_BANNERS.length] || DEFAULT_HOME_BANNERS[0];
       return {
         id: String(item?.id || `banner-${index + 1}`),
-        image: String(item?.image || fallback?.image || ''),
-        kicker: String(item?.kicker || fallback?.kicker || ''),
-        title: String(item?.title || fallback?.title || ''),
-        text: String(item?.text || fallback?.text || ''),
-        cta: String(item?.cta || fallback?.cta || ''),
+        image: String(item?.image || ''),
+        kicker: String(item?.kicker || ''),
+        title: String(item?.title || ''),
+        text: String(item?.text || ''),
+        cta: String(item?.cta || ''),
       };
     })
     .filter((item) => item.title && item.text);
@@ -1721,9 +1703,7 @@ function normalizeHomeBlockOrder(list) {
 
 function enforceHomeBlueprint() {
   if (!state.config || typeof state.config !== 'object') state.config = {};
-  if (!Array.isArray(state.config.homeBanners) || !state.config.homeBanners.length) {
-    state.config.homeBanners = DEFAULT_HOME_BANNERS.map((item) => ({ ...item }));
-  }
+  if (!Array.isArray(state.config.homeBanners)) state.config.homeBanners = [];
   if (!Array.isArray(state.config.homeArticles)) {
     state.config.homeArticles = [];
   }
@@ -1775,6 +1755,16 @@ function renderHomeBanners() {
   renderPromoCatalogLabels();
   if (!ui.homeBannerTrack || !ui.homeBannerDots) return;
   const banners = normalizeHomeBanners(state.config.homeBanners);
+  if (!banners.length) {
+    ui.homeBannerTrack.innerHTML = '';
+    ui.homeBannerDots.innerHTML = '';
+    ui.homeBannerDots.classList.add('is-hidden');
+    if (state.homeBannerTimer) {
+      window.clearInterval(state.homeBannerTimer);
+      state.homeBannerTimer = null;
+    }
+    return;
+  }
   ui.homeBannerTrack.innerHTML = banners.map((banner) => `
     <article class="home-v2-banner-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'banner' && state.admin.selectedId === banner.id ? ' admin-selected-target' : ''}" data-banner-id="${escapeHtml(banner.id)}" style="background-image:url('${safeSrc(banner.image)}')">
       <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
@@ -3068,16 +3058,7 @@ function adminRestoreDraft() {
 }
 
 function restorePublishedState() {
-  if (state.saas.datasetLoaded || state.saas.enabled) return false;
-  const raw = localStorage.getItem(PUBLISHED_STATE_KEY);
-  if (!raw) return false;
-  const parsed = safeParse(raw, null);
-  if (!parsed || typeof parsed !== 'object') return false;
-  if (parsed.config && typeof parsed.config === 'object') state.config = parsed.config;
-  applyAppearanceFromConfig();
-  if (Array.isArray(parsed.categories)) state.categories = parsed.categories;
-  if (Array.isArray(parsed.products)) state.products = parsed.products;
-  return true;
+  return false;
 }
 
 function adminBindHome() {
@@ -9993,8 +9974,7 @@ async function loadConfig() {
     return;
   }
   if (!state.saas.datasetLoaded) {
-    const res = await fetch('config.json', { cache: 'no-store' });
-    state.config = await res.json();
+    if (!state.config || typeof state.config !== 'object') state.config = {};
   }
   applyAppearanceFromConfig({ fallbackToState: state.admin.enabled });
   state.stores = normalizeStores(state.config.storeLocations);
@@ -10033,7 +10013,7 @@ async function loadConfig() {
     ui.contactsCard.innerHTML = formatMultiline(state.config.contactsText);
   } else {
     ui.contactsCard.innerHTML = `
-      <strong>${state.config.companyName || 'Demo Company'}</strong><br/>
+      <strong>${state.config.companyName || 'МессКаталог'}</strong><br/>
       Телефон: ${state.config.companyPhone || '-'}<br/>
       Email: ${state.config.companyEmail || '-'}<br/>
       Адрес: ${state.config.companyAddress || '-'}
@@ -10093,34 +10073,8 @@ async function loadData() {
     return;
   }
   reportStatus('Загружаем каталог…');
-  const catRes = await fetch(`data/categories.json?v=${DATA_VERSION}`, { cache: 'no-store' });
-  if (catRes.ok) {
-    try {
-      const catText = await catRes.text();
-      state.categories = JSON.parse(catText.replace(/^\uFEFF/, ''));
-    } catch (err) {
-      console.error('Failed to parse categories.json', err);
-    }
-  } else {
-    console.error('Failed to load categories.json', catRes.status);
-  }
-
-  try {
-    const prodRes = await fetch(`data/products.json?v=${DATA_VERSION}`, { cache: 'no-store' });
-    if (prodRes.ok) {
-      const prodText = await prodRes.text();
-      try {
-        state.products = JSON.parse(prodText.replace(/^\uFEFF/, ''));
-      } catch (err) {
-        console.error('Failed to parse products.json', err);
-        reportStatus(`Ошибка чтения products.json (${prodText.slice(0, 120)}…)`);
-      }
-    } else {
-      console.error('Failed to load products.json', prodRes.status);
-    }
-  } catch (err) {
-    console.error('Failed to load products.json', err);
-  }
+  state.categories = [];
+  state.products = [];
 
   state.dataLoaded = true;
   if (!state.currentGroup) {

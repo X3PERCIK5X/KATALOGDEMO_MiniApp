@@ -3016,7 +3016,6 @@ function migrateLegacyToTenantTables() {
   });
 }
 
-seedDefaultStore();
 migrateLegacyToTenantTables();
 migrateLegacyCatalogConnections();
 
