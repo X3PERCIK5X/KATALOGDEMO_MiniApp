@@ -4084,26 +4084,37 @@ html[data-theme="light"] #screen-product .recommended-card img {
   color: #d8deee;
 }
 
-#screen-checkout #policyLink {
-  color: #9ec1ff;
-}
-
 #screen-checkout .checkbox {
-  grid-template-columns: 28px 1fr;
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 #screen-checkout .checkbox input {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
 }
 
 #screen-checkout .checkbox span {
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.45;
   color: var(--muted);
-  padding-top: 1px;
+  padding-top: 0;
+}
+
+#screen-checkout .checkbox a {
+  color: #9ec1ff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+#screen-checkout .checkbox a:hover {
+  text-decoration: underline;
 }
 
 #screen-checkout #deliveryPriceNote {
@@ -5146,15 +5157,16 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
 .saas-auth-legal {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
 }
 
 .saas-auth-legal-check {
   margin: 0;
+  gap: 10px;
 }
 
 .saas-auth-legal-check span {
@@ -5166,6 +5178,11 @@ html[data-theme="light"] body.admin-mode .admin-add-row {
 .saas-auth-legal-check a {
   color: var(--text);
   font-weight: 700;
+  text-decoration: none;
+}
+
+.saas-auth-legal-check a:hover {
+  text-decoration: underline;
 }
 
 .saas-auth-label {
@@ -5229,6 +5246,28 @@ html[data-theme="light"] .saas-auth-card {
 html[data-theme="light"] .saas-auth-legal {
   border-color: rgba(18, 42, 62, 0.14);
   background: rgba(18, 42, 62, 0.04);
+}
+
+@media (max-width: 640px) {
+  #screen-checkout .checkbox {
+    gap: 9px;
+    padding: 9px 10px;
+  }
+
+  #screen-checkout .checkbox span {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .saas-auth-legal {
+    gap: 7px;
+    padding: 10px;
+  }
+
+  .saas-auth-legal-check span {
+    font-size: 12px;
+    line-height: 1.4;
+  }
 }
 
 html[data-theme="light"] .saas-auth-platform-hint {
