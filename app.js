@@ -264,9 +264,6 @@ const ui = {
   deliveryAddressWrap: document.getElementById('deliveryAddressWrap'),
   deliveryPriceNote: document.getElementById('deliveryPriceNote'),
   inputComment: document.getElementById('inputComment'),
-  platformOfferConsentLabel: document.getElementById('platformOfferConsentLabel'),
-  platformOfferCheck: document.getElementById('platformOfferCheck'),
-  platformOfferLink: document.getElementById('platformOfferLink'),
   platformPrivacyConsentLabel: document.getElementById('platformPrivacyConsentLabel'),
   platformPrivacyCheck: document.getElementById('platformPrivacyCheck'),
   platformPrivacyLink: document.getElementById('platformPrivacyLink'),
@@ -9586,7 +9583,6 @@ function bindEvents() {
 
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
-    if (ui.platformOfferCheck && !ui.platformOfferCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с публичной офертой площадки.'; return; }
     if (ui.platformPrivacyCheck && !ui.platformPrivacyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой конфиденциальности площадки.'; return; }
     if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с документом магазина.'; return; }
     const items = cartItems();
