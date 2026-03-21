@@ -2023,7 +2023,7 @@ function renderCheckoutPrivacyPolicy() {
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
   if (ui.policyConsentText) {
-    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) с условиями магазина и принимаю';
+    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) с документом магазина и принимаю его условия:';
   }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
@@ -2034,7 +2034,7 @@ function openPrivacyPolicyViewer() {
   const policy = getPrivacyPolicyConfig();
   if (!policy.text) return;
   adminOpenReportModal(
-    policy.title || 'Политика конфиденциальности',
+    policy.title || 'Документ магазина',
     `<div style="white-space:pre-wrap;line-height:1.55;">${escapeHtml(policy.text)}</div>`
   );
 }
@@ -2124,8 +2124,8 @@ async function savePrivacyPolicySettings() {
     renderPrivacyPolicySettings();
     if (ui.privacyPolicyStatus) {
       ui.privacyPolicyStatus.textContent = (url || text)
-        ? 'Политика сохранена.'
-        : 'Политика очищена.';
+        ? 'Документ магазина сохранен.'
+        : 'Документ магазина очищен.';
     }
   } catch (error) {
     if (ui.privacyPolicyStatus) {
@@ -4079,7 +4079,7 @@ function ensureSaasAuthModal() {
           </label>
           <label class="checkbox saas-auth-legal-check">
             <input type="checkbox" name="acceptPrivacyPolicy" />
-            <span>Я ознакомлен(а) с <a href="/privacy" target="_blank" rel="noopener">Политикой конфиденциальности</a> и даю согласие на обработку персональных данных</span>
+            <span>Я ознакомлен(а) с <a href="/privacy" target="_blank" rel="noopener">Политикой конфиденциальности сервиса «МессКаталог»</a> и даю согласие на обработку персональных данных</span>
           </label>
         </div>
         <div class="saas-auth-error hidden"></div>
