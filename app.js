@@ -2019,11 +2019,11 @@ function renderCheckoutPrivacyPolicy() {
   }
   if (ui.policyLink) {
     ui.policyLink.href = policy.text ? '#' : (hasPolicy ? policy.url : '#');
-    ui.policyLink.textContent = policy.title || 'документом магазина';
+    ui.policyLink.textContent = policy.title || 'документ магазина';
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
   if (ui.policyConsentText) {
-    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) и принимаю условия';
+    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) с условиями магазина и принимаю';
   }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
