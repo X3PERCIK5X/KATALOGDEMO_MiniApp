@@ -5751,21 +5751,10 @@ function renderLegalPage({ title, documentTitle, text }) {
       font-size: 15px;
       color: var(--muted);
     }
-    .legal-back {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 14px;
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 700;
-    }
-    .legal-back:hover { color: var(--accent); }
   </style>
 </head>
 <body>
   <div class="legal-wrap">
-    <a class="legal-back" href="/">← Вернуться в сервис</a>
     <article class="legal-card">
       <h1 class="legal-title">${escapeHtml(title)}</h1>
       <div class="legal-text">${escapeHtml(text)}</div>
