@@ -1459,6 +1459,7 @@ function normalizeOrderProcessingMode(raw) {
 }
 
 const orderDeliveryService = createOrderDeliveryService({
+  adminBotToken: ADMIN_BOT_TOKEN,
   decryptBotToken,
   getStoreSettings,
   resolveCustomerIdentity,

@@ -416,6 +416,11 @@ const ui = {
   payScreenTitle: document.getElementById('payScreenTitle'),
   payScreenText: document.getElementById('payScreenText'),
   payOpenLinkButton: document.getElementById('payOpenLinkButton'),
+  confirmationScreenHeading: document.getElementById('confirmationScreenHeading'),
+  confirmationTitle: document.getElementById('confirmationTitle'),
+  confirmationText: document.getElementById('confirmationText'),
+  confirmationNote: document.getElementById('confirmationNote'),
+  confirmationProfileButton: document.getElementById('confirmationProfileButton'),
   botSettingsForm: document.getElementById('botSettingsForm'),
   botCatalogUrlInput: document.getElementById('botCatalogUrlInput'),
   botCatalogUrlCopyButton: document.getElementById('botCatalogUrlCopyButton'),
@@ -542,6 +547,36 @@ function reportStatus(message) {
   if (!ui.dataStatus) return;
   ui.dataStatus.classList.remove('hidden');
   ui.dataStatus.textContent = message;
+}
+
+function isPaymentIntegrationUnavailable(errorCode) {
+  const code = String(errorCode || '').trim().toUpperCase();
+  return [
+    'PAYMENT_NOT_CONFIGURED',
+    'PAYMENT_ACCOUNT_ID_REQUIRED',
+    'PAYMENT_SECRET_REQUIRED',
+    'PAYMENT_RETURN_URL_REQUIRED',
+  ].includes(code);
+}
+
+function renderOrderConfirmationState({
+  heading = 'Заказ оформлен',
+  title = 'Заказ оформлен',
+  text = 'С вами свяжется менеджер для подтверждения заказа.',
+  note = '',
+  showProfileButton = false,
+} = {}) {
+  if (ui.confirmationScreenHeading) ui.confirmationScreenHeading.textContent = heading;
+  if (ui.confirmationTitle) ui.confirmationTitle.textContent = title;
+  if (ui.confirmationText) ui.confirmationText.textContent = text;
+  if (ui.confirmationNote) {
+    const resolved = String(note || '').trim();
+    ui.confirmationNote.textContent = resolved;
+    ui.confirmationNote.classList.toggle('hidden', !resolved);
+  }
+  if (ui.confirmationProfileButton) {
+    ui.confirmationProfileButton.classList.toggle('hidden', !showProfileButton);
+  }
 }
 
 function buildEmptyStateMarkup(title, text) {
@@ -9770,7 +9805,8 @@ function bindEvents() {
       const chatDelivered = Boolean(notification?.ok);
       const requestRedirectUrl = String(notification?.redirectUrl || '').trim();
       if (subscriptionLocked) {
-        ui.orderStatus.textContent = 'Заказ принят. Онлайн-оплата и уведомления временно отключены до продления подписки магазина.';
+        renderOrderConfirmationState();
+        ui.orderStatus.textContent = 'Заказ принят.';
         setScreen('confirmation');
       } else if (orderMode === 'chat') {
         state.pendingPayment = null;
@@ -9782,6 +9818,7 @@ function bindEvents() {
             ? 'Заявка отправлена в канал связи.'
             : 'Заказ принят, но канал заявок не подтвердил доставку. Проверьте настройки в профиле админки.';
         }
+        renderOrderConfirmationState();
         setScreen('confirmation');
       } else if (payment.ok) {
         state.pendingPayment = payment;
@@ -9789,11 +9826,12 @@ function bindEvents() {
         openExternalPaymentLink(payment.url);
         setScreen('pay');
       } else {
-        if (payment.error && !(payment.error === 'PAYMENT_NOT_CONFIGURED' && chatDelivered)) {
+        if (payment.error && !isPaymentIntegrationUnavailable(payment.error)) {
           reportStatus(`Онлайн-оплата недоступна: ${payment.error}`);
         }
         saasTrackEvent('payment_success', { payload: { orderId: order.id, total: summary.sum } });
-        ui.orderStatus.textContent = chatDelivered ? 'Заказ отправлен в канал связи.' : 'Заказ отправлен.';
+        renderOrderConfirmationState();
+        ui.orderStatus.textContent = 'Заказ отправлен.';
         setScreen('confirmation');
       }
     } catch (err) {
