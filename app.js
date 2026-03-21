@@ -240,6 +240,8 @@ const ui = {
   policyCheck: document.getElementById('policyCheck'),
   policyConsentText: document.getElementById('policyConsentText'),
   policyLink: document.getElementById('policyLink'),
+  marketingConsentLabel: document.getElementById('marketingConsentLabel'),
+  marketingConsentCheck: document.getElementById('marketingConsentCheck'),
   orderStatus: document.getElementById('orderStatus'),
   orderRetry: document.getElementById('orderRetry'),
   orderSubmit: document.getElementById('orderSubmit'),
@@ -9654,6 +9656,7 @@ function bindEvents() {
       createdAt: new Date().toISOString(),
       customer: {
         ...profile,
+        marketingConsent: Boolean(ui.marketingConsentCheck?.checked),
         comment: ui.inputComment ? ui.inputComment.value.trim() : '',
         deliveryType,
         deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : '',
