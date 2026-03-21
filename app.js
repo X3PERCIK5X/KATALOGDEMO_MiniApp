@@ -2019,11 +2019,11 @@ function renderCheckoutPrivacyPolicy() {
   }
   if (ui.policyLink) {
     ui.policyLink.href = policy.text ? '#' : (hasPolicy ? policy.url : '#');
-    ui.policyLink.textContent = policy.title || 'документ магазина';
+    ui.policyLink.textContent = policy.title || 'Политикой конфиденциальности и условиями магазина';
     ui.policyLink.setAttribute('aria-disabled', hasPolicy ? 'false' : 'true');
   }
   if (ui.policyConsentText) {
-    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) с документом магазина и принимаю его условия:';
+    ui.policyConsentText.textContent = policy.consentText || 'Я ознакомлен(а) с';
   }
   if (!hasPolicy && ui.policyCheck) {
     ui.policyCheck.checked = false;
@@ -2034,7 +2034,7 @@ function openPrivacyPolicyViewer() {
   const policy = getPrivacyPolicyConfig();
   if (!policy.text) return;
   adminOpenReportModal(
-    policy.title || 'Документ магазина',
+    policy.title || 'Политика конфиденциальности и условия магазина',
     `<div style="white-space:pre-wrap;line-height:1.55;">${escapeHtml(policy.text)}</div>`
   );
 }
@@ -9584,7 +9584,7 @@ function bindEvents() {
   on(ui.orderForm, 'submit', async (e) => {
     e.preventDefault();
     if (ui.platformPrivacyCheck && !ui.platformPrivacyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой конфиденциальности площадки.'; return; }
-    if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с документом магазина.'; return; }
+    if (hasPrivacyPolicyConfigured() && !ui.policyCheck.checked) { ui.orderStatus.textContent = 'Подтвердите согласие с политикой и условиями магазина.'; return; }
     const items = cartItems();
     if (!items.length) { ui.orderStatus.textContent = 'Корзина пуста.'; return; }
     const profile = {
