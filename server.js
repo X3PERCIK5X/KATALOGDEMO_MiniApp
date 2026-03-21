@@ -2950,6 +2950,15 @@ function buildDefaultDataset() {
   };
 }
 
+function buildEmptyStoreDataset() {
+  return {
+    config: readJsonFallback(path.join(ROOT, 'config.json'), {}),
+    categories: [],
+    products: [],
+    settings: {},
+  };
+}
+
 function seedDefaultStore() {
   if (!isValidStoreId(DEFAULT_STORE_ID)) return;
   const exists = db.prepare('SELECT store_id FROM stores WHERE store_id = ?').get(DEFAULT_STORE_ID);
@@ -3133,7 +3142,7 @@ function buildPlatformBootstrapStoreName(platform, profile = {}) {
 
 function createPlatformBootstrapStore({ identity, email = '', platform = 'web', profile = {} }) {
   const storeId = uniqueStoreId();
-  const dataset = buildDefaultDataset();
+  const dataset = buildEmptyStoreDataset();
   const ts = nowIso();
   const placeholderHash = bcrypt.hashSync(crypto.randomBytes(18).toString('hex'), 10);
   const storeName = buildPlatformBootstrapStoreName(platform, profile);
@@ -3671,7 +3680,7 @@ app.post('/api/owner/stores', ownerMiddleware, (req, res) => {
 
   const inviteCode = randomInviteCode();
   const ts = nowIso();
-  const dataset = buildDefaultDataset();
+  const dataset = buildEmptyStoreDataset();
   const placeholderHash = bcrypt.hashSync(crypto.randomBytes(18).toString('hex'), 10);
 
   db.prepare(`
@@ -3811,7 +3820,7 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
     }
   }
 
-  const dataset = buildDefaultDataset();
+  const dataset = buildEmptyStoreDataset();
   const hash = bcrypt.hashSync(password, 10);
   const ts = nowIso();
   const storeName = storeNameRaw || (botUsername ? `Store ${botUsername}` : 'New Store');
@@ -3889,7 +3898,7 @@ app.post('/api/auth/register', (req, res) => {
   }
 
   const storeId = uniqueStoreId();
-  const dataset = buildDefaultDataset();
+  const dataset = buildEmptyStoreDataset();
   const hash = bcrypt.hashSync(password, 10);
   const ts = nowIso();
 
@@ -4357,7 +4366,7 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
   if (!isValidStoreId(storeId)) return res.status(400).json({ error: 'INVALID_STORE_ID' });
   if (getStoreRow(storeId)) return res.status(409).json({ error: 'STORE_ALREADY_EXISTS' });
 
-  const dataset = buildDefaultDataset();
+  const dataset = buildEmptyStoreDataset();
   const ts = nowIso();
   const placeholderHash = bcrypt.hashSync(crypto.randomBytes(18).toString('hex'), 10);
 
