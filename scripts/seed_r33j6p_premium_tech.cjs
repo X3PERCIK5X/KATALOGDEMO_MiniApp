@@ -46,21 +46,26 @@ function categoryCoverSvg({ accentA, accentB, chip, icon, glow }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
   <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" fill="none">
     <defs>
-      <linearGradient id="bg" x1="140" y1="96" x2="1048" y2="1102" gradientUnits="userSpaceOnUse">
-        <stop stop-color="${accentA}"/>
-        <stop offset="1" stop-color="${accentB}"/>
+      <linearGradient id="bg" x1="120" y1="92" x2="1082" y2="1110" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#F8FAFD"/>
+        <stop offset="1" stop-color="#EEF2F7"/>
       </linearGradient>
-      <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(900 190) rotate(140) scale(720 720)">
+      <linearGradient id="accent" x1="180" y1="208" x2="1028" y2="952" gradientUnits="userSpaceOnUse">
+        <stop stop-color="${accentA}" stop-opacity="0.18"/>
+        <stop offset="1" stop-color="${accentB}" stop-opacity="0.12"/>
+      </linearGradient>
+      <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(920 204) rotate(140) scale(620 620)">
         <stop stop-color="${glow}"/>
         <stop offset="1" stop-color="rgba(255,255,255,0)"/>
       </radialGradient>
     </defs>
-    <rect width="1200" height="1200" rx="76" fill="#F7F8FB"/>
+    <rect width="1200" height="1200" rx="76" fill="#F5F7FA"/>
     <rect x="92" y="92" width="1016" height="1016" rx="58" fill="url(#bg)"/>
+    <rect x="92" y="92" width="1016" height="1016" rx="58" fill="url(#accent)"/>
     <rect x="92" y="92" width="1016" height="1016" rx="58" fill="url(#halo)"/>
-    <rect x="146" y="144" width="170" height="42" rx="21" fill="rgba(255,255,255,0.16)"/>
-    <text x="182" y="172" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="20" font-weight="600" fill="rgba(255,255,255,0.92)">${escapeXml(chip)}</text>
-    <g opacity="0.92">${icon}</g>
+    <rect x="146" y="144" width="186" height="42" rx="21" fill="rgba(15,23,42,0.05)" stroke="rgba(15,23,42,0.08)"/>
+    <text x="182" y="172" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="20" font-weight="600" fill="#334155">${escapeXml(chip)}</text>
+    <g opacity="0.88">${icon}</g>
   </svg>`;
 }
 
@@ -68,23 +73,28 @@ function bannerBackdropSvg({ accentA, accentB, glow, device }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
   <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
     <defs>
-      <linearGradient id="bg" x1="120" y1="80" x2="1460" y2="900" gradientUnits="userSpaceOnUse">
-        <stop stop-color="${accentA}"/>
-        <stop offset="1" stop-color="${accentB}"/>
+      <linearGradient id="bg" x1="100" y1="76" x2="1490" y2="898" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#FBFCFE"/>
+        <stop offset="1" stop-color="#F1F4F8"/>
       </linearGradient>
-      <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1260 142) rotate(142) scale(740 740)">
+      <linearGradient id="accent" x1="210" y1="160" x2="1420" y2="812" gradientUnits="userSpaceOnUse">
+        <stop stop-color="${accentA}" stop-opacity="0.16"/>
+        <stop offset="1" stop-color="${accentB}" stop-opacity="0.10"/>
+      </linearGradient>
+      <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1240 150) rotate(142) scale(660 660)">
         <stop stop-color="${glow}"/>
         <stop offset="1" stop-color="rgba(255,255,255,0)"/>
       </radialGradient>
     </defs>
-    <rect width="1600" height="900" rx="72" fill="#091120"/>
+    <rect width="1600" height="900" rx="72" fill="#F5F7FB"/>
     <rect width="1600" height="900" rx="72" fill="url(#bg)"/>
+    <rect width="1600" height="900" rx="72" fill="url(#accent)"/>
     <rect width="1600" height="900" rx="72" fill="url(#halo)"/>
-    <rect x="64" y="64" width="1472" height="772" rx="48" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.10)"/>
-    <circle cx="1216" cy="230" r="110" fill="rgba(255,255,255,0.08)"/>
-    <circle cx="1330" cy="320" r="48" fill="rgba(255,255,255,0.08)"/>
-    <rect x="1000" y="154" width="420" height="420" rx="92" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.12)"/>
-    <g opacity="0.9">${device}</g>
+    <rect x="60" y="60" width="1480" height="780" rx="48" fill="rgba(255,255,255,0.42)" stroke="rgba(15,23,42,0.06)"/>
+    <circle cx="1182" cy="196" r="114" fill="rgba(255,255,255,0.72)"/>
+    <circle cx="1308" cy="302" r="52" fill="rgba(255,255,255,0.58)"/>
+    <rect x="986" y="144" width="446" height="446" rx="108" fill="rgba(255,255,255,0.62)" stroke="rgba(15,23,42,0.06)"/>
+    <g opacity="0.92">${device}</g>
   </svg>`;
 }
 
@@ -94,49 +104,49 @@ const CATEGORY_ART = {
     accentA: '#19356E',
     accentB: '#0B1530',
     glow: 'rgba(160, 196, 255, 0.34)',
-    icon: '<rect x="732" y="220" width="212" height="424" rx="38" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.42)" stroke-width="4"/><rect x="756" y="248" width="164" height="360" rx="24" fill="rgba(255,255,255,0.78)"/><circle cx="838" cy="236" r="6" fill="rgba(255,255,255,0.8)"/>'
+    icon: '<rect x="732" y="220" width="212" height="424" rx="38" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.18)" stroke-width="4"/><rect x="756" y="248" width="164" height="360" rx="24" fill="rgba(255,255,255,0.96)"/><circle cx="838" cy="236" r="6" fill="rgba(15,23,42,0.28)"/>'
   },
   laptops: {
     chip: 'Notebooks',
     accentA: '#3F4961',
     accentB: '#161B28',
     glow: 'rgba(255,255,255,0.24)',
-    icon: '<rect x="664" y="260" width="316" height="214" rx="20" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.3)" stroke-width="4"/><rect x="694" y="290" width="256" height="154" rx="12" fill="rgba(255,255,255,0.76)"/><path d="M620 534h406l-38 60H658z" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.24)" stroke-width="3"/>'
+    icon: '<rect x="664" y="260" width="316" height="214" rx="20" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.16)" stroke-width="4"/><rect x="694" y="290" width="256" height="154" rx="12" fill="rgba(255,255,255,0.94)"/><path d="M620 534h406l-38 60H658z" fill="rgba(15,23,42,0.12)" stroke="rgba(15,23,42,0.14)" stroke-width="3"/>'
   },
   tablets: {
     chip: 'Tablets',
     accentA: '#45377F',
     accentB: '#181736',
     glow: 'rgba(203, 213, 255, 0.26)',
-    icon: '<rect x="696" y="214" width="252" height="362" rx="28" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.34)" stroke-width="4"/><rect x="722" y="242" width="200" height="306" rx="16" fill="rgba(255,255,255,0.78)"/><circle cx="822" cy="562" r="5" fill="rgba(255,255,255,0.82)"/>'
+    icon: '<rect x="696" y="214" width="252" height="362" rx="28" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.18)" stroke-width="4"/><rect x="722" y="242" width="200" height="306" rx="16" fill="rgba(255,255,255,0.95)"/><circle cx="822" cy="562" r="5" fill="rgba(15,23,42,0.26)"/>'
   },
   headphones: {
     chip: 'Audio',
     accentA: '#5B3B33',
     accentB: '#171A22',
     glow: 'rgba(255,255,255,0.18)',
-    icon: '<path d="M760 320c0-88 56-148 140-148s140 60 140 148" fill="none" stroke="rgba(255,255,255,0.36)" stroke-width="26" stroke-linecap="round"/><rect x="724" y="346" width="76" height="190" rx="34" fill="rgba(255,255,255,0.18)"/><rect x="1000" y="346" width="76" height="190" rx="34" fill="rgba(255,255,255,0.18)"/><rect x="752" y="384" width="20" height="110" rx="10" fill="rgba(255,255,255,0.42)"/><rect x="1028" y="384" width="20" height="110" rx="10" fill="rgba(255,255,255,0.42)"/>'
+    icon: '<path d="M760 320c0-88 56-148 140-148s140 60 140 148" fill="none" stroke="rgba(15,23,42,0.20)" stroke-width="26" stroke-linecap="round"/><rect x="724" y="346" width="76" height="190" rx="34" fill="rgba(15,23,42,0.12)"/><rect x="1000" y="346" width="76" height="190" rx="34" fill="rgba(15,23,42,0.12)"/><rect x="752" y="384" width="20" height="110" rx="10" fill="rgba(255,255,255,0.88)"/><rect x="1028" y="384" width="20" height="110" rx="10" fill="rgba(255,255,255,0.88)"/>'
   },
   watches: {
     chip: 'Wearables',
     accentA: '#0F4A4D',
     accentB: '#16202A',
     glow: 'rgba(141, 243, 230, 0.24)',
-    icon: '<rect x="770" y="168" width="104" height="190" rx="46" fill="rgba(255,255,255,0.14)"/><rect x="914" y="168" width="104" height="190" rx="46" fill="rgba(255,255,255,0.14)" transform="rotate(90 966 263)" opacity="0"/><rect x="822" y="300" width="164" height="164" rx="42" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.34)" stroke-width="4"/><rect x="852" y="330" width="104" height="104" rx="28" fill="rgba(255,255,255,0.78)"/><rect x="852" y="464" width="104" height="220" rx="46" fill="rgba(255,255,255,0.14)"/><rect x="852" y="104" width="104" height="196" rx="46" fill="rgba(255,255,255,0.14)"/>'
+    icon: '<rect x="822" y="300" width="164" height="164" rx="42" fill="rgba(15,23,42,0.12)" stroke="rgba(15,23,42,0.16)" stroke-width="4"/><rect x="852" y="330" width="104" height="104" rx="28" fill="rgba(255,255,255,0.94)"/><rect x="852" y="464" width="104" height="220" rx="46" fill="rgba(15,23,42,0.10)"/><rect x="852" y="104" width="104" height="196" rx="46" fill="rgba(15,23,42,0.10)"/>'
   },
   accessories: {
     chip: 'Accessories',
     accentA: '#5C492A',
     accentB: '#171A22',
     glow: 'rgba(255,255,255,0.20)',
-    icon: '<circle cx="876" cy="364" r="112" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.36)" stroke-width="6"/><circle cx="876" cy="364" r="62" fill="rgba(255,255,255,0.72)"/><rect x="780" y="498" width="192" height="30" rx="15" fill="rgba(255,255,255,0.16)"/><rect x="806" y="548" width="140" height="20" rx="10" fill="rgba(255,255,255,0.1)"/>'
+    icon: '<circle cx="876" cy="364" r="112" fill="rgba(15,23,42,0.12)" stroke="rgba(15,23,42,0.18)" stroke-width="6"/><circle cx="876" cy="364" r="62" fill="rgba(255,255,255,0.92)"/><rect x="780" y="498" width="192" height="30" rx="15" fill="rgba(15,23,42,0.12)"/><rect x="806" y="548" width="140" height="20" rx="10" fill="rgba(15,23,42,0.08)"/>'
   },
   smartHome: {
     chip: 'Smart Home',
     accentA: '#204B63',
     accentB: '#182530',
     glow: 'rgba(155, 215, 255, 0.22)',
-    icon: '<rect x="796" y="214" width="180" height="324" rx="86" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.28)" stroke-width="4"/><ellipse cx="886" cy="288" rx="82" ry="40" fill="rgba(255,255,255,0.68)"/><ellipse cx="886" cy="472" rx="62" ry="20" fill="rgba(255,255,255,0.12)"/><path d="M886 318v120" stroke="rgba(255,255,255,0.16)" stroke-width="3" stroke-dasharray="8 14"/>'
+    icon: '<rect x="796" y="214" width="180" height="324" rx="86" fill="rgba(15,23,42,0.12)" stroke="rgba(15,23,42,0.16)" stroke-width="4"/><ellipse cx="886" cy="288" rx="82" ry="40" fill="rgba(255,255,255,0.92)"/><ellipse cx="886" cy="472" rx="62" ry="20" fill="rgba(15,23,42,0.10)"/><path d="M886 318v120" stroke="rgba(15,23,42,0.14)" stroke-width="3" stroke-dasharray="8 14"/>'
   },
 };
 
@@ -146,22 +156,22 @@ function buildArt() {
     art[`category-${key}`] = writeSvg(`category-${key}.svg`, categoryCoverSvg(meta));
   });
   art['banner-hero'] = writeSvg('banner-hero.svg', bannerBackdropSvg({
-    accentA: '#0F274D',
-    accentB: '#101A2E',
-    glow: 'rgba(193, 217, 255, 0.28)',
-    device: '<rect x="1100" y="200" width="180" height="360" rx="34" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.34)" stroke-width="4"/><rect x="1120" y="224" width="140" height="300" rx="22" fill="rgba(255,255,255,0.78)"/><rect x="1260" y="244" width="120" height="240" rx="20" fill="rgba(255,255,255,0.12)"/><rect x="1206" y="546" width="70" height="12" rx="6" fill="rgba(255,255,255,0.14)"/>'
+    accentA: '#D6E5FF',
+    accentB: '#E9EDF4',
+    glow: 'rgba(170, 195, 255, 0.34)',
+    device: '<rect x="1108" y="202" width="176" height="356" rx="34" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.16)" stroke-width="4"/><rect x="1128" y="226" width="136" height="296" rx="22" fill="rgba(255,255,255,0.96)"/><rect x="1258" y="256" width="116" height="228" rx="20" fill="rgba(15,23,42,0.08)"/><rect x="1280" y="278" width="72" height="144" rx="16" fill="rgba(255,255,255,0.74)"/>'
   }));
   art['banner-ecosystem'] = writeSvg('banner-ecosystem.svg', bannerBackdropSvg({
-    accentA: '#243548',
-    accentB: '#10141D',
-    glow: 'rgba(255,255,255,0.20)',
-    device: '<rect x="1020" y="214" width="280" height="188" rx="18" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.28)" stroke-width="4"/><rect x="1044" y="238" width="232" height="140" rx="12" fill="rgba(255,255,255,0.78)"/><path d="M980 448h360l-32 50H1010z" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.22)" stroke-width="3"/><rect x="1180" y="494" width="120" height="170" rx="24" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.24)" stroke-width="3"/><rect x="1198" y="516" width="84" height="124" rx="16" fill="rgba(255,255,255,0.72)"/>'
+    accentA: '#E7EDF7',
+    accentB: '#F6F8FB',
+    glow: 'rgba(200, 211, 228, 0.22)',
+    device: '<rect x="1010" y="212" width="286" height="190" rx="18" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.14)" stroke-width="4"/><rect x="1034" y="236" width="238" height="142" rx="12" fill="rgba(255,255,255,0.96)"/><path d="M972 446h362l-30 50H1002z" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.14)" stroke-width="3"/><rect x="1178" y="496" width="124" height="172" rx="24" fill="rgba(15,23,42,0.08)" stroke="rgba(15,23,42,0.12)" stroke-width="3"/><rect x="1196" y="520" width="88" height="126" rx="16" fill="rgba(255,255,255,0.92)"/>'
   }));
   art['banner-accessories'] = writeSvg('banner-accessories.svg', bannerBackdropSvg({
-    accentA: '#5C492A',
-    accentB: '#171A22',
-    glow: 'rgba(255,255,255,0.18)',
-    device: '<circle cx="1140" cy="346" r="92" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.34)" stroke-width="6"/><circle cx="1140" cy="346" r="50" fill="rgba(255,255,255,0.78)"/><rect x="1052" y="470" width="176" height="26" rx="13" fill="rgba(255,255,255,0.16)"/><rect x="1234" y="258" width="92" height="184" rx="30" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="3"/><rect x="1090" y="536" width="120" height="18" rx="9" fill="rgba(255,255,255,0.1)"/>'
+    accentA: '#EFE4D4',
+    accentB: '#F7F4EF',
+    glow: 'rgba(255, 229, 196, 0.24)',
+    device: '<circle cx="1140" cy="346" r="92" fill="rgba(15,23,42,0.10)" stroke="rgba(15,23,42,0.16)" stroke-width="6"/><circle cx="1140" cy="346" r="50" fill="rgba(255,255,255,0.94)"/><rect x="1052" y="470" width="176" height="26" rx="13" fill="rgba(15,23,42,0.10)"/><rect x="1234" y="258" width="92" height="184" rx="30" fill="rgba(15,23,42,0.08)" stroke="rgba(15,23,42,0.14)" stroke-width="3"/><rect x="1252" y="282" width="56" height="138" rx="20" fill="rgba(255,255,255,0.86)"/><rect x="1090" y="536" width="120" height="18" rx="9" fill="rgba(15,23,42,0.08)"/>'
   }));
   return art;
 }
@@ -515,25 +525,25 @@ function buildConfig(currentConfig, art) {
       {
         id: 'hero-apple-premium',
         image: art['banner-hero'],
-        kicker: 'Premium tech retail',
-        title: 'Флагманская техника и аксессуары',
-        text: 'Собранная витрина в духе premium electronics retail: iPhone, MacBook, Galaxy, Pixel и лучшие аксессуары в одной экосистеме.',
+        kicker: 'Premium selection',
+        title: 'Флагманская техника. Чистая подача.',
+        text: 'iPhone, MacBook, Galaxy, Pixel и топовые аксессуары в аккуратной витрине без визуального шума.',
         cta: 'Открыть каталог',
       },
       {
         id: 'hero-ecosystem',
         image: art['banner-ecosystem'],
         kicker: 'Work & create',
-        title: 'MacBook, iPad и техника для продуктивности',
-        text: 'Аккуратный магазин с логичной структурой, понятными карточками и реальным ассортиментом без тестового шума.',
+        title: 'MacBook, iPad и устройства для продуктивности',
+        text: 'Ноутбуки, планшеты и аксессуары для работы, обучения и повседневного использования в одном премиальном каталоге.',
         cta: 'Смотреть новинки',
       },
       {
         id: 'hero-accessories',
         image: art['banner-accessories'],
         kicker: 'Accessories & audio',
-        title: 'AirPods, зарядки, кейсы и smart-аксессуары',
-        text: 'Премиальная подача аксессуаров, аудио и умного дома — так, как ожидает увидеть покупатель современного магазина техники.',
+        title: 'Наушники, зарядки, кейсы и smart-аксессуары',
+        text: 'Полноценный ассортимент дополнений к экосистеме: от AirPods и MagSafe до power bank и smart-устройств.',
         cta: 'Смотреть аксессуары',
       },
     ],
