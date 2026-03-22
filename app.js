@@ -7,6 +7,7 @@ const state = {
   currentGroup: null,
   currentCategory: null,
   currentCategoryIds: null,
+  currentCategoryParentId: null,
   currentProduct: null,
   favorites: new Set(),
   selectedFavorites: new Set(),
@@ -208,6 +209,7 @@ const ui = {
   productsImportSubmitButton: document.getElementById('productsImportSubmitButton'),
   productsImportStatus: document.getElementById('productsImportStatus'),
   productsImportPreview: document.getElementById('productsImportPreview'),
+  productsSubcategories: document.getElementById('productsSubcategories'),
   productsList: document.getElementById('productsList'),
   productView: document.getElementById('productView'),
   productTitle: document.getElementById('productTitle'),
@@ -1253,18 +1255,22 @@ function openCategoryById(categoryId) {
   }
   state.currentCategory = categoryId;
   const resolved = state.categories.find((c) => c.id === state.currentCategory);
+  state.currentCategoryParentId = resolved
+    ? (String(resolved.parentId || '').trim() || String(resolved.id || '').trim() || null)
+    : null;
   ui.productsTitle.textContent = resolved ? (getCategoryDisplayTitle(resolved.id) || resolved.title) : 'Каталог';
   renderProducts();
   setScreen('products');
 }
 
-function openCategoryBundle(ids, title) {
+function openCategoryBundle(ids, title, parentId = null) {
   const list = (ids || []).filter(Boolean);
   if (!list.length) return;
   resetProductImportState('category');
   getImportScopeState('category').status = '';
   state.currentCategory = null;
   state.currentCategoryIds = list;
+  state.currentCategoryParentId = String(parentId || '').trim() || null;
   ui.productsTitle.textContent = title || 'Каталог';
   renderProducts();
   setScreen('products');
@@ -1383,7 +1389,7 @@ function openCategoryEntry(categoryId) {
   if (!branchIds.length) return;
   const category = state.categories.find((item) => String(item?.id || '') === String(categoryId || '')) || null;
   if (branchIds.length > 1) {
-    openCategoryBundle(branchIds, category?.title || 'Каталог');
+    openCategoryBundle(branchIds, category?.title || 'Каталог', categoryId);
     return;
   }
   openCategoryById(categoryId);
@@ -1396,6 +1402,43 @@ function openGlobalSearch(query) {
   state.filters.products.search = q;
   if (ui.productsSearch) ui.productsSearch.value = q;
   openCategoryBundle(allCategoryIds, q ? `Поиск: ${q}` : 'Каталог');
+}
+
+function getProductsScreenSubcategories() {
+  const parentId = String(state.currentCategoryParentId || '').trim();
+  if (!parentId) return [];
+  return orderCategoriesForDisplay(
+    state.categories.filter((category) => String(category?.parentId || '').trim() === parentId),
+  );
+}
+
+function renderProductsSubcategories() {
+  if (!ui.productsSubcategories) return;
+  const parentId = String(state.currentCategoryParentId || '').trim();
+  const subcategories = getProductsScreenSubcategories();
+  if (!parentId || !subcategories.length) {
+    ui.productsSubcategories.innerHTML = '';
+    ui.productsSubcategories.classList.add('hidden');
+    return;
+  }
+  const parentCategory = getCategoryById(parentId);
+  const allActive = !state.currentCategory && Array.isArray(state.currentCategoryIds) && state.currentCategoryIds.length > 1;
+  ui.productsSubcategories.innerHTML = `
+    <div class="catalog-chips">
+      <button class="chip${allActive ? ' chip-active' : ''}" type="button" data-products-parent="${escapeHtml(parentId)}" data-products-all="1">
+        Все ${escapeHtml(String(parentCategory?.title || 'товары'))}
+      </button>
+      ${subcategories.map((category) => `
+        <button
+          class="chip${String(state.currentCategory || '') === String(category.id || '') ? ' chip-active' : ''}"
+          type="button"
+          data-products-category="${escapeHtml(String(category.id || ''))}">
+          ${escapeHtml(String(category.title || 'Подкатегория'))}
+        </button>
+      `).join('')}
+    </div>
+  `;
+  ui.productsSubcategories.classList.remove('hidden');
 }
 
 function addSearchHistory(query) {
@@ -6440,6 +6483,7 @@ function applyFilters(list, filter) {
 
 function renderProducts() {
   renderProductImportPanel('category');
+  renderProductsSubcategories();
   const list = getVisibleProducts();
   if (!list.length) {
     ui.productsList.innerHTML = `
@@ -9394,6 +9438,22 @@ function bindEvents() {
 
   on(ui.productsSearch, 'input', () => {
     applyProductsSearch(ui.productsSearch.value, 'products');
+  });
+
+  on(ui.productsSubcategories, 'click', (e) => {
+    const allButton = e.target.closest('[data-products-all="1"]');
+    if (allButton) {
+      const parentId = String(allButton.dataset.productsParent || '').trim();
+      if (!parentId) return;
+      const parentCategory = getCategoryById(parentId);
+      openCategoryBundle(collectCategoryBranchIds(parentId), parentCategory?.title || 'Каталог', parentId);
+      return;
+    }
+    const subcategoryButton = e.target.closest('[data-products-category]');
+    if (!subcategoryButton) return;
+    const categoryId = String(subcategoryButton.dataset.productsCategory || '').trim();
+    if (!categoryId) return;
+    openCategoryById(categoryId);
   });
 
   on(ui.homeProductsSort, 'change', () => {
