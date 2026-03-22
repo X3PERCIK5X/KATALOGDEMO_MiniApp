@@ -8,6 +8,7 @@ const state = {
   currentCategory: null,
   currentCategoryIds: null,
   currentCategoryParentId: null,
+  currentCategoriesParentId: null,
   currentProduct: null,
   favorites: new Set(),
   selectedFavorites: new Set(),
@@ -1329,6 +1330,23 @@ function getCategoryDisplayTitle(categoryId) {
   return getCategoryPathTitles(categoryId).join(' / ');
 }
 
+function getDefaultCategoriesTitle() {
+  return state.currentGroup === 'apparel' ? 'Каталог' : 'Аксессуары и подборки';
+}
+
+function syncCategoriesTitle() {
+  if (!ui.categoriesTitle) return;
+  const parentId = String(state.currentCategoriesParentId || '').trim();
+  if (!parentId) {
+    ui.categoriesTitle.textContent = getDefaultCategoriesTitle();
+    return;
+  }
+  const parentCategory = getCategoryById(parentId);
+  ui.categoriesTitle.textContent = parentCategory
+    ? (getCategoryDisplayTitle(parentCategory.id) || parentCategory.title || getDefaultCategoriesTitle())
+    : getDefaultCategoriesTitle();
+}
+
 function orderCategoriesForDisplay(categories) {
   const list = Array.isArray(categories) ? categories.filter(Boolean) : [];
   const childrenByParent = new Map();
@@ -1353,6 +1371,20 @@ function orderCategoriesForDisplay(categories) {
   roots.forEach(walk);
   list.forEach(walk);
   return ordered;
+}
+
+function openCategoryChildren(parentId) {
+  const normalizedParentId = String(parentId || '').trim();
+  if (!normalizedParentId) return;
+  state.currentCategoriesParentId = normalizedParentId;
+  syncCategoriesTitle();
+  renderCategories();
+  setScreen('categories');
+}
+
+function resetCategoryBrowser() {
+  state.currentCategoriesParentId = null;
+  syncCategoriesTitle();
 }
 
 function getRootCategoriesForGroup(groupId = state.currentGroup, { excludeIds = [] } = {}) {
@@ -1385,14 +1417,14 @@ function collectCategoryBranchIds(categoryId) {
 }
 
 function openCategoryEntry(categoryId) {
-  const branchIds = collectCategoryBranchIds(categoryId);
-  if (!branchIds.length) return;
-  const category = state.categories.find((item) => String(item?.id || '') === String(categoryId || '')) || null;
-  if (branchIds.length > 1) {
-    openCategoryBundle(branchIds, category?.title || 'Каталог', categoryId);
+  const normalizedId = String(categoryId || '').trim();
+  if (!normalizedId) return;
+  const childIds = getChildCategoryIds(normalizedId);
+  if (childIds.length) {
+    openCategoryChildren(normalizedId);
     return;
   }
-  openCategoryById(categoryId);
+  openCategoryById(normalizedId);
 }
 
 function openGlobalSearch(query) {
@@ -1664,6 +1696,15 @@ function setScreen(name) {
 }
 
 function goBack() {
+  if (state.currentScreen === 'categories' && state.currentCategoriesParentId) {
+    const currentParent = getCategoryById(state.currentCategoriesParentId);
+    const nextParentId = String(currentParent?.parentId || '').trim();
+    state.currentCategoriesParentId = nextParentId || null;
+    syncCategoriesTitle();
+    renderCategories();
+    scrollToTop();
+    return;
+  }
   if (state.screenStack.length <= 1) return;
   const current = state.currentScreen;
   const currentEl = document.getElementById(`screen-${current}`);
@@ -1686,6 +1727,7 @@ function scrollToTop() {
 }
 
 function openMenu() {
+  resetCategoryBrowser();
   setScreen('categories');
 }
 
@@ -2686,6 +2728,11 @@ function adminCreateCategoryTemplate(parentId = '') {
 }
 
 function adminAddCategoryTemplate() {
+  const currentParentId = String(state.currentCategoriesParentId || '').trim();
+  if (currentParentId) {
+    adminCreateCategoryTemplate(currentParentId);
+    return;
+  }
   const rootCategories = getRootCategoriesForGroup(state.currentGroup);
   if (!rootCategories.length) {
     adminCreateCategoryTemplate('');
@@ -6070,10 +6117,24 @@ function categoryHasVisibleProducts(categoryId) {
 
 function getVisibleCategories() {
   if (state.admin.enabled) {
-    if (state.currentGroup) {
-      return orderCategoriesForDisplay(state.categories.filter((c) => c.groupId === state.currentGroup));
+    if (state.currentCategoriesParentId) {
+      return orderCategoriesForDisplay(
+        state.categories.filter((category) => String(category?.parentId || '').trim() === String(state.currentCategoriesParentId || '').trim()),
+      );
     }
-    return orderCategoriesForDisplay(state.categories.slice());
+    if (state.currentGroup) {
+      return orderCategoriesForDisplay(
+        state.categories.filter((c) => c.groupId === state.currentGroup && !String(c?.parentId || '').trim()),
+      );
+    }
+    return orderCategoriesForDisplay(state.categories.filter((c) => !String(c?.parentId || '').trim()));
+  }
+  if (state.currentCategoriesParentId) {
+    const children = state.categories.filter((c) => (
+      String(c?.parentId || '').trim() === String(state.currentCategoriesParentId || '').trim()
+      && categoryHasVisibleProducts(c.id)
+    ));
+    return orderCategoriesForDisplay(children);
   }
   const available = new Set(state.products.map((p) => p.categoryId));
   const filtered = state.categories.filter((c) => (
@@ -6373,6 +6434,7 @@ function adminMoveSelected(direction) {
 
 function renderCategories() {
   renderProductImportPanel('catalog');
+  syncCategoriesTitle();
   const promoCatalog = ensurePromoCatalogConfig();
   renderPromoCatalogLabels();
   const list = getVisibleCategories();
@@ -6415,14 +6477,18 @@ function renderCategories() {
     </button>
   `;
   }).join('');
-  const promoPreview = getPromoProducts()[0];
-  const promoImage = promoCatalog.image || promoPreview?.images?.[0] || state.products[0]?.images?.[0] || 'assets/placeholder.svg';
   ui.categoriesGrid.innerHTML = `
     ${categoryCards}
-    <button class="category-card promo-category-card" data-open-screen="promo" type="button">
-      <img src="${safeSrc(promoImage)}" alt="Акции" loading="lazy" decoding="async" />
-      <span>${escapeHtml(promoCatalog.title)}</span>
-    </button>
+    ${!state.currentCategoriesParentId ? (() => {
+      const promoPreview = getPromoProducts()[0];
+      const promoImage = promoCatalog.image || promoPreview?.images?.[0] || state.products[0]?.images?.[0] || 'assets/placeholder.svg';
+      return `
+        <button class="category-card promo-category-card" data-open-screen="promo" type="button">
+          <img src="${safeSrc(promoImage)}" alt="Акции" loading="lazy" decoding="async" />
+          <span>${escapeHtml(promoCatalog.title)}</span>
+        </button>
+      `;
+    })() : ''}
   `;
   if (state.admin.enabled) adminSaveDraft(true);
   adminRefreshBindings();
