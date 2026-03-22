@@ -1253,7 +1253,7 @@ function openCategoryById(categoryId) {
   }
   state.currentCategory = categoryId;
   const resolved = state.categories.find((c) => c.id === state.currentCategory);
-  ui.productsTitle.textContent = resolved ? resolved.title : 'Каталог';
+  ui.productsTitle.textContent = resolved ? (getCategoryDisplayTitle(resolved.id) || resolved.title) : 'Каталог';
   renderProducts();
   setScreen('products');
 }
@@ -1277,6 +1277,89 @@ function getChildCategoryIds(parentId) {
     .filter((category) => String(category?.parentId || '').trim() === pid)
     .map((category) => String(category.id || '').trim())
     .filter(Boolean);
+}
+
+function getCategoryById(categoryId) {
+  const normalizedId = String(categoryId || '').trim();
+  if (!normalizedId) return null;
+  return state.categories.find((category) => String(category?.id || '').trim() === normalizedId) || null;
+}
+
+function isSubcategory(category) {
+  return Boolean(String(category?.parentId || '').trim());
+}
+
+function getCategoryDepth(category) {
+  let depth = 0;
+  let cursor = category;
+  const visited = new Set();
+  while (cursor && String(cursor?.parentId || '').trim()) {
+    const parentId = String(cursor.parentId || '').trim();
+    if (!parentId || visited.has(parentId)) break;
+    visited.add(parentId);
+    depth += 1;
+    cursor = getCategoryById(parentId);
+  }
+  return depth;
+}
+
+function getCategoryPathTitles(categoryId) {
+  const result = [];
+  let cursor = getCategoryById(categoryId);
+  const visited = new Set();
+  while (cursor) {
+    const currentId = String(cursor?.id || '').trim();
+    if (!currentId || visited.has(currentId)) break;
+    visited.add(currentId);
+    if (String(cursor.title || '').trim()) result.unshift(String(cursor.title || '').trim());
+    const parentId = String(cursor.parentId || '').trim();
+    if (!parentId) break;
+    cursor = getCategoryById(parentId);
+  }
+  return result;
+}
+
+function getCategoryDisplayTitle(categoryId) {
+  return getCategoryPathTitles(categoryId).join(' / ');
+}
+
+function orderCategoriesForDisplay(categories) {
+  const list = Array.isArray(categories) ? categories.filter(Boolean) : [];
+  const childrenByParent = new Map();
+  list.forEach((category) => {
+    const parentId = String(category?.parentId || '').trim();
+    if (!parentId) return;
+    const bucket = childrenByParent.get(parentId) || [];
+    bucket.push(category);
+    childrenByParent.set(parentId, bucket);
+  });
+  const roots = list.filter((category) => !String(category?.parentId || '').trim());
+  const ordered = [];
+  const visited = new Set();
+  const walk = (category) => {
+    const categoryId = String(category?.id || '').trim();
+    if (!categoryId || visited.has(categoryId)) return;
+    visited.add(categoryId);
+    ordered.push(category);
+    const children = childrenByParent.get(categoryId) || [];
+    children.forEach(walk);
+  };
+  roots.forEach(walk);
+  list.forEach(walk);
+  return ordered;
+}
+
+function getRootCategoriesForGroup(groupId = state.currentGroup, { excludeIds = [] } = {}) {
+  const targetGroup = String(groupId || '').trim();
+  const excluded = new Set((excludeIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+  return orderCategoriesForDisplay(
+    state.categories.filter((category) => {
+      const categoryId = String(category?.id || '').trim();
+      if (!categoryId || excluded.has(categoryId)) return false;
+      if (targetGroup && String(category?.groupId || '').trim() !== targetGroup) return false;
+      return !String(category?.parentId || '').trim();
+    }),
+  );
 }
 
 function collectCategoryBranchIds(categoryId) {
@@ -1411,19 +1494,49 @@ function openManagerChat() {
 
 function buildMenuCatalog() {
   if (!ui.menuCatalogList) return;
-  const categories = getVisibleCategories();
+  const categories = state.admin.enabled
+    ? getVisibleCategories()
+    : orderCategoriesForDisplay(
+      state.categories.filter((category) => (
+        category.groupId === state.currentGroup
+        && categoryHasVisibleProducts(category.id)
+      )),
+    );
   if (!categories.length) {
     ui.menuCatalogList.innerHTML = '';
     ui.menuCatalogList.classList.add('hidden');
     return;
   }
+  const childMap = new Map();
+  categories.forEach((category) => {
+    const parentId = String(category?.parentId || '').trim();
+    if (!parentId) return;
+    const bucket = childMap.get(parentId) || [];
+    bucket.push(category);
+    childMap.set(parentId, bucket);
+  });
+  const roots = categories.filter((category) => !String(category?.parentId || '').trim());
   ui.menuCatalogList.innerHTML = `
     <div class="menu-catalog-card">
-      ${categories.map((category, index) => `
-        <button class="menu-catalog-item" data-menu-index="${index}" data-category="${escapeHtml(String(category.id || ''))}" data-has-children="0">
+      ${roots.map((category, index) => {
+        const childCategories = childMap.get(String(category.id || '').trim()) || [];
+        const hasChildren = childCategories.length > 0;
+        return `
+        <button class="menu-catalog-item" data-menu-index="${index}" data-category="${escapeHtml(String(category.id || ''))}" data-has-children="${hasChildren ? '1' : '0'}">
           <span>${escapeHtml(String(category.title || 'Категория'))}</span>
+          ${hasChildren ? '<span class="menu-caret" aria-hidden="true">⌄</span>' : ''}
         </button>
-      `).join('')}
+        ${hasChildren ? `
+          <div class="menu-catalog-children hidden" data-menu-children="${index}">
+            ${childCategories.map((childCategory) => `
+              <button class="menu-subitem" data-menu-subitem="1" data-category="${escapeHtml(String(childCategory.id || ''))}" type="button">
+                ${escapeHtml(String(childCategory.title || 'Подкатегория'))}
+              </button>
+            `).join('')}
+          </div>
+        ` : ''}
+      `;
+      }).join('')}
     </div>
   `;
 }
@@ -2512,19 +2625,47 @@ function adminAddArticleTemplate() {
   renderHomeArticles();
 }
 
-function adminAddCategoryTemplate() {
+function adminCreateCategoryTemplate(parentId = '') {
   if (!state.currentGroup) state.currentGroup = 'apparel';
   const newCategory = {
     id: `catalog-${Date.now()}`,
     groupId: state.currentGroup || 'apparel',
-    title: 'Новая категория',
+    title: parentId ? 'Новая подкатегория' : 'Новая категория',
     image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1200&q=70',
   };
+  if (parentId) newCategory.parentId = String(parentId || '').trim();
   state.categories.unshift(newCategory);
   state.currentCategory = newCategory.id;
+  state.currentCategoryIds = null;
   adminSaveDraft(true);
   renderCategories();
-  reportStatus('Новая категория добавлена');
+  reportStatus(parentId ? 'Новая подкатегория добавлена' : 'Новая категория добавлена');
+}
+
+function adminAddCategoryTemplate() {
+  const rootCategories = getRootCategoriesForGroup(state.currentGroup);
+  if (!rootCategories.length) {
+    adminCreateCategoryTemplate('');
+    return;
+  }
+  adminOpenActionSheet('Добавить раздел', [
+    { id: 'root', label: 'Категория каталога' },
+    { id: 'child', label: 'Подкатегория' },
+  ]).then((action) => {
+    if (!action) return;
+    if (action === 'root') {
+      adminCreateCategoryTemplate('');
+      return;
+    }
+    if (action !== 'child') return;
+    adminOpenActionSheet('Родительская категория', rootCategories.map((category) => ({
+      id: String(category.id || ''),
+      label: category.title || category.id,
+    }))).then((parentCategoryId) => {
+      if (!parentCategoryId) return;
+      adminCreateCategoryTemplate(parentCategoryId);
+    });
+  });
 }
 
 function adminAddProductTemplate() {
@@ -2650,7 +2791,7 @@ function adminMoveProductToCategory(product) {
   const currentCategory = state.categories.find((category) => String(category.id) === String(product.categoryId || ''));
   adminOpenActionSheet(`Перенести: ${product.title || product.id}`, targetCategories.map((category) => ({
     id: String(category.id),
-    label: category.title || category.id,
+    label: getCategoryDisplayTitle(category.id) || category.title || category.id,
   }))).then((targetCategoryId) => {
     if (!targetCategoryId) return;
     const targetCategory = state.categories.find((category) => String(category.id) === String(targetCategoryId));
@@ -2666,7 +2807,7 @@ function adminMoveProductToCategory(product) {
     if (targetCategory.groupId) state.currentGroup = targetCategory.groupId;
     state.currentCategoryIds = null;
     state.currentCategory = targetCategory.id;
-    if (ui.productsTitle) ui.productsTitle.textContent = targetCategory.title || 'Каталог';
+    if (ui.productsTitle) ui.productsTitle.textContent = getCategoryDisplayTitle(targetCategory.id) || targetCategory.title || 'Каталог';
     adminSaveDraft(true);
     renderProducts();
     if (state.currentScreen === 'product') renderProductView();
@@ -3306,9 +3447,15 @@ function adminBindCategories() {
     if (!category) return;
     const openCategory = () => openCategoryEntry(category.id);
     const openCategoryMenu = () => {
-      adminOpenActionSheet(`Категория: ${category.title}`, [
+      const categoryIdValue = String(category.id || '').trim();
+      const categoryBranchIds = collectCategoryBranchIds(categoryIdValue);
+      const candidateParents = getRootCategoriesForGroup(category.groupId, { excludeIds: categoryBranchIds });
+      adminOpenActionSheet(`Категория: ${getCategoryDisplayTitle(category.id) || category.title}`, [
         { id: 'edit-title', label: 'Редактировать заголовок' },
         { id: 'edit-image', label: 'Изменить фото' },
+        ...(!isSubcategory(category) ? [{ id: 'add-subcategory', label: 'Добавить подкатегорию' }] : []),
+        ...(!isSubcategory(category) && candidateParents.length ? [{ id: 'make-subcategory', label: 'Сделать подкатегорией' }] : []),
+        ...(isSubcategory(category) ? [{ id: 'make-root', label: 'Сделать категорией каталога' }] : []),
         { id: 'delete', label: 'Удалить', danger: true },
       ]).then((action) => {
         if (!action) return;
@@ -3327,6 +3474,32 @@ function adminBindCategories() {
             renderCategories();
             adminSaveDraft(true);
           });
+          return;
+        }
+        if (action === 'add-subcategory') {
+          adminCreateCategoryTemplate(category.id);
+          return;
+        }
+        if (action === 'make-subcategory') {
+          adminOpenActionSheet('Сделать подкатегорией', candidateParents.map((parentCategory) => ({
+            id: String(parentCategory.id || ''),
+            label: parentCategory.title || parentCategory.id,
+          }))).then((parentCategoryId) => {
+            if (!parentCategoryId) return;
+            category.parentId = String(parentCategoryId || '').trim();
+            adminSaveDraft(true);
+            renderCategories();
+            if (state.currentScreen === 'products') renderProducts();
+            reportStatus(`Категория "${category.title}" стала подкатегорией`);
+          });
+          return;
+        }
+        if (action === 'make-root') {
+          delete category.parentId;
+          adminSaveDraft(true);
+          renderCategories();
+          if (state.currentScreen === 'products') renderProducts();
+          reportStatus(`Категория "${category.title}" стала разделом каталога`);
           return;
         }
         if (action === 'delete') {
@@ -5854,12 +6027,21 @@ function categoryHasVisibleProducts(categoryId) {
 
 function getVisibleCategories() {
   if (state.admin.enabled) {
-    if (state.currentGroup) return state.categories.filter((c) => c.groupId === state.currentGroup);
-    return state.categories.slice();
+    if (state.currentGroup) {
+      return orderCategoriesForDisplay(state.categories.filter((c) => c.groupId === state.currentGroup));
+    }
+    return orderCategoriesForDisplay(state.categories.slice());
   }
   const available = new Set(state.products.map((p) => p.categoryId));
-  const filtered = state.categories.filter((c) => c.groupId === state.currentGroup && (available.size === 0 || categoryHasVisibleProducts(c.id)));
-  return filtered.length ? filtered : state.categories.filter((c) => categoryHasVisibleProducts(c.id));
+  const filtered = state.categories.filter((c) => (
+    !String(c?.parentId || '').trim()
+    && c.groupId === state.currentGroup
+    && (available.size === 0 || categoryHasVisibleProducts(c.id))
+  ));
+  if (filtered.length) return orderCategoriesForDisplay(filtered);
+  return orderCategoriesForDisplay(
+    state.categories.filter((c) => !String(c?.parentId || '').trim() && categoryHasVisibleProducts(c.id)),
+  );
 }
 
 function getVisibleProducts() {
@@ -6170,10 +6352,16 @@ function renderCategories() {
     const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && selectedCategories.has(c.id)
       ? ' admin-selected-target'
       : '';
+    const isChild = isSubcategory(c);
+    const title = escapeHtml(String(c.title || 'Категория'));
+    const meta = isChild ? escapeHtml(getCategoryPathTitles(c.id).slice(0, -1).join(' / ')) : '';
     return `
-    <button class="category-card${selectedClass}" data-category="${c.id}">
+    <button class="category-card${selectedClass}${isChild ? ' category-card-child' : ''}" data-category="${c.id}">
       <img src="${safeSrc(image)}" alt="${c.title}" loading="lazy" decoding="async" />
-      <span>${c.title}</span>
+      <span data-category-title="${c.id}">
+        ${isChild ? `<small class="category-card-meta">${meta}</small>` : ''}
+        ${title}
+      </span>
     </button>
   `;
   }).join('');
