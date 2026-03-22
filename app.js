@@ -6397,12 +6397,19 @@ function renderCategories() {
       : '';
     const isChild = isSubcategory(c);
     const title = escapeHtml(String(c.title || 'Категория'));
-    const meta = isChild ? escapeHtml(getCategoryPathTitles(c.id).slice(0, -1).join(' / ')) : '';
+    const childTitles = !isChild
+      ? orderCategoriesForDisplay(
+        state.categories.filter((category) => String(category?.parentId || '').trim() === String(c.id || '').trim()),
+      ).map((category) => String(category.title || '').trim()).filter(Boolean)
+      : [];
+    const meta = isChild
+      ? escapeHtml(getCategoryPathTitles(c.id).slice(0, -1).join(' / '))
+      : escapeHtml(childTitles.slice(0, 4).join(' • '));
     return `
     <button class="category-card${selectedClass}${isChild ? ' category-card-child' : ''}" data-category="${c.id}">
       <img src="${safeSrc(image)}" alt="${c.title}" loading="lazy" decoding="async" />
       <span data-category-title="${c.id}">
-        ${isChild ? `<small class="category-card-meta">${meta}</small>` : ''}
+        ${meta ? `<small class="category-card-meta">${meta}</small>` : ''}
         ${title}
       </span>
     </button>
