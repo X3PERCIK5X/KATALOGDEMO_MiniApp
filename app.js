@@ -8516,11 +8516,31 @@ function resolveOrderPaymentResult(serverOrderResult) {
 function openExternalPaymentLink(url) {
   const safe = String(url || '').trim();
   if (!safe) return;
-  if (window.Telegram?.WebApp?.openLink) {
-    window.Telegram.WebApp.openLink(safe, { try_instant_view: false });
+  if (window.HORECA_PLATFORM?.openLink && typeof window.HORECA_PLATFORM.openLink === 'function') {
+    window.HORECA_PLATFORM.openLink(safe);
     return;
   }
-  window.open(safe, '_blank', 'noopener');
+  if (window.Telegram?.WebApp?.openLink) {
+    try {
+      window.Telegram.WebApp.openLink(safe, { try_instant_view: false });
+      window.setTimeout(() => {
+        try {
+          if (document.visibilityState === 'visible') window.location.assign(safe);
+        } catch {}
+      }, 240);
+      return;
+    } catch {}
+  }
+  try {
+    window.open(safe, '_blank', 'noopener');
+    window.setTimeout(() => {
+      try {
+        if (document.visibilityState === 'visible') window.location.assign(safe);
+      } catch {}
+    }, 180);
+  } catch {
+    window.location.assign(safe);
+  }
 }
 
 function renderPayScreen() {
@@ -8598,11 +8618,7 @@ async function openSubscriptionPayment() {
   if (ui.subscriptionStatus) {
     ui.subscriptionStatus.textContent = `Переход к оплате: ${tariff.label} — ${formatPrice(tariff.amount)} ₽`;
   }
-  if (window.Telegram?.WebApp?.openLink) {
-    window.Telegram.WebApp.openLink(link, { try_instant_view: false });
-    return;
-  }
-  window.open(link, '_blank', 'noopener');
+  openExternalPaymentLink(link);
 }
 
 function validatePhone(value) {
