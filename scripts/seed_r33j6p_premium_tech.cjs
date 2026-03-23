@@ -32,26 +32,6 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
-function scoreProductImage(url) {
-  const value = String(url || '').toLowerCase();
-  let score = 0;
-  if (!value) return score;
-  if (value.includes('storeimages.cdn-apple.com')) score += 120;
-  if (value.includes('resource.logitech.com')) score += 110;
-  if (value.includes('res.garmin.com')) score += 110;
-  if (value.includes('lh3.googleusercontent.com')) score += 100;
-  if (value.includes('apple.com/v/') && value.includes('/meta/')) score += 95;
-  if (value.includes('apple.com/assets-www/')) score += 90;
-  if (value.includes('unsplash.com')) score += 70;
-  if (value.includes('gsmarena.com')) score += 35;
-  if (value.includes('bigpic')) score -= 8;
-  return score;
-}
-
-function orderProductImages(values) {
-  return unique(values).sort((a, b) => scoreProductImage(b) - scoreProductImage(a));
-}
-
 function specsToLines(items) {
   return (items || []).filter(Boolean).map((item) => `${item.label}: ${item.value}`);
 }
@@ -199,81 +179,51 @@ function buildArt() {
 const IMG = {
   iphone16promax: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/apple-iphone-16-pro-max.jpg',
-    'https://www.apple.com/v/iphone/home/cj/images/meta/iphone__bh930eyjnj0i_og.png?202603181540',
-    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/iphone-16-model-unselect-gallery-1-202409?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1723991997435',
   ]),
   iphone16pro: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/apple-iphone-16-pro.jpg',
-    'https://www.apple.com/v/iphone/home/cj/images/meta/iphone__bh930eyjnj0i_og.png?202603181540',
-    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/iphone-16-model-unselect-gallery-1-202409?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1723991997435',
   ]),
   iphone16: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/apple-iphone-16.jpg',
-    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/iphone-16-model-unselect-gallery-1-202409?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1723991997435',
-    'https://www.apple.com/v/iphone/home/cj/images/meta/iphone__bh930eyjnj0i_og.png?202603181540',
   ]),
   iphone15: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/apple-iphone-15.jpg',
-    'https://www.apple.com/v/iphone/home/cj/images/meta/iphone__bh930eyjnj0i_og.png?202603181540',
-    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/iphone-16-model-unselect-gallery-1-202409?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1723991997435',
   ]),
   s25ultra: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-ultra-sm-s938.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-sm-s931.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-plus-sm-s936.jpg',
   ]),
   s25: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-sm-s931.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-plus-sm-s936.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-ultra-sm-s938.jpg',
   ]),
   s25plus: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-plus-sm-s936.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-sm-s931.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-ultra-sm-s938.jpg',
   ]),
   s24fe: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s24-fe-r1.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-sm-s931.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-s25-ultra-sm-s938.jpg',
   ]),
   pixel8pro: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8-pro.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8a.jpg',
   ]),
   pixel8: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8-pro.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8a.jpg',
   ]),
   pixel8a: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8a.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/google-pixel-8-pro.jpg',
   ]),
   xiaomi15ultra: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15-ultra-.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-14t-pro.jpg',
   ]),
   xiaomi15: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15-ultra-.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-14t-pro.jpg',
   ]),
   xiaomi14tpro: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-14t-pro.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15.jpg',
-    'https://fdn2.gsmarena.com/vv/bigpic/xiaomi-15-ultra-.jpg',
   ]),
   macbookair: unique([
     'https://www.apple.com/v/macbook-air/y/images/meta/macbook_air_mx__ez5y0k5yy7au_og.png?202603041632',
-    'https://www.apple.com/v/macbook-pro/aw/images/meta/macbook-pro__difvbgz1plsi_og.png?202603041632',
   ]),
   macbookpro: unique([
     'https://www.apple.com/v/macbook-pro/aw/images/meta/macbook-pro__difvbgz1plsi_og.png?202603041632',
-    'https://www.apple.com/v/macbook-air/y/images/meta/macbook_air_mx__ez5y0k5yy7au_og.png?202603041632',
   ]),
   laptopstudio: unique([
     'https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=1600&q=80',
@@ -287,35 +237,27 @@ const IMG = {
   ]),
   ipadair: unique([
     'https://www.apple.com/v/ipad-air/ah/images/meta/ipad-air_overview__bc2fd15uec0y_og.png?202603101707',
-    'https://www.apple.com/v/ipad-pro/aw/images/meta/ipad-pro_overview__bu4cql27diaa_og.png?202603101707',
   ]),
   ipadpro: unique([
     'https://www.apple.com/v/ipad-pro/aw/images/meta/ipad-pro_overview__bu4cql27diaa_og.png?202603101707',
-    'https://www.apple.com/v/ipad-air/ah/images/meta/ipad-air_overview__bc2fd15uec0y_og.png?202603101707',
   ]),
   ipadmini: unique([
     'https://www.apple.com/v/ipad-mini/v/images/meta/ipad-mini_overview__cxipvq7fs1ci_og.png?202603101707',
-    'https://www.apple.com/v/ipad-air/ah/images/meta/ipad-air_overview__bc2fd15uec0y_og.png?202603101707',
   ]),
   tabS10Ultra: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-tab-s10-ultra.jpg',
-    'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=1600&q=80',
   ]),
   tabletAndroid: unique([
     'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=1600&q=80',
-    'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-tab-s10-ultra.jpg',
   ]),
   airpodspro: unique([
     'https://www.apple.com/v/airpods-pro/r/images/meta/og__c0ceegchesom_overview.png?202603151155',
-    'https://www.apple.com/v/airpods-4/g/images/meta/airpods-4__gnjh1t3yjxm6_og.png?202511192039',
   ]),
   airpods4: unique([
     'https://www.apple.com/v/airpods-4/g/images/meta/airpods-4__gnjh1t3yjxm6_og.png?202511192039',
-    'https://www.apple.com/v/airpods-pro/r/images/meta/og__c0ceegchesom_overview.png?202603151155',
   ]),
   airpodsmax: unique([
     'https://www.apple.com/v/airpods-max/k/images/meta/airpods-max_overview__c2mz40a3bugm_og.png?202603151155',
-    'https://www.apple.com/v/airpods-pro/r/images/meta/og__c0ceegchesom_overview.png?202603151155',
   ]),
   sonyXm5: unique([
     'https://electronics.sony.com/image/5d02da5df552836db894ecfd58414a47?fmt=png-alpha&wid=1200',
@@ -331,12 +273,16 @@ const IMG = {
     'https://cdn.shopify.com/s/files/1/0579/8091/1768/files/0000s_0023_Ear-white.png?v=1753686623',
     'https://cdn.shopify.com/s/files/1/0579/8091/1768/files/BA_360_ENTEI_030_blackBud_rgb_00_4fdaba7c-5568-4db0-aaa5-5129d524d8bd.png?v=1713169018',
   ]),
-  watchApple: unique([
+  watchAppleSeries10: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/apple-watch-series10.jpg',
+  ]),
+  watchAppleUltra: unique([
     'https://www.apple.com/assets-www/en_WW/watch/og/watch_og_1ff2ee953.png',
   ]),
-  watchSamsung: unique([
+  watchSamsung7: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-watch7.jpg',
+  ]),
+  watchSamsungUltra: unique([
     'https://fdn2.gsmarena.com/vv/bigpic/samsung-galaxy-watch-ultra.jpg',
   ]),
   watchGarmin: unique([
@@ -377,15 +323,12 @@ const IMG = {
   ]),
   homepod: unique([
     'https://www.apple.com/v/homepod-mini/j/images/meta/homepod-mini__bnxwvz5xrtpy_og.png?202504171218',
-    'https://lh3.googleusercontent.com/JB4AqJ7DojvThh35uAFMqmBfEW3Pl1TUHe1o9JPJ-NyyjOr2SjEFkQ5QNANV1znf6Do=c0xffffff-rj',
   ]),
   nestAudio: unique([
     'https://lh3.googleusercontent.com/JB4AqJ7DojvThh35uAFMqmBfEW3Pl1TUHe1o9JPJ-NyyjOr2SjEFkQ5QNANV1znf6Do=c0xffffff-rj',
-    'https://www.apple.com/v/homepod-mini/j/images/meta/homepod-mini__bnxwvz5xrtpy_og.png?202504171218',
   ]),
   airtag: unique([
     'https://www.apple.com/v/airtag/g/images/meta/og__ck3n0k1jl6j6.png?202602121113',
-    'https://www.apple.com/v/iphone/home/cj/images/meta/iphone__bh930eyjnj0i_og.png?202603181540',
   ]),
   mxKeys: unique([
     'https://resource.logitech.com/c_fill,q_auto,f_auto,dpr_1.0/d_transparent.gif/content/dam/logitech/en/products/keyboards/mx-keys-mini/gallery/mx-keys-mini-3q-bottom-graphite.png',
@@ -410,7 +353,7 @@ function p(data) {
     shortDescription: data.shortDescription,
     description: data.description,
     specs: specsToLines(data.specs || []),
-    images: orderProductImages(data.images || []),
+    images: unique(data.images || []),
     active: true,
   };
 }
@@ -500,10 +443,10 @@ function buildProducts() {
     p({ id:'galaxy-buds3-pro', categoryId:'headphones-samsung', title:'Samsung Galaxy Buds3 Pro', sku:'SMS-BUDS3PRO', price:21990, stock:9, images:IMG.galaxyBuds3Pro, shortDescription:'TWS-флагман Samsung с ANC и акцентом на Galaxy-экосистему.', description:'Наушники для пользователей Samsung, которые хотят современный дизайн, ANC и плотную интеграцию со смартфоном и часами Galaxy.', specs:[{label:'Тип',value:'TWS'},{label:'Шумоподавление',value:'Активное ANC'},{label:'Связь',value:'Bluetooth'},{label:'Время работы',value:'до 30 ч с кейсом'},{label:'Цвет',value:'Silver'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'nothing-ear-black', categoryId:'headphones-nothing', title:'Nothing Ear', sku:'NTG-EAR-BLK', price:15990, stock:10, images:IMG.nothingEar, shortDescription:'Стильные TWS-наушники с прозрачным дизайном и хорошим звуком.', description:'Удачный выбор для тех, кому важен свежий дизайн, удобное приложение и современная подача аксессуара в премиальной витрине.', specs:[{label:'Тип',value:'TWS'},{label:'Шумоподавление',value:'Активное ANC'},{label:'Связь',value:'Bluetooth'},{label:'Время работы',value:'до 40.5 ч с кейсом'},{label:'Цвет',value:'Black'},{label:'Гарантия',value:'12 месяцев'}] }),
 
-    p({ id:'apple-watch-series-10-46', categoryId:'watches-apple', title:'Apple Watch Series 10 46mm', sku:'APL-WATCH10-46', price:49990, stock:8, images:IMG.watchApple, shortDescription:'Смарт-часы Apple для здоровья, спорта и уведомлений.', description:'Универсальная модель Apple Watch для повседневного использования: тренировки, уведомления, звонки и контроль активности в премиальном форм-факторе.', specs:[{label:'Корпус',value:'46 мм, алюминий'},{label:'Экран',value:'Always-On Retina'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 18 часов'},{label:'Цвет',value:'Jet Black'},{label:'Гарантия',value:'12 месяцев'}] }),
-    p({ id:'apple-watch-ultra-2', categoryId:'watches-apple', title:'Apple Watch Ultra 2', sku:'APL-WULTRA2', price:89990, stock:4, images:IMG.watchApple, shortDescription:'Флагманские часы Apple для спорта, путешествий и outdoor-сценариев.', description:'Модель для тех, кто хочет получить премиальный outdoor-продукт с экосистемой Apple, высоким запасом автономности и прочным корпусом.', specs:[{label:'Корпус',value:'49 мм, титан'},{label:'Экран',value:'Always-On Retina'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 36 часов'},{label:'Цвет',value:'Natural Titanium'},{label:'Гарантия',value:'12 месяцев'}] }),
-    p({ id:'galaxy-watch7-44', categoryId:'watches-samsung', title:'Samsung Galaxy Watch7 44mm', sku:'SMS-WATCH7-44', price:29990, stock:9, images:IMG.watchSamsung, shortDescription:'Умные часы Samsung для экосистемы Galaxy и спорта.', description:'Легкая модель Galaxy Watch для ежедневных уведомлений, фитнеса и базового health-tracking в премиальном сегменте Android.', specs:[{label:'Корпус',value:'44 мм, алюминий'},{label:'Экран',value:'AMOLED'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 40 часов'},{label:'Цвет',value:'Green'},{label:'Гарантия',value:'12 месяцев'}] }),
-    p({ id:'galaxy-watch-ultra', categoryId:'watches-samsung', title:'Samsung Galaxy Watch Ultra', sku:'SMS-WULTRA', price:55990, stock:5, images:IMG.watchSamsung, shortDescription:'Флагманские Samsung-часы для активного спорта и outdoor-режима.', description:'Прочная премиальная модель Galaxy Watch для активных сценариев, тренировок, навигации и плотной связи с экосистемой Samsung.', specs:[{label:'Корпус',value:'47 мм, титан'},{label:'Экран',value:'AMOLED'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 60 часов'},{label:'Цвет',value:'Titanium Silver'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'apple-watch-series-10-46', categoryId:'watches-apple', title:'Apple Watch Series 10 46mm', sku:'APL-WATCH10-46', price:49990, stock:8, images:IMG.watchAppleSeries10, shortDescription:'Смарт-часы Apple для здоровья, спорта и уведомлений.', description:'Универсальная модель Apple Watch для повседневного использования: тренировки, уведомления, звонки и контроль активности в премиальном форм-факторе.', specs:[{label:'Корпус',value:'46 мм, алюминий'},{label:'Экран',value:'Always-On Retina'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 18 часов'},{label:'Цвет',value:'Jet Black'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'apple-watch-ultra-2', categoryId:'watches-apple', title:'Apple Watch Ultra 2', sku:'APL-WULTRA2', price:89990, stock:4, images:IMG.watchAppleUltra, shortDescription:'Флагманские часы Apple для спорта, путешествий и outdoor-сценариев.', description:'Модель для тех, кто хочет получить премиальный outdoor-продукт с экосистемой Apple, высоким запасом автономности и прочным корпусом.', specs:[{label:'Корпус',value:'49 мм, титан'},{label:'Экран',value:'Always-On Retina'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 36 часов'},{label:'Цвет',value:'Natural Titanium'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'galaxy-watch7-44', categoryId:'watches-samsung', title:'Samsung Galaxy Watch7 44mm', sku:'SMS-WATCH7-44', price:29990, stock:9, images:IMG.watchSamsung7, shortDescription:'Умные часы Samsung для экосистемы Galaxy и спорта.', description:'Легкая модель Galaxy Watch для ежедневных уведомлений, фитнеса и базового health-tracking в премиальном сегменте Android.', specs:[{label:'Корпус',value:'44 мм, алюминий'},{label:'Экран',value:'AMOLED'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 40 часов'},{label:'Цвет',value:'Green'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'galaxy-watch-ultra', categoryId:'watches-samsung', title:'Samsung Galaxy Watch Ultra', sku:'SMS-WULTRA', price:55990, stock:5, images:IMG.watchSamsungUltra, shortDescription:'Флагманские Samsung-часы для активного спорта и outdoor-режима.', description:'Прочная премиальная модель Galaxy Watch для активных сценариев, тренировок, навигации и плотной связи с экосистемой Samsung.', specs:[{label:'Корпус',value:'47 мм, титан'},{label:'Экран',value:'AMOLED'},{label:'Связь',value:'Bluetooth / Wi‑Fi / GPS'},{label:'Автономность',value:'до 60 часов'},{label:'Цвет',value:'Titanium Silver'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'garmin-fenix-8-amoled', categoryId:'watches-garmin', title:'Garmin Fenix 8 AMOLED', sku:'GRM-FENIX8-AMOLED', price:109990, stock:3, images:IMG.watchGarmin, shortDescription:'Премиальные outdoor-часы с навигацией и спортивной аналитикой.', description:'Флагман Garmin для бега, триатлона, походов и путешествий — надежный outdoor-инструмент с premium-подачей в каталоге.', specs:[{label:'Корпус',value:'47 мм'},{label:'Экран',value:'AMOLED'},{label:'Навигация',value:'Multi-band GPS'},{label:'Автономность',value:'до 16 дней'},{label:'Цвет',value:'Slate Gray'},{label:'Гарантия',value:'12 месяцев'}] }),
 
     p({ id:'magsafe-charger-2m', categoryId:'accessories-magsafe', title:'MagSafe Charger 2m', sku:'ACC-MAGSAFE-2M', price:6990, oldPrice:7990, stock:18, images:IMG.magsafe, shortDescription:'Магнитная зарядка для iPhone и AirPods с удобной длиной кабеля.', description:'Минималистичный аксессуар для экосистемы Apple, который хорошо смотрится в премиальной витрине и закрывает ежедневный сценарий зарядки.', specs:[{label:'Тип',value:'Беспроводная зарядка'},{label:'Совместимость',value:'iPhone / AirPods'},{label:'Кабель',value:'2 м, USB‑C'},{label:'Мощность',value:'до 25 Вт'},{label:'Цвет',value:'White'},{label:'Гарантия',value:'12 месяцев'}] }),
