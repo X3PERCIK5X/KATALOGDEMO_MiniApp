@@ -2614,6 +2614,24 @@ body:not(.admin-mode) .profile-theme-panel {
   flex-wrap: wrap;
 }
 
+.catalog-bot-action-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.catalog-bot-action-button.danger {
+  color: #ff8f8f;
+  border-color: rgba(255, 143, 143, 0.28);
+  background: rgba(255, 94, 94, 0.08);
+}
+
 .subscription-tariffs {
   display: grid;
   gap: 8px;

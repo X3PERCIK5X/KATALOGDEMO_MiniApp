@@ -7865,6 +7865,19 @@ function normalizeTelegramChatIdsList(raw) {
   return result;
 }
 
+function getSavedTelegramOrderChatIds(settings = null) {
+  const source = settings && typeof settings === 'object'
+    ? settings
+    : (state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {});
+  return normalizeTelegramChatIdsList([
+    ...(Array.isArray(source.orderRequestChatIds) ? source.orderRequestChatIds : []),
+    source.orderRequestChatId,
+    source.orderChatId,
+    source.chatId,
+    source.telegramChatId,
+  ]);
+}
+
 function getOrderRequestChannelMeta(channel) {
   const code = normalizeOrderRequestChannel(channel);
   if (code === 'telegram_chat') {
@@ -7923,13 +7936,7 @@ function getOrderChatSettingsDraft(sourceSettings = null) {
     inferredChannel,
   );
   const targets = channel === 'telegram_chat'
-    ? normalizeTelegramChatIdsList([
-      ...(Array.isArray(settings.orderRequestChatIds) ? settings.orderRequestChatIds : []),
-      settings.orderRequestChatId,
-      settings.orderChatId,
-      settings.chatId,
-      settings.telegramChatId,
-    ])
+    ? getSavedTelegramOrderChatIds(settings)
     : [];
   const target = channel === 'telegram_chat'
     ? String(targets[0] || '').trim()
@@ -8053,6 +8060,9 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
             <span>Статус</span>
             <span>Подключен и сохранен</span>
           </div>
+          <div class="catalog-bot-card-actions">
+            <button type="button" class="catalog-bot-action-button danger" data-order-chat-remove="${escapeHtml(chatId)}">Удалить чат</button>
+          </div>
         </article>
       `).join('');
     } else if (saved.channel === 'vk_messages') {
@@ -8150,13 +8160,7 @@ async function saveOrderChatSettings() {
   }
   if (ui.orderChatStatus) ui.orderChatStatus.textContent = 'Сохраняем настройки заявок...';
   try {
-    const existingTelegramChatIds = normalizeTelegramChatIdsList([
-      ...(Array.isArray(state.saas.settings?.orderRequestChatIds) ? state.saas.settings.orderRequestChatIds : []),
-      state.saas.settings?.orderRequestChatId,
-      state.saas.settings?.orderChatId,
-      state.saas.settings?.chatId,
-      state.saas.settings?.telegramChatId,
-    ]);
+    const existingTelegramChatIds = getSavedTelegramOrderChatIds();
     const telegramChatIds = channel === 'telegram_chat'
       ? normalizeTelegramChatIdsList([...existingTelegramChatIds, target])
       : [];
@@ -8206,6 +8210,45 @@ async function saveOrderChatSettings() {
   } catch (error) {
     if (ui.orderChatStatus) {
       ui.orderChatStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    }
+  }
+}
+
+async function removeOrderChatTarget(chatIdToRemove) {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const chatId = String(chatIdToRemove || '').trim();
+  if (!isValidTelegramChatId(chatId)) return;
+  const remainingChatIds = getSavedTelegramOrderChatIds().filter((value) => value !== chatId);
+  const primaryChatId = remainingChatIds[0] || '';
+  if (ui.orderChatStatus) ui.orderChatStatus.textContent = `Удаляем чат ${chatId}...`;
+  try {
+    const patch = {
+      ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+      orderRequestChannelType: 'telegram_chat',
+      orderRequestSender: 'admin_bot',
+      orderRequestTarget: '',
+      orderRequestChatIds: remainingChatIds,
+      orderRequestChatId: primaryChatId,
+      orderChatId: primaryChatId,
+      chatId: primaryChatId,
+      telegramChatId: primaryChatId,
+    };
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    renderOrderChatSettings();
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = remainingChatIds.length
+        ? `Чат ${chatId} удалён. Подключено чатов: ${remainingChatIds.length}.`
+        : 'Чат удалён. Сохраненные каналы уведомлений пока не добавлены.';
+    }
+  } catch (error) {
+    if (ui.orderChatStatus) {
+      ui.orderChatStatus.textContent = `Ошибка удаления: ${String(error?.message || 'unknown')}`;
     }
   }
 }
@@ -9186,6 +9229,13 @@ function bindEvents() {
   });
   on(ui.orderRequestTargetInput, 'focus', () => {
     scrollFieldIntoView(ui.orderRequestTargetInput);
+  });
+  on(ui.orderChatSavedList, 'click', (e) => {
+    const removeButton = e.target.closest('[data-order-chat-remove]');
+    if (!removeButton) return;
+    const chatId = String(removeButton.dataset.orderChatRemove || '').trim();
+    if (!chatId) return;
+    void removeOrderChatTarget(chatId);
   });
   on(ui.orderRequestVkTokenInput, 'input', () => {
     renderOrderChatSettings({ fromInputs: true });
