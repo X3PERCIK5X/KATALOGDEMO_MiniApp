@@ -1758,7 +1758,7 @@ function ensureProfileAdminSections() {
           </select>
         </label>
         <label id="orderRequestTargetLabel">Chat ID Telegram
-          <input id="orderRequestTargetInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Например: -1001234567890" />
+          <input id="orderRequestTargetInput" type="text" inputmode="text" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Например: -1001234567890" />
         </label>
         <label id="orderRequestVkTokenLabel" class="hidden">Токен сообщества VK
           <input id="orderRequestVkTokenInput" type="text" autocomplete="off" placeholder="vk1.a.... или сервисный токен сообщества" />
@@ -7919,10 +7919,14 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
     ui.orderRequestTargetInput.placeholder = channelMeta.placeholder;
     if (draft.channel === 'telegram_chat' || draft.channel === 'vk_messages') {
       ui.orderRequestTargetInput.type = 'text';
-      ui.orderRequestTargetInput.inputMode = 'numeric';
+      ui.orderRequestTargetInput.inputMode = 'text';
+      ui.orderRequestTargetInput.setAttribute('autocapitalize', 'off');
+      ui.orderRequestTargetInput.setAttribute('spellcheck', 'false');
     } else {
       ui.orderRequestTargetInput.type = 'url';
       ui.orderRequestTargetInput.inputMode = 'url';
+      ui.orderRequestTargetInput.setAttribute('autocapitalize', 'off');
+      ui.orderRequestTargetInput.setAttribute('spellcheck', 'false');
     }
   }
   if (ui.orderRequestVkTokenLabel) {
@@ -7942,7 +7946,7 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
     if (draft.mode === 'chat') {
       if (draft.targetValid) {
         if (draft.channel === 'telegram_chat') {
-          ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в Telegram Chat ID.';
+          ui.orderChatStatus.textContent = `Режим заявок активен: отправка в Telegram чат ${draft.target}.`;
         } else if (draft.channel === 'vk_messages') {
           ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в сообщения VK.';
         } else if (draft.channel === 'webhook') {
@@ -8025,7 +8029,9 @@ async function saveOrderChatSettings() {
     renderOrderChatSettings();
     if (ui.orderChatStatus) {
       ui.orderChatStatus.textContent = mode === 'chat'
-        ? 'Режим заявок сохранён.'
+        ? (channel === 'telegram_chat'
+          ? `Канал уведомлений сохранён: Telegram чат ${telegramChatId}.`
+          : 'Режим заявок сохранён.')
         : 'Режим онлайн-оплаты сохранён.';
     }
   } catch (error) {
