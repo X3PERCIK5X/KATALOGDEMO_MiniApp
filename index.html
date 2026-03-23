@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>МессКаталог</title>
-    <link rel="stylesheet" href="/style.css?v=20260324-312" />
+    <link rel="stylesheet" href="/style.css?v=20260324-313" />
   </head>
   <body>
     <header class="header">
@@ -48,7 +48,7 @@
     <main class="main">
       <div id="dataStatus" class="data-status hidden"></div>
 
-      <section id="screen-home" class="screen active">
+      <section id="screen-home" class="screen hidden">
         <div id="homeBlocks" class="home-v2">
           <section class="home-v2-block home-v2-banners" data-home-block="banners">
             <div class="home-v2-banner-shell">
@@ -84,7 +84,7 @@
         <div id="storesList" class="stores-list"></div>
       </section>
 
-      <section id="screen-categories" class="screen">
+      <section id="screen-categories" class="screen active">
         <div class="screen-head">
           <button id="categoriesBackButton" class="back-button icon-only hidden" type="button" aria-label="Назад">←</button>
           <h2 id="categoriesTitle">Каталог</h2>
@@ -896,7 +896,7 @@
     </main>
 
     <nav class="bottom-nav bottom-nav-lite">
-      <button id="homeButton" class="bottom-item" type="button" aria-label="Главная">
+      <button id="homeButton" class="bottom-item hidden" type="button" aria-label="Главная" aria-hidden="true" tabindex="-1">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 11.5 12 4l9 7.5" />
           <path d="M5 10.5V20h14v-9.5" />
@@ -957,12 +957,12 @@
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы"></button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260324-312"></script>
-    <script src="/platform.js?v=20260324-312"></script>
-    <script src="/telegram.js?v=20260324-312"></script>
-    <script src="/client-utils.js?v=20260324-312"></script>
-    <script src="/client-routing.js?v=20260324-312"></script>
-    <script src="/client-presentation.js?v=20260324-312"></script>
-    <script src="/app.js?v=20260324-312"></script>
+    <script src="/vk-bridge.min.js?v=20260324-313"></script>
+    <script src="/platform.js?v=20260324-313"></script>
+    <script src="/telegram.js?v=20260324-313"></script>
+    <script src="/client-utils.js?v=20260324-313"></script>
+    <script src="/client-routing.js?v=20260324-313"></script>
+    <script src="/client-presentation.js?v=20260324-313"></script>
+    <script src="/app.js?v=20260324-313"></script>
   </body>
 </html>

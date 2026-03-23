@@ -793,6 +793,18 @@ const PUBLISHED_STATE_KEY = 'demo_catalog_published_state_v1';
 const PUBLISHED_STATE_TS_KEY = 'demo_catalog_published_state_ts_v1';
 const HOME_BLOCK_DEFAULT_ORDER = ['banners', 'promo', 'popular'];
 const HOME_REBUILD_STAMP = 'home-v2-20260310';
+const HOME_SCREEN_ENABLED = false;
+
+function getDefaultCatalogScreen() {
+  return HOME_SCREEN_ENABLED ? 'home' : 'categories';
+}
+
+function resolveVisibleScreen(name) {
+  const screen = String(name || '').trim();
+  if (!screen) return getDefaultCatalogScreen();
+  if (!HOME_SCREEN_ENABLED && screen === 'home') return 'categories';
+  return screen;
+}
 
 function getAdminDraftKey() {
   const storePart = (state.saas.storeId || '').trim().toUpperCase();
@@ -1622,6 +1634,7 @@ function buildMenuCatalog() {
 }
 
 function setScreen(name) {
+  name = resolveVisibleScreen(name);
   if (state.currentScreen === name) return;
   state.currentScreen = name;
   if (state.screenStack[state.screenStack.length - 1] !== name) {
@@ -1718,7 +1731,7 @@ function goBack() {
     setTimeout(() => currentEl.classList.remove('closing'), 220);
   }
   state.screenStack.pop();
-  const prev = state.screenStack[state.screenStack.length - 1];
+  const prev = resolveVisibleScreen(state.screenStack[state.screenStack.length - 1]);
   state.currentScreen = prev;
   ui.screens.forEach((s) => s.classList.toggle('active', s.id === `screen-${prev}`));
   updateBottomNav(prev);
@@ -1823,8 +1836,9 @@ function ensureProfileAdminSections() {
 }
 
 function updateBottomNav(screen) {
+  screen = resolveVisibleScreen(screen);
   const map = {
-    home: ui.homeButton,
+    home: HOME_SCREEN_ENABLED ? ui.homeButton : ui.menuButton,
     categories: ui.menuButton,
     products: ui.menuButton,
     product: ui.menuButton,
@@ -1848,7 +1862,7 @@ function updateBottomNav(screen) {
     favorites: ui.favoritesButton,
     menu: ui.menuButton,
   };
-  const defaultButton = ui.homeButton;
+  const defaultButton = HOME_SCREEN_ENABLED ? ui.homeButton : ui.menuButton;
   const activeButton = map[screen] || defaultButton;
   [ui.homeButton, ui.menuButton, ui.cartButton, ui.favoritesButton, ui.profileButton, ui.botButton, ui.statsButton, ui.ordersButton].forEach((btn) => {
     if (!btn) return;
@@ -10084,7 +10098,14 @@ function bindEvents() {
     void renderAdminStatsPopular();
     setScreen('stats-popular');
   });
-  on(ui.homeButton, 'click', () => { renderHomePopular(); setScreen('home'); });
+  on(ui.homeButton, 'click', () => {
+    if (HOME_SCREEN_ENABLED) {
+      renderHomePopular();
+      setScreen('home');
+      return;
+    }
+    openMenu();
+  });
   on(ui.checkoutButton, 'click', () => {
     saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
     renderCart();
@@ -10749,28 +10770,46 @@ async function init() {
   applyAppearance(state.theme, state.accent);
   state.stores = getFallbackStores();
   if (!state.selectedStoreId) state.selectedStoreId = state.stores[0]?.id || null;
-  state.screenStack = ['home'];
-  state.currentScreen = 'home';
+  const defaultScreen = getDefaultCatalogScreen();
+  state.screenStack = [defaultScreen];
+  state.currentScreen = defaultScreen;
   ensureProfileAdminSections();
-  // Рисуем стартовый контент главной, даже если конфиг ещё не загрузился.
-  renderHomeBanners();
-  renderHomeArticles();
+  if (HOME_SCREEN_ENABLED) {
+    renderHomeBanners();
+    renderHomeArticles();
+  }
   bindEvents();
   setupBottomDockKeyboardLock();
   if (ui.productsSort) ui.productsSort.value = state.filters.products.sort;
   if (ui.homeProductsSort) ui.homeProductsSort.value = state.filters.products.sort;
   if (ui.productsSearch) ui.productsSearch.value = state.filters.products.search;
   if (ui.homeProductsSearch) ui.homeProductsSearch.value = state.filters.products.search;
-  updateBottomNav('home');
+  updateBottomNav(defaultScreen);
   renderProfile();
   updateBadges();
   renderFavorites();
   renderCart();
-  renderHomePopular();
-  startHomeBannerAutoplay();
+  if (HOME_SCREEN_ENABLED) {
+    renderHomePopular();
+    startHomeBannerAutoplay();
+  }
+  renderCategories();
   renderHeaderStore();
   closeDrawer();
   buildMenuCatalog();
+  if (!HOME_SCREEN_ENABLED) {
+    const homeScreen = document.getElementById('screen-home');
+    if (homeScreen) {
+      homeScreen.classList.remove('active');
+      homeScreen.classList.add('hidden');
+    }
+    if (ui.homeButton) {
+      ui.homeButton.classList.add('hidden');
+      ui.homeButton.setAttribute('aria-hidden', 'true');
+      ui.homeButton.tabIndex = -1;
+    }
+    ui.screens.forEach((s) => s.classList.toggle('active', s.id === `screen-${defaultScreen}`));
+  }
 
   try {
     if (state.admin.enabled) {
