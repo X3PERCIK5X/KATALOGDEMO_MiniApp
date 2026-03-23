@@ -107,6 +107,7 @@ const state = {
     settings: {},
     datasetLoaded: false,
     lastPublicSyncAt: 0,
+    lastPublicDatasetSignature: '',
     lastLinkedPlatformIdentity: '',
     publicResolveError: null,
     platformBootstrapError: null,
@@ -4124,6 +4125,7 @@ function clearSaasAuth() {
   state.saas.stores = [];
   state.saas.settings = {};
   state.saas.lastLinkedPlatformIdentity = '';
+  state.saas.lastPublicDatasetSignature = '';
   state.saas.publicResolveError = null;
   state.saas.platformBootstrapError = null;
   state.saas.needsAdminStoreSelection = false;
@@ -4745,6 +4747,22 @@ function applyStoreDataset(dataset) {
   if (Array.isArray(dataset.categories)) state.categories = dataset.categories;
   if (Array.isArray(dataset.products)) state.products = dataset.products;
   reconcileActivePromoState();
+}
+
+function computePublicDatasetSignature(dataset) {
+  if (!dataset || typeof dataset !== 'object') return '';
+  try {
+    return JSON.stringify({
+      storeId: String(dataset.storeId || '').trim().toUpperCase(),
+      storeName: String(dataset.storeName || '').trim(),
+      config: dataset.config && typeof dataset.config === 'object' ? dataset.config : {},
+      settings: dataset.settings && typeof dataset.settings === 'object' ? dataset.settings : {},
+      categories: Array.isArray(dataset.categories) ? dataset.categories : [],
+      products: Array.isArray(dataset.products) ? dataset.products : [],
+    });
+  } catch {
+    return '';
+  }
 }
 
 function getBotSettingsDraft() {
@@ -5815,6 +5833,7 @@ async function saasLoadDatasetForCurrentContext() {
   const publicStoreId = requestedPublicStoreId || resolvedPlatformStoreId || storedPublicStoreId;
   if (!state.admin.enabled && /^[A-Z0-9]{6}$/.test(publicStoreId)) {
     const payload = await saasRequest(`/store/${encodeURIComponent(publicStoreId)}/public?_t=${Date.now()}`);
+    state.saas.lastPublicDatasetSignature = computePublicDatasetSignature(payload);
     applyStoreDataset(payload);
     state.saas.publicResolveError = null;
     state.saas.storeId = publicStoreId;
@@ -5834,6 +5853,12 @@ async function refreshPublicDataset(force = false) {
   if (!force && (now - Number(state.saas.lastPublicSyncAt || 0) < 8000)) return false;
   try {
     const payload = await saasRequest(`/store/${encodeURIComponent(storeId)}/public?_t=${now}`);
+    const nextSignature = computePublicDatasetSignature(payload);
+    if (nextSignature && nextSignature === String(state.saas.lastPublicDatasetSignature || '').trim()) {
+      state.saas.lastPublicSyncAt = now;
+      return false;
+    }
+    state.saas.lastPublicDatasetSignature = nextSignature;
     applyStoreDataset(payload);
     state.saas.datasetLoaded = true;
     state.saas.lastPublicSyncAt = now;
