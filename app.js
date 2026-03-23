@@ -1813,6 +1813,7 @@ function ensureProfileAdminSections() {
   ui.orderRequestVkTokenLabel = document.getElementById('orderRequestVkTokenLabel');
   ui.orderRequestVkTokenInput = document.getElementById('orderRequestVkTokenInput');
   ui.orderRequestHint = document.getElementById('orderRequestHint');
+  ui.orderChatSavedList = document.getElementById('orderChatSavedList');
   ui.orderChatStatus = document.getElementById('orderChatStatus');
   ui.orderChatSaveButton = document.getElementById('orderChatSaveButton');
 }
@@ -7992,6 +7993,64 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
       ui.orderChatStatus.textContent = draft.targetValid
         ? 'Режим онлайн-оплаты активен. Канал заявок сохранён как резервный.'
         : 'Режим онлайн-оплаты активен.';
+    }
+  }
+
+  if (ui.orderChatSavedList) {
+    const saved = getOrderChatSettingsDraft();
+    if (saved.mode !== 'chat' || !saved.targetValid) {
+      ui.orderChatSavedList.innerHTML = '<div class="catalog-bot-empty">Сохраненные каналы уведомлений пока не добавлены.</div>';
+    } else if (saved.channel === 'telegram_chat') {
+      ui.orderChatSavedList.innerHTML = `
+        <article class="catalog-bot-card">
+          <div class="catalog-bot-card-head">
+            <span class="catalog-bot-badge">Telegram</span>
+            <strong>Подключенный чат заявок</strong>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Chat ID</span>
+            <span>${escapeHtml(saved.target)}</span>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Статус</span>
+            <span>Подключен и сохранен</span>
+          </div>
+        </article>
+      `;
+    } else if (saved.channel === 'vk_messages') {
+      ui.orderChatSavedList.innerHTML = `
+        <article class="catalog-bot-card">
+          <div class="catalog-bot-card-head">
+            <span class="catalog-bot-badge">VK</span>
+            <strong>Подключенный канал заявок</strong>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Peer ID</span>
+            <span>${escapeHtml(saved.target)}</span>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Статус</span>
+            <span>Подключен и сохранен</span>
+          </div>
+        </article>
+      `;
+    } else {
+      ui.orderChatSavedList.innerHTML = `
+        <article class="catalog-bot-card">
+          <div class="catalog-bot-card-head">
+            <span class="catalog-bot-badge">${saved.channel === 'webhook' ? 'Webhook' : 'Ссылка'}</span>
+            <strong>Подключенный канал заявок</strong>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Адрес</span>
+            <span>${escapeHtml(saved.target)}</span>
+          </div>
+          <div class="catalog-bot-card-line">
+            <span>Статус</span>
+            <span>Подключен и сохранен</span>
+          </div>
+        </article>
+      `;
     }
   }
 }
