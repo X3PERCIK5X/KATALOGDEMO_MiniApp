@@ -193,6 +193,7 @@ const ui = {
   favoritesCount: document.getElementById('favoritesCount'),
   cartCount: document.getElementById('cartCount'),
   categoriesGrid: document.getElementById('categoriesGrid'),
+  categoriesBackButton: document.getElementById('categoriesBackButton'),
   categoriesTitle: document.getElementById('categoriesTitle'),
   catalogImportPanel: document.getElementById('catalogImportPanel'),
   catalogImportFile: document.getElementById('catalogImportFile'),
@@ -1336,6 +1337,9 @@ function getDefaultCategoriesTitle() {
 }
 
 function syncCategoriesTitle() {
+  if (ui.categoriesBackButton) {
+    ui.categoriesBackButton.classList.toggle('hidden', !String(state.currentCategoriesParentId || '').trim());
+  }
   if (!ui.categoriesTitle) return;
   const parentId = String(state.currentCategoriesParentId || '').trim();
   if (!parentId) {

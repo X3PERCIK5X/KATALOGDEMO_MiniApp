@@ -3997,10 +3997,6 @@ html[data-theme="light"] #screen-product .recommended-card img {
   padding-inline: 8px;
 }
 
-#screen-categories .screen-head {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 #screen-categories .screen-head h2 {
   padding-inline: 0;
 }
