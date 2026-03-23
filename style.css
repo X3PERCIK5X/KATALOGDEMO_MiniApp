@@ -5723,8 +5723,12 @@ body.keyboard-open .bottom-nav {
 
 .home-v2-product-card img {
   width: 100%;
-  height: 102px;
-  object-fit: cover;
+  height: 118px;
+  object-fit: contain;
+  object-position: center center;
+  box-sizing: border-box;
+  padding: 10px 10px 0;
+  background: radial-gradient(circle at top, rgba(255,255,255,0.08), rgba(255,255,255,0.01));
   display: block;
 }
 

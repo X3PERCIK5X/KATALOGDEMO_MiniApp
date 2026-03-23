@@ -6451,9 +6451,17 @@ function renderCategories() {
   const categoryCards = list.map((c) => {
     const branchIds = collectCategoryBranchIds(c.id);
     const branchSet = new Set(branchIds);
-    const firstProduct = state.products.find((p) => branchSet.has(String(p.categoryId || '')));
-    const fallbackProductImage = firstProduct && Array.isArray(firstProduct.images) && firstProduct.images[0] ? firstProduct.images[0] : '';
-    const image = String(c.image || '').trim() || fallbackProductImage;
+    const featuredProduct = state.products
+      .filter((product) => branchSet.has(String(product.categoryId || '')))
+      .sort((a, b) => {
+        const byPrice = Number(b.price || 0) - Number(a.price || 0);
+        if (byPrice !== 0) return byPrice;
+        return String(a.title || '').localeCompare(String(b.title || ''), 'ru');
+      })[0];
+    const featuredProductImage = featuredProduct && Array.isArray(featuredProduct.images) && featuredProduct.images[0]
+      ? featuredProduct.images[0]
+      : '';
+    const image = featuredProductImage || String(c.image || '').trim();
     const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && selectedCategories.has(c.id)
       ? ' admin-selected-target'
       : '';

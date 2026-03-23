@@ -32,6 +32,26 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+function scoreProductImage(url) {
+  const value = String(url || '').toLowerCase();
+  let score = 0;
+  if (!value) return score;
+  if (value.includes('storeimages.cdn-apple.com')) score += 120;
+  if (value.includes('resource.logitech.com')) score += 110;
+  if (value.includes('res.garmin.com')) score += 110;
+  if (value.includes('lh3.googleusercontent.com')) score += 100;
+  if (value.includes('apple.com/v/') && value.includes('/meta/')) score += 95;
+  if (value.includes('apple.com/assets-www/')) score += 90;
+  if (value.includes('unsplash.com')) score += 70;
+  if (value.includes('gsmarena.com')) score += 35;
+  if (value.includes('bigpic')) score -= 8;
+  return score;
+}
+
+function orderProductImages(values) {
+  return unique(values).sort((a, b) => scoreProductImage(b) - scoreProductImage(a));
+}
+
 function specsToLines(items) {
   return (items || []).filter(Boolean).map((item) => `${item.label}: ${item.value}`);
 }
@@ -390,7 +410,7 @@ function p(data) {
     shortDescription: data.shortDescription,
     description: data.description,
     specs: specsToLines(data.specs || []),
-    images: unique(data.images || []),
+    images: orderProductImages(data.images || []),
     active: true,
   };
 }
