@@ -4024,7 +4024,7 @@ html[data-theme="light"] #screen-product .recommended-card img {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  margin: 0 0 14px;
+  margin: 14px 0 14px;
 }
 
 .catalog-top-search-input {
@@ -4079,6 +4079,7 @@ html[data-theme="light"] #screen-product .recommended-card img {
 
   .catalog-top-search {
     gap: 8px;
+    margin-top: 12px;
     margin-bottom: 12px;
   }
 
