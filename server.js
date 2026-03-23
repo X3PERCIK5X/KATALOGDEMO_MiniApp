@@ -2507,22 +2507,35 @@ function sanitizeSettingsPatch(settingsPatch) {
     out.orderRequestChannelType = normalizeOrderRequestChannelType(out.orderRequestChannelType);
   }
 
-  const rawProvidedTarget = [
-    out.orderRequestTarget,
-    out.orderRequestUrl,
-    out.orderRequestWebhookUrl,
-    out.orderRequestLink,
+  const resolvedChannel = normalizeOrderRequestChannelType(
+    out.orderRequestChannelType
+    || out.orderRequestSender
+    || 'telegram_chat',
+  );
+  const rawProvidedTelegramTarget = [
     out.orderRequestChatId,
     out.orderChatId,
     out.chatId,
     out.telegramChatId,
-  ].find((value) => value !== undefined);
+  ].find((value) => value !== undefined && String(value || '').trim() !== '');
+  const rawProvidedExternalTarget = [
+    out.orderRequestTarget,
+    out.orderRequestUrl,
+    out.orderRequestWebhookUrl,
+    out.orderRequestLink,
+  ].find((value) => value !== undefined && String(value || '').trim() !== '');
+  const rawProvidedTarget = resolvedChannel === 'telegram_chat'
+    ? (
+      rawProvidedTelegramTarget !== undefined
+        ? rawProvidedTelegramTarget
+        : [out.orderRequestChatId, out.orderChatId, out.chatId, out.telegramChatId].find((value) => value !== undefined)
+    )
+    : (
+      rawProvidedExternalTarget !== undefined
+        ? rawProvidedExternalTarget
+        : [out.orderRequestTarget, out.orderRequestUrl, out.orderRequestWebhookUrl, out.orderRequestLink].find((value) => value !== undefined)
+    );
   const hasProvidedTarget = rawProvidedTarget !== undefined;
-  const resolvedChannel = normalizeOrderRequestChannelType(
-    out.orderRequestChannelType
-    || out.orderRequestSender
-    || (hasProvidedTarget ? (isValidHttpUrl(rawProvidedTarget) ? 'messenger_link' : 'telegram_chat') : 'telegram_chat'),
-  );
 
   if (hasProvidedTarget) {
     if (resolvedChannel === 'telegram_chat') {
