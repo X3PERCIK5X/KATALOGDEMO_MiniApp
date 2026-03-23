@@ -5612,18 +5612,20 @@ body.keyboard-open .bottom-nav {
 
 .home-v2-banner-card {
   min-width: 100%;
-  min-height: 168px;
-  border-radius: 16px;
-  padding: 14px 14px 12px;
+  min-height: 176px;
+  border-radius: 18px;
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background-color: #242a3c;
   background-repeat: no-repeat;
-  background-position: center right;
+  background-position: center center;
   background-size: cover;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
   scroll-snap-align: start;
   position: relative;
   isolation: isolate;
+  display: flex;
+  align-items: stretch;
 }
 
 .home-v2-banner-card::before {
@@ -5632,7 +5634,7 @@ body.keyboard-open .bottom-nav {
   inset: 0;
   border-radius: inherit;
   background:
-    linear-gradient(90deg, rgba(7, 10, 18, 0.78) 0%, rgba(7, 10, 18, 0.68) 28%, rgba(7, 10, 18, 0.34) 54%, rgba(7, 10, 18, 0.10) 100%),
+    linear-gradient(90deg, rgba(7, 10, 18, 0.84) 0%, rgba(7, 10, 18, 0.72) 34%, rgba(7, 10, 18, 0.36) 64%, rgba(7, 10, 18, 0.12) 100%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
   z-index: 0;
 }
@@ -5642,28 +5644,45 @@ body.keyboard-open .bottom-nav {
   z-index: 1;
 }
 
+.home-v2-banner-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  width: min(100%, 340px);
+  min-height: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(10, 16, 28, 0.56), rgba(10, 16, 28, 0.42));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .home-v2-banner-card .featured-chip {
-  margin-bottom: 8px;
+  align-self: flex-start;
+  margin-bottom: 2px;
   font-size: 11px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .home-v2-banner-card .featured-title {
-  font-size: clamp(21px, 6vw, 28px);
-  line-height: 1.08;
-  max-width: min(92%, 470px);
-  text-wrap: balance;
+  font-size: clamp(20px, 5.6vw, 28px);
+  line-height: 1.06;
+  max-width: 100%;
+  text-wrap: pretty;
 }
 
 .home-v2-banner-card .featured-text {
-  margin-top: 6px;
-  max-width: min(92%, 420px);
-  font-size: clamp(13px, 3.5vw, 15px);
-  line-height: 1.26;
-  color: rgba(255, 255, 255, 0.92);
+  margin-top: 2px;
+  max-width: 100%;
+  font-size: clamp(13px, 3.4vw, 15px);
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .home-v2-banner-card .featured-cta {
@@ -5814,11 +5833,16 @@ body.keyboard-open .bottom-nav {
 
 @media (max-width: 430px) {
   .home-v2-banner-card {
-    min-height: 152px;
-    padding: 12px 12px 11px;
+    min-height: 168px;
+    padding: 12px;
+  }
+
+  .home-v2-banner-copy {
+    width: min(100%, 320px);
+    padding: 12px 13px;
   }
 
   .home-v2-banner-card .featured-title {
-    font-size: clamp(20px, 6.2vw, 26px);
+    font-size: clamp(19px, 5.9vw, 25px);
   }
 }

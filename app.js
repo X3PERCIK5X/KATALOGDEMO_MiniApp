@@ -2002,9 +2002,11 @@ function renderHomeBanners() {
   }
   ui.homeBannerTrack.innerHTML = banners.map((banner) => `
     <article class="home-v2-banner-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'banner' && state.admin.selectedId === banner.id ? ' admin-selected-target' : ''}" data-banner-id="${escapeHtml(banner.id)}" style="background-image:url('${safeSrc(banner.image)}')">
-      <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
-      <div class="featured-title">${escapeHtml(banner.title)}</div>
-      <div class="featured-text">${escapeHtml(banner.text)}</div>
+      <div class="home-v2-banner-copy">
+        <div class="featured-chip">${escapeHtml(banner.kicker)}</div>
+        <div class="featured-title">${escapeHtml(banner.title)}</div>
+        <div class="featured-text">${escapeHtml(banner.text)}</div>
+      </div>
     </article>
   `).join('');
   ui.homeBannerDots.innerHTML = banners.map((_, index) => `
