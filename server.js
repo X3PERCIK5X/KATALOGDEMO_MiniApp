@@ -50,6 +50,7 @@ const SUBSCRIPTION_PAYMENT_URL_365 = String(process.env.SUBSCRIPTION_PAYMENT_URL
 const YOOKASSA_SHOP_ID = String(process.env.YOOKASSA_SHOP_ID || '').trim();
 const YOOKASSA_SECRET_KEY_RAW = String(process.env.YOOKASSA_SECRET_KEY_ENC || process.env.YOOKASSA_SECRET_KEY || '').trim();
 const SUBSCRIPTION_RETURN_URL = String(process.env.SUBSCRIPTION_RETURN_URL || '').trim();
+const INTERNAL_NOTIFICATIONS_CHAT_ID = String(process.env.INTERNAL_NOTIFICATIONS_CHAT_ID || '').trim();
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -1452,6 +1453,172 @@ function getStoreCatalogConnectionSummary(storeRow) {
     total,
     botUsername: total > 1 ? `${platformLabel} +${total - 1}` : platformLabel,
   };
+}
+
+function persistStoreInternalBotMeta(storeId, { botId = '', botUsername = '' } = {}) {
+  const sid = String(storeId || '').trim().toUpperCase();
+  if (!isValidStoreId(sid)) return;
+  const row = getStoreRow(sid);
+  if (!row) return;
+  const settings = safeJsonParse(row.settings_json || '{}', {});
+  const nextSettings = {
+    ...settings,
+    _internalBotId: String(botId || settings?._internalBotId || '').trim(),
+    _internalBotUsername: String(botUsername || settings?._internalBotUsername || '').trim(),
+  };
+  db.prepare('UPDATE stores SET settings_json = ?, updated_at = ? WHERE store_id = ?')
+    .run(JSON.stringify(nextSettings), nowIso(), sid);
+}
+
+function resolveStoreInternalBotMeta(storeRowOrStoreId) {
+  const row = typeof storeRowOrStoreId === 'string'
+    ? getStoreRow(String(storeRowOrStoreId || '').trim().toUpperCase())
+    : storeRowOrStoreId;
+  if (!row) return { botId: '', botUsername: '' };
+  const settings = safeJsonParse(row.settings_json || '{}', {});
+  const telegramConnection = listStoreCatalogConnectionRows(String(row.store_id || '').trim().toUpperCase())
+    .find((item) => normalizeCatalogConnectionPlatform(item?.platform) === 'telegram') || null;
+  const botId = String(
+    settings?._internalBotId
+    || settings?.botId
+    || settings?.bot_id
+    || settings?.telegramBotId
+    || '',
+  ).trim();
+  const botUsername = String(
+    settings?._internalBotUsername
+    || telegramConnection?.bot_username
+    || telegramConnection?.bot_identifier
+    || row?.bot_username
+    || '',
+  ).trim();
+  return { botId, botUsername };
+}
+
+function formatInternalBotUsername(value) {
+  const raw = String(value || '').trim().replace(/^@+/, '');
+  return raw ? `@${raw}` : '—';
+}
+
+function formatInternalBotId(value) {
+  const raw = String(value || '').trim();
+  return raw || 'не указан';
+}
+
+function formatInternalOwnerUserId(value) {
+  const raw = String(value || '').trim();
+  return raw || '—';
+}
+
+function formatInternalDateTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString('ru-RU');
+}
+
+function formatInternalMoney(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return '0 ₽';
+  return `${amount.toLocaleString('ru-RU')} ₽`;
+}
+
+function formatTariffLabel(days) {
+  const value = Number(days || 0);
+  if (value === 30) return '30 дней';
+  if (value === 180) return '180 дней';
+  if (value === 365) return '365 дней';
+  return `${value} дней`;
+}
+
+function buildInternalNewStoreMessage({ storeId = '', botUsername = '', botId = '', ownerUserId = '', createdAt = '' } = {}) {
+  return [
+    '🆕 Новый магазин',
+    '',
+    `Store ID: ${String(storeId || '').trim().toUpperCase() || '—'}`,
+    `Bot: ${formatInternalBotUsername(botUsername)} (ID: ${formatInternalBotId(botId)})`,
+    `User ID: ${formatInternalOwnerUserId(ownerUserId)}`,
+    `Дата: ${formatInternalDateTime(createdAt)}`,
+  ].join('\n');
+}
+
+function buildInternalTrialMessage({ storeId = '', botUsername = '', ownerUserId = '', trialDays = TRIAL_DAYS } = {}) {
+  return [
+    '🎁 Новый trial',
+    '',
+    `Store ID: ${String(storeId || '').trim().toUpperCase() || '—'}`,
+    `Bot: ${formatInternalBotUsername(botUsername)}`,
+    `User ID: ${formatInternalOwnerUserId(ownerUserId)}`,
+    `Срок: ${formatTariffLabel(trialDays)}`,
+  ].join('\n');
+}
+
+function buildInternalPaymentMessage({ storeId = '', botUsername = '', ownerUserId = '', amount = 0, tariffDays = 0, paidAt = '' } = {}) {
+  return [
+    '💰 Оплата',
+    '',
+    `Store ID: ${String(storeId || '').trim().toUpperCase() || '—'}`,
+    `Bot: ${formatInternalBotUsername(botUsername)}`,
+    `User ID: ${formatInternalOwnerUserId(ownerUserId)}`,
+    `Сумма: ${formatInternalMoney(amount)}`,
+    `Тариф: ${formatTariffLabel(tariffDays)}`,
+    `Дата: ${formatInternalDateTime(paidAt)}`,
+  ].join('\n');
+}
+
+async function notifyInternalNewStore(storeId, overrides = {}) {
+  try {
+    const store = getStoreRow(storeId);
+    if (!store) return { ok: false, error: 'STORE_NOT_FOUND' };
+    const botMeta = resolveStoreInternalBotMeta(store);
+    return sendInternalNotification(buildInternalNewStoreMessage({
+      storeId: store.store_id,
+      botUsername: overrides.botUsername || botMeta.botUsername,
+      botId: overrides.botId || botMeta.botId,
+      ownerUserId: overrides.ownerUserId || store.owner_user_id,
+      createdAt: overrides.createdAt || store.created_at,
+    }));
+  } catch (error) {
+    console.log(`[internal-notify] new store failed: ${error?.message || error}`);
+    return { ok: false, error: 'INTERNAL_NOTIFICATION_FAILED' };
+  }
+}
+
+async function notifyInternalTrialStarted(storeId, overrides = {}) {
+  try {
+    const store = getStoreRow(storeId);
+    if (!store) return { ok: false, error: 'STORE_NOT_FOUND' };
+    const botMeta = resolveStoreInternalBotMeta(store);
+    return sendInternalNotification(buildInternalTrialMessage({
+      storeId: store.store_id,
+      botUsername: overrides.botUsername || botMeta.botUsername,
+      ownerUserId: overrides.ownerUserId || store.owner_user_id,
+      trialDays: overrides.trialDays || TRIAL_DAYS,
+    }));
+  } catch (error) {
+    console.log(`[internal-notify] trial failed: ${error?.message || error}`);
+    return { ok: false, error: 'INTERNAL_NOTIFICATION_FAILED' };
+  }
+}
+
+async function notifyInternalPayment(storeId, { amount = 0, tariffDays = 0, paidAt = '' } = {}) {
+  try {
+    const store = getStoreRow(storeId);
+    if (!store) return { ok: false, error: 'STORE_NOT_FOUND' };
+    const botMeta = resolveStoreInternalBotMeta(store);
+    return sendInternalNotification(buildInternalPaymentMessage({
+      storeId: store.store_id,
+      botUsername: botMeta.botUsername,
+      ownerUserId: store.owner_user_id,
+      amount,
+      tariffDays,
+      paidAt,
+    }));
+  } catch (error) {
+    console.log(`[internal-notify] payment failed: ${error?.message || error}`);
+    return { ok: false, error: 'INTERNAL_NOTIFICATION_FAILED' };
+  }
 }
 
 function normalizeOrderProcessingMode(raw) {
@@ -3310,7 +3477,7 @@ async function validateTelegramBotToken(token) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.ok) return { ok: false, error: 'BOT_TOKEN_INVALID' };
     const user = payload.result || {};
-    return { ok: true, username: user.username ? `@${user.username}` : '' };
+    return { ok: true, username: user.username ? `@${user.username}` : '', id: String(user.id || '').trim() };
   } catch {
     return { ok: false, error: 'BOT_TOKEN_VALIDATION_FAILED' };
   }
@@ -3574,6 +3741,30 @@ async function sendTelegramTextByToken(token, chatId, text, extra = {}) {
   }
 }
 
+async function sendInternalNotification(message) {
+  const text = String(message || '').trim();
+  if (!text) return { ok: false, error: 'MESSAGE_REQUIRED' };
+  if (!ADMIN_BOT_TOKEN) {
+    console.log('[internal-notify] skipped: ADMIN_BOT_TOKEN not configured');
+    return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
+  }
+  if (!INTERNAL_NOTIFICATIONS_CHAT_ID) {
+    console.log('[internal-notify] skipped: INTERNAL_NOTIFICATIONS_CHAT_ID not configured');
+    return { ok: false, error: 'INTERNAL_CHAT_NOT_CONFIGURED' };
+  }
+  try {
+    const sent = await sendTelegramTextByToken(ADMIN_BOT_TOKEN, INTERNAL_NOTIFICATIONS_CHAT_ID, text);
+    if (!sent?.ok) {
+      console.log(`[internal-notify] send failed: ${sent?.error || 'SEND_FAILED'} ${sent?.description || ''}`.trim());
+      return { ok: false, error: sent?.error || 'SEND_FAILED' };
+    }
+    return { ok: true };
+  } catch (error) {
+    console.log(`[internal-notify] send failed: ${error?.message || error}`);
+    return { ok: false, error: 'SEND_FAILED' };
+  }
+}
+
 async function flushPendingAdminMessages(telegramUserId = '') {
   if (!ADMIN_BOT_TOKEN) return { ok: false, flushed: 0, reason: 'ADMIN_BOT_NOT_CONFIGURED' };
   const uid = String(telegramUserId || '').trim();
@@ -3798,6 +3989,7 @@ app.post('/api/auth/activate', (req, res) => {
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
   activateStoreTrialIfNeeded(storeId);
+  void notifyInternalTrialStarted(storeId, { ownerUserId: identity || row.owner_user_id, botUsername: resolveStoreInternalBotMeta(storeId).botUsername });
 
   return res.json({ ok: true, storeId, active: true });
 });
@@ -3830,6 +4022,7 @@ app.post('/api/auth/register-by-store', (req, res) => {
 
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   activateStoreTrialIfNeeded(storeId);
+  void notifyInternalTrialStarted(storeId, { ownerUserId: identity || row.owner_user_id, botUsername: resolveStoreInternalBotMeta(storeId).botUsername });
   return res.json({ ok: true, storeId, active: true });
 });
 
@@ -3858,6 +4051,7 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const validation = await validateTelegramBotToken(botToken);
   if (!validation.ok) return res.status(400).json({ error: validation.error || 'BOT_TOKEN_INVALID' });
   const botUsername = String(validation.username || '').trim();
+  const botId = String(validation.id || '').trim();
 
   const storeId = uniqueStoreId();
   const catalogUrl = getStoreCatalogUrl(storeId, req);
@@ -3905,6 +4099,7 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   ensureStoreSubscriptionRow(storeId, ts);
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
+  persistStoreInternalBotMeta(storeId, { botId, botUsername });
   createCatalogConnectionRecord({
     storeId,
     platform: 'telegram',
@@ -3923,6 +4118,8 @@ app.post('/api/auth/register-by-bot', async (req, res) => {
   const onboarding = ownerTelegramId
     ? await sendStoreCatalogKeyboard(botToken, ownerTelegramId, storeId, true)
     : { ok: false, skipped: true, reason: 'OWNER_TELEGRAM_ID_NOT_FOUND' };
+  void notifyInternalNewStore(storeId, { botId, botUsername, ownerUserId: identity, createdAt: ts });
+  void notifyInternalTrialStarted(storeId, { botUsername, ownerUserId: identity });
   return res.json({
     ok: true,
     storeId,
@@ -3979,6 +4176,8 @@ app.post('/api/auth/register', (req, res) => {
   ensureStoreSubscriptionRow(storeId, ts);
   if (identity) upsertStoreUser(storeId, identity, 'owner');
   if (email) upsertStoreUser(storeId, `email:${email}`, 'owner');
+  void notifyInternalNewStore(storeId, { ownerUserId: identity, createdAt: ts });
+  void notifyInternalTrialStarted(storeId, { ownerUserId: identity });
 
   return res.json({ ok: true, storeId });
 });
@@ -4011,6 +4210,13 @@ app.post('/api/auth/platform/bootstrap', (req, res) => {
     });
     if (!createdStore) return res.status(500).json({ error: 'STORE_CREATE_FAILED' });
     created = true;
+    void notifyInternalNewStore(String(createdStore.store_id || '').trim().toUpperCase(), {
+      ownerUserId: resolved.identity,
+      createdAt: createdStore.created_at,
+    });
+    void notifyInternalTrialStarted(String(createdStore.store_id || '').trim().toUpperCase(), {
+      ownerUserId: resolved.identity,
+    });
     stores = getStoresForIdentity(resolved.identity, req);
     primaryStoreId = String(createdStore.store_id || '').trim().toUpperCase();
   }
@@ -4369,6 +4575,11 @@ app.post('/api/subscription/yookassa/webhook', async (req, res) => {
     ].join('\n');
     await notifySubscriptionViaAdminBot(ownerTelegramId, text);
   }
+  void notifyInternalPayment(storeId, {
+    amount: amountValue,
+    tariffDays,
+    paidAt: ts,
+  });
 
   return res.json({ ok: true });
 });
@@ -4446,6 +4657,8 @@ app.post('/api/admin/stores', authMiddleware, (req, res) => {
   replaceProductsTx(storeId, dataset.products);
   ensureStoreSubscriptionRow(storeId, ts);
   upsertStoreUser(storeId, identity, 'owner');
+  void notifyInternalNewStore(storeId, { ownerUserId: identity, createdAt: ts });
+  void notifyInternalTrialStarted(storeId, { ownerUserId: identity });
 
   return res.json({ ok: true, storeId, active: false });
 });
@@ -4490,7 +4703,7 @@ app.post('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMi
   const botToken = String(req.body?.botToken || '').trim();
   const existingRows = listStoreCatalogConnectionRows(req.storeId);
 
-  let validation = { ok: true, username: '' };
+  let validation = { ok: true, username: '', id: '' };
   if (platform === 'telegram') {
     if (!botToken || !botToken.includes(':')) {
       return res.status(400).json({ error: 'BOT_TOKEN_REQUIRED' });
@@ -4529,6 +4742,12 @@ app.post('/api/admin/stores/:storeId/catalog-bots', authMiddleware, storeParamMi
     meta: { createdBy: 'admin-profile' },
   });
   syncLegacyStoreBotColumns(req.storeId);
+  if (platform === 'telegram') {
+    persistStoreInternalBotMeta(req.storeId, {
+      botId: String(validation.id || '').trim(),
+      botUsername: String(validation.username || '').trim(),
+    });
+  }
 
   let menuSetup = { ok: false, skipped: true, reason: 'PLATFORM_NOT_TELEGRAM' };
   let webhookSetup = { ok: false, skipped: true, reason: 'PLATFORM_NOT_TELEGRAM' };
