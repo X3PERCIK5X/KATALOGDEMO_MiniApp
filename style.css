@@ -5618,10 +5618,28 @@ body.keyboard-open .bottom-nav {
   border: 1px solid rgba(255, 255, 255, 0.22);
   background-color: #242a3c;
   background-repeat: no-repeat;
-  background-position: center;
+  background-position: center right;
   background-size: cover;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
   scroll-snap-align: start;
+  position: relative;
+  isolation: isolate;
+}
+
+.home-v2-banner-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(7, 10, 18, 0.78) 0%, rgba(7, 10, 18, 0.68) 28%, rgba(7, 10, 18, 0.34) 54%, rgba(7, 10, 18, 0.10) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  z-index: 0;
+}
+
+.home-v2-banner-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .home-v2-banner-card .featured-chip {
@@ -5636,13 +5654,16 @@ body.keyboard-open .bottom-nav {
 .home-v2-banner-card .featured-title {
   font-size: clamp(21px, 6vw, 28px);
   line-height: 1.08;
+  max-width: min(92%, 470px);
+  text-wrap: balance;
 }
 
 .home-v2-banner-card .featured-text {
   margin-top: 6px;
-  max-width: min(95%, 420px);
+  max-width: min(92%, 420px);
   font-size: clamp(13px, 3.5vw, 15px);
   line-height: 1.26;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .home-v2-banner-card .featured-cta {
