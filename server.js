@@ -2512,6 +2512,13 @@ function sanitizeSettingsPatch(settingsPatch) {
     || out.orderRequestSender
     || 'telegram_chat',
   );
+  const rawProvidedTelegramTargets = normalizeTelegramChatIds([
+    ...(Array.isArray(out.orderRequestChatIds) ? out.orderRequestChatIds : []),
+    out.orderRequestChatId,
+    out.orderChatId,
+    out.chatId,
+    out.telegramChatId,
+  ]);
   const rawProvidedTelegramTarget = [
     out.orderRequestChatId,
     out.orderChatId,
@@ -2539,11 +2546,15 @@ function sanitizeSettingsPatch(settingsPatch) {
 
   if (hasProvidedTarget) {
     if (resolvedChannel === 'telegram_chat') {
-      const chatId = normalizeTelegramChatId(rawProvidedTarget);
+      const chatIds = rawProvidedTelegramTargets.length
+        ? rawProvidedTelegramTargets
+        : normalizeTelegramChatIds([rawProvidedTarget]);
+      const chatId = chatIds[0] || '';
       out.orderRequestTarget = '';
       out.orderRequestUrl = '';
       out.orderRequestWebhookUrl = '';
       out.orderRequestLink = '';
+      out.orderRequestChatIds = chatIds;
       out.orderRequestChatId = chatId;
       out.orderChatId = chatId;
       out.chatId = chatId;
@@ -2570,6 +2581,7 @@ function sanitizeSettingsPatch(settingsPatch) {
       } else {
         out.orderRequestWebhookUrl = '';
       }
+      out.orderRequestChatIds = [];
       out.orderRequestChatId = '';
       out.orderChatId = '';
       out.chatId = '';
@@ -2577,6 +2589,30 @@ function sanitizeSettingsPatch(settingsPatch) {
     }
   }
 
+  if (
+    Object.prototype.hasOwnProperty.call(out, 'orderRequestChatIds')
+    || Object.prototype.hasOwnProperty.call(out, 'orderRequestChatId')
+    || Object.prototype.hasOwnProperty.call(out, 'orderChatId')
+    || Object.prototype.hasOwnProperty.call(out, 'chatId')
+    || Object.prototype.hasOwnProperty.call(out, 'telegramChatId')
+  ) {
+    const isTelegramChannel = normalizeOrderRequestChannelType(out.orderRequestChannelType || '') === 'telegram_chat';
+    if (isTelegramChannel) {
+      const chatIds = normalizeTelegramChatIds([
+        ...(Array.isArray(out.orderRequestChatIds) ? out.orderRequestChatIds : []),
+        out.orderRequestChatId,
+        out.orderChatId,
+        out.chatId,
+        out.telegramChatId,
+      ]);
+      const chatId = chatIds[0] || '';
+      out.orderRequestChatIds = chatIds;
+      out.orderRequestChatId = chatId;
+      out.orderChatId = chatId;
+      out.chatId = chatId;
+      out.telegramChatId = chatId;
+    }
+  }
   if (
     Object.prototype.hasOwnProperty.call(out, 'orderRequestChatId')
     || Object.prototype.hasOwnProperty.call(out, 'orderChatId')
@@ -2592,6 +2628,10 @@ function sanitizeSettingsPatch(settingsPatch) {
         out.telegramChatId,
       ].find((value) => value !== undefined);
       const chatId = normalizeTelegramChatId(provided);
+      out.orderRequestChatIds = normalizeTelegramChatIds([
+        ...(Array.isArray(out.orderRequestChatIds) ? out.orderRequestChatIds : []),
+        chatId,
+      ]);
       out.orderRequestChatId = chatId;
       out.orderChatId = chatId;
       out.chatId = chatId;
@@ -3451,6 +3491,8 @@ const notifyOrderViaTelegram = orderDeliveryService.notifyOrderViaTelegram;
 const notifyOrderViaVkMessages = orderDeliveryService.notifyOrderViaVkMessages;
 const notifyOrderViaWebhook = orderDeliveryService.notifyOrderViaWebhook;
 const notifyOrderRequest = orderDeliveryService.notifyOrderRequest;
+const normalizeTelegramChatIds = orderDeliveryService.normalizeTelegramChatIds;
+const resolveOrderRequestChatIdsFromSettings = orderDeliveryService.resolveOrderRequestChatIdsFromSettings;
 
 async function notifyResetCodeViaAdminBot(ownerTelegramId, storeId, code) {
   if (!ADMIN_BOT_TOKEN) return { ok: false, error: 'ADMIN_BOT_NOT_CONFIGURED' };
@@ -4645,6 +4687,10 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     mergedSettings.orderRequestUrl = '';
     mergedSettings.orderRequestWebhookUrl = '';
     mergedSettings.orderRequestLink = '';
+    mergedSettings.orderRequestChatIds = normalizeTelegramChatIds([
+      ...(Array.isArray(mergedSettings.orderRequestChatIds) ? mergedSettings.orderRequestChatIds : []),
+      orderChatId,
+    ]);
     mergedSettings.orderRequestChatId = orderChatId;
     mergedSettings.orderChatId = orderChatId;
     mergedSettings.chatId = orderChatId;
@@ -4662,28 +4708,30 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   );
 
   let orderChatTest = { ok: false, skipped: true, reason: 'CHAT_TEST_NOT_REQUESTED' };
+  const targetChatIds = resolveOrderRequestChatIdsFromSettings(mergedSettings);
   if (
     normalizeOrderRequestChannelType(mergedSettings.orderRequestChannelType || '') === 'telegram_chat'
-    && normalizeTelegramChatId(mergedSettings.orderRequestChatId || mergedSettings.orderChatId || mergedSettings.chatId || mergedSettings.telegramChatId || '')
+    && targetChatIds.length
   ) {
-    const targetChatId = normalizeTelegramChatId(
-      mergedSettings.orderRequestChatId
-      || mergedSettings.orderChatId
-      || mergedSettings.chatId
-      || mergedSettings.telegramChatId
-      || '',
-    );
     if (ADMIN_BOT_TOKEN) {
-      orderChatTest = await sendTelegramTextByToken(
-        ADMIN_BOT_TOKEN,
-        targetChatId,
-        [
-          'Канал уведомлений о заказах подключен.',
-          `Store ID: ${req.storeId}`,
-          `Telegram чат: ${targetChatId}`,
-          'Тестовое сообщение отправлено успешно.',
-        ].join('\n'),
-      );
+      const results = [];
+      for (const targetChatId of targetChatIds) {
+        const result = await sendTelegramTextByToken(
+          ADMIN_BOT_TOKEN,
+          targetChatId,
+          [
+            'Канал уведомлений о заказах подключен.',
+            `Store ID: ${req.storeId}`,
+            `Telegram чат: ${targetChatId}`,
+            'Тестовое сообщение отправлено успешно.',
+          ].join('\n'),
+        );
+        results.push({ chatId: targetChatId, ...result });
+      }
+      const successCount = results.filter((item) => item.ok).length;
+      orderChatTest = successCount > 0
+        ? { ok: true, sentCount: successCount, results }
+        : { ok: false, error: 'SEND_FAILED', results };
     } else {
       orderChatTest = { ok: false, skipped: true, reason: 'ADMIN_BOT_NOT_CONFIGURED' };
     }

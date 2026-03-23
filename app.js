@@ -7847,13 +7847,31 @@ function normalizeOrderRequestChannel(raw) {
   return 'telegram_chat';
 }
 
+function normalizeTelegramChatIdsList(raw) {
+  const values = Array.isArray(raw)
+    ? raw
+    : String(raw || '')
+      .split(/[\n,;]+/g)
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const chatId = isValidTelegramChatId(value) ? String(value).trim() : '';
+    if (!chatId || seen.has(chatId)) continue;
+    seen.add(chatId);
+    result.push(chatId);
+  }
+  return result;
+}
+
 function getOrderRequestChannelMeta(channel) {
   const code = normalizeOrderRequestChannel(channel);
   if (code === 'telegram_chat') {
     return {
       label: 'Chat ID Telegram',
       placeholder: 'Например: -1001234567890',
-      hint: 'Добавьте admin-бота в Telegram-чат: он отправит Chat ID автоматически.',
+      hint: 'Добавьте admin-бота в Telegram-чат и сохраняйте чаты по одному: новые заявки будут отправляться во все сохраненные чаты.',
     };
   }
   if (code === 'webhook') {
@@ -7904,14 +7922,24 @@ function getOrderChatSettingsDraft(sourceSettings = null) {
   const channel = normalizeOrderRequestChannel(
     inferredChannel,
   );
+  const targets = channel === 'telegram_chat'
+    ? normalizeTelegramChatIdsList([
+      ...(Array.isArray(settings.orderRequestChatIds) ? settings.orderRequestChatIds : []),
+      settings.orderRequestChatId,
+      settings.orderChatId,
+      settings.chatId,
+      settings.telegramChatId,
+    ])
+    : [];
   const target = channel === 'telegram_chat'
-    ? String(settings.orderRequestChatId || settings.orderChatId || settings.chatId || settings.telegramChatId || '').trim()
+    ? String(targets[0] || '').trim()
     : String(settings.orderRequestTarget || settings.orderRequestUrl || settings.orderRequestWebhookUrl || '').trim();
   const vkToken = String(settings.orderRequestVkToken || settings.vkOrderToken || settings.vkCommunityToken || '').trim();
   return {
     mode,
     channel,
     target,
+    targets,
     vkToken,
     targetValid: validateOrderRequestTarget(channel, target, vkToken),
   };
@@ -7923,6 +7951,7 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
       mode: normalizeOrderProcessingMode(ui.orderChatModeInput?.value || 'chat'),
       channel: normalizeOrderRequestChannel(ui.orderRequestChannelInput?.value || 'telegram_chat'),
       target: String(ui.orderRequestTargetInput?.value || '').trim(),
+      targets: normalizeTelegramChatIdsList(getOrderChatSettingsDraft().targets || []),
       vkToken: String(ui.orderRequestVkTokenInput?.value || '').trim(),
       targetValid: validateOrderRequestTarget(
         ui.orderRequestChannelInput?.value || 'telegram_chat',
@@ -7977,7 +8006,10 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
     if (draft.mode === 'chat') {
       if (draft.targetValid) {
         if (draft.channel === 'telegram_chat') {
-          ui.orderChatStatus.textContent = `Режим заявок активен: отправка в Telegram чат ${draft.target}.`;
+          const telegramTargets = normalizeTelegramChatIdsList(draft.targets && draft.targets.length ? draft.targets : [draft.target]);
+          ui.orderChatStatus.textContent = telegramTargets.length > 1
+            ? `Режим заявок активен: отправка в ${telegramTargets.length} Telegram чатов.`
+            : `Режим заявок активен: отправка в Telegram чат ${draft.target}.`;
         } else if (draft.channel === 'vk_messages') {
           ui.orderChatStatus.textContent = 'Режим заявок активен: отправка в сообщения VK.';
         } else if (draft.channel === 'webhook') {
@@ -7987,7 +8019,7 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
         }
       } else {
         if (draft.channel === 'telegram_chat') {
-          ui.orderChatStatus.textContent = 'Для режима заявок укажите корректный Chat ID Telegram.';
+          ui.orderChatStatus.textContent = 'Для режима заявок укажите корректный Chat ID Telegram. Можно добавлять несколько чатов по одному.';
         } else if (draft.channel === 'vk_messages') {
           ui.orderChatStatus.textContent = 'Для режима заявок укажите корректный VK peer_id/user_id и токен сообщества.';
         } else {
@@ -8006,7 +8038,8 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
     if (saved.mode !== 'chat' || !saved.targetValid) {
       ui.orderChatSavedList.innerHTML = '<div class="catalog-bot-empty">Сохраненные каналы уведомлений пока не добавлены.</div>';
     } else if (saved.channel === 'telegram_chat') {
-      ui.orderChatSavedList.innerHTML = `
+      const savedTargets = normalizeTelegramChatIdsList(saved.targets && saved.targets.length ? saved.targets : [saved.target]);
+      ui.orderChatSavedList.innerHTML = savedTargets.map((chatId) => `
         <article class="catalog-bot-card">
           <div class="catalog-bot-card-head">
             <span class="catalog-bot-badge">Telegram</span>
@@ -8014,14 +8047,14 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
           </div>
           <div class="catalog-bot-card-line">
             <span>Chat ID</span>
-            <span>${escapeHtml(saved.target)}</span>
+            <span>${escapeHtml(chatId)}</span>
           </div>
           <div class="catalog-bot-card-line">
             <span>Статус</span>
             <span>Подключен и сохранен</span>
           </div>
         </article>
-      `;
+      `).join('');
     } else if (saved.channel === 'vk_messages') {
       ui.orderChatSavedList.innerHTML = `
         <article class="catalog-bot-card">
@@ -8117,7 +8150,17 @@ async function saveOrderChatSettings() {
   }
   if (ui.orderChatStatus) ui.orderChatStatus.textContent = 'Сохраняем настройки заявок...';
   try {
-    const telegramChatId = channel === 'telegram_chat' ? target : '';
+    const existingTelegramChatIds = normalizeTelegramChatIdsList([
+      ...(Array.isArray(state.saas.settings?.orderRequestChatIds) ? state.saas.settings.orderRequestChatIds : []),
+      state.saas.settings?.orderRequestChatId,
+      state.saas.settings?.orderChatId,
+      state.saas.settings?.chatId,
+      state.saas.settings?.telegramChatId,
+    ]);
+    const telegramChatIds = channel === 'telegram_chat'
+      ? normalizeTelegramChatIdsList([...existingTelegramChatIds, target])
+      : [];
+    const telegramChatId = channel === 'telegram_chat' ? String(telegramChatIds[0] || '').trim() : '';
     const requestTarget = channel === 'telegram_chat' ? '' : target;
     const patch = {
       ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
@@ -8125,6 +8168,7 @@ async function saveOrderChatSettings() {
       orderRequestSender: channel === 'telegram_chat' ? 'admin_bot' : 'external',
       orderRequestChannelType: channel,
       orderRequestTarget: requestTarget,
+      orderRequestChatIds: telegramChatIds,
       orderRequestChatId: telegramChatId,
       orderChatId: telegramChatId,
       chatId: telegramChatId,
@@ -8143,8 +8187,9 @@ async function saveOrderChatSettings() {
     if (ui.orderChatStatus) {
       if (mode === 'chat' && channel === 'telegram_chat') {
         const testResult = payload?.orderChatTest && typeof payload.orderChatTest === 'object' ? payload.orderChatTest : null;
+        const savedChatIds = normalizeTelegramChatIdsList(payload?.settings?.orderRequestChatIds || telegramChatIds);
         if (testResult?.ok) {
-          ui.orderChatStatus.textContent = `Канал уведомлений сохранён: Telegram чат ${telegramChatId}. Тестовое сообщение отправлено.`;
+          ui.orderChatStatus.textContent = `Канал уведомлений сохранён: Telegram чат ${target}. Тестовое сообщение отправлено. Подключено чатов: ${savedChatIds.length}.`;
         } else if (testResult?.description) {
           ui.orderChatStatus.textContent = `Канал уведомлений сохранён, но тест не отправлен: ${String(testResult.description || '').trim()}`;
         } else if (testResult?.error) {
