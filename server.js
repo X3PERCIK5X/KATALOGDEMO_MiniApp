@@ -5648,7 +5648,8 @@ async function runSubscriptionReminderTick() {
       text = [
         'Напоминание об оплате подписки ⚠️',
         `Store ID: ${storeId}`,
-        `Льготный период: ${sub.graceDaysLeft} дн.`,
+        `До отключения магазина осталось: ${sub.graceDaysLeft} дн.`,
+        `Льготный период активен: ${sub.graceDaysLeft} дн.`,
         'Продлите подписку, чтобы сохранить доступ к редактированию, статистике и уведомлениям.',
       ].join('\n');
     } else if ((sub.code === 'active' || sub.code === 'trial') && Number(sub.daysLeft || 0) === 1) {
@@ -5656,6 +5657,7 @@ async function runSubscriptionReminderTick() {
       text = [
         'Подписка заканчивается завтра ⚠️',
         `Store ID: ${storeId}`,
+        `До окончания подписки осталось: ${sub.daysLeft} дн.`,
         sub.code === 'trial'
           ? 'Тестовый период заканчивается через 1 день.'
           : 'Оплаченный период заканчивается через 1 день.',
