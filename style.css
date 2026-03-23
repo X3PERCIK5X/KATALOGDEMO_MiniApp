@@ -4019,6 +4019,48 @@ html[data-theme="light"] #screen-product .recommended-card img {
   padding-inline: 0;
 }
 
+.catalog-top-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+
+.catalog-top-search-input {
+  min-width: 0;
+  width: 100%;
+  min-height: 52px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 18px;
+  font-size: 16px;
+}
+
+.catalog-top-search-input::placeholder {
+  color: var(--muted);
+}
+
+.catalog-top-search-button {
+  width: 52px;
+  min-width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.catalog-top-search-button .icon-svg {
+  width: 20px;
+  height: 20px;
+}
+
 @media (max-width: 740px) {
   .bottom-nav {
     padding-bottom: calc(2px + env(safe-area-inset-bottom));
@@ -4033,6 +4075,18 @@ html[data-theme="light"] #screen-product .recommended-card img {
   .product-head h2 {
     padding-inline: 6px;
     font-size: 21px;
+  }
+
+  .catalog-top-search {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .catalog-top-search-input,
+  .catalog-top-search-button {
+    min-height: 48px;
+    height: 48px;
+    border-radius: 14px;
   }
 }
 

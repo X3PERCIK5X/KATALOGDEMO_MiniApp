@@ -300,6 +300,9 @@ const ui = {
   searchHistoryClear: document.getElementById('searchHistoryClear'),
   searchHistoryTitle: document.getElementById('searchHistoryTitle'),
   searchSuggestTitle: document.getElementById('searchSuggestTitle'),
+  catalogSearchForm: document.getElementById('catalogSearchForm'),
+  catalogSearchInput: document.getElementById('catalogSearchInput'),
+  catalogSearchButton: document.getElementById('catalogSearchButton'),
   profileAvatar: document.getElementById('profileAvatar'),
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
@@ -4091,6 +4094,7 @@ function applyAdminModeUi() {
   if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (ui.statsButton) ui.statsButton.classList.remove('nav-hidden');
   if (ui.ordersButton) ui.ordersButton.classList.toggle('nav-hidden', !state.admin.enabled);
+  if (ui.catalogSearchForm) ui.catalogSearchForm.classList.toggle('hidden', state.admin.enabled);
   if (!state.admin.enabled) {
     if (ui.cartButton) ui.cartButton.classList.remove('admin-hidden-nav');
     if (ui.favoritesButton) ui.favoritesButton.classList.remove('admin-hidden-nav');
@@ -9186,6 +9190,16 @@ function bindEvents() {
     renderProductView();
     setScreen('product');
     closeSearchOverlay();
+  });
+  on(ui.catalogSearchForm, 'submit', (e) => {
+    e.preventDefault();
+    if (state.admin.enabled) return;
+    submitSearch(ui.catalogSearchInput?.value || '');
+  });
+  on(ui.catalogSearchInput, 'keydown', (e) => {
+    if (e.key === 'Escape') {
+      ui.catalogSearchInput.value = '';
+    }
   });
   on(ui.homeBannerDots, 'click', (e) => {
     const dot = e.target.closest('[data-home-banner-dot]');
