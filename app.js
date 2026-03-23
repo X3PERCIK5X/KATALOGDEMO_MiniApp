@@ -7041,6 +7041,7 @@ function renderCart() {
   const summary = cartSummary();
   ui.cartList.innerHTML = items.map((p) => {
     const priceView = getProductPriceView(p);
+    const cartPriceLabel = `${formatPrice(priceView.finalPrice)} ₽`;
     return `
     <div class="cart-item">
       <label class="select-dot">
@@ -7051,7 +7052,7 @@ function renderCart() {
       <div class="cart-info">
         <button class="cart-title-link" data-open="${p.id}">${p.title}</button>
         <div class="cart-sku">Артикул: ${getSku(p) || '—'}</div>
-        <div class="cart-price">${priceView.html}</div>
+        <div class="cart-price">${cartPriceLabel}</div>
       </div>
       <div class="cart-controls">
         <button class="qty-btn" data-qty="${p.id}" data-action="dec">−</button>
