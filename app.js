@@ -8063,11 +8063,24 @@ function scrollFieldIntoView(input) {
   if (!input || typeof input.scrollIntoView !== 'function') return;
   window.setTimeout(() => {
     try {
-      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     } catch {
       input.scrollIntoView();
     }
   }, 180);
+}
+
+function getKeyboardAssistTarget(input) {
+  if (!input || !input.closest) return input || null;
+  return (
+    input.closest('.order-form.flat label')
+    || input.closest('.order-form label')
+    || input.closest('.profile-subscription-card')
+    || input.closest('.bot-settings-card')
+    || input.closest('.saas-auth-card')
+    || input.closest('.screen')
+    || input
+  );
 }
 
 async function saveOrderChatSettings() {
@@ -10450,7 +10463,16 @@ function setupBottomDockKeyboardLock() {
 
   window.visualViewport.addEventListener('resize', update, { passive: true });
   window.visualViewport.addEventListener('scroll', update, { passive: true });
-  window.addEventListener('focusin', update, { passive: true });
+  window.addEventListener('focusin', (event) => {
+    update();
+    const target = event.target;
+    if (!document.body.classList.contains('admin-mode')) return;
+    if (!target || !target.closest) return;
+    if (!target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const scrollTarget = getKeyboardAssistTarget(target);
+    scrollFieldIntoView(scrollTarget);
+    window.setTimeout(() => scrollFieldIntoView(scrollTarget), 340);
+  }, { passive: true });
   window.addEventListener('focusout', () => setTimeout(update, 60), { passive: true });
   window.addEventListener('orientationchange', () => {
     setTimeout(() => {
