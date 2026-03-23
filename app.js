@@ -7996,6 +7996,17 @@ function renderOrderChatSettings({ fromInputs = false } = {}) {
   }
 }
 
+function scrollFieldIntoView(input) {
+  if (!input || typeof input.scrollIntoView !== 'function') return;
+  window.setTimeout(() => {
+    try {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch {
+      input.scrollIntoView();
+    }
+  }, 180);
+}
+
 async function saveOrderChatSettings() {
   if (!state.admin.enabled || !state.saas.storeId) return;
   if (!requireAdminFeatureAccess()) return;
@@ -8053,11 +8064,22 @@ async function saveOrderChatSettings() {
     state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
     renderOrderChatSettings();
     if (ui.orderChatStatus) {
-      ui.orderChatStatus.textContent = mode === 'chat'
-        ? (channel === 'telegram_chat'
-          ? `Канал уведомлений сохранён: Telegram чат ${telegramChatId}.`
-          : 'Режим заявок сохранён.')
-        : 'Режим онлайн-оплаты сохранён.';
+      if (mode === 'chat' && channel === 'telegram_chat') {
+        const testResult = payload?.orderChatTest && typeof payload.orderChatTest === 'object' ? payload.orderChatTest : null;
+        if (testResult?.ok) {
+          ui.orderChatStatus.textContent = `Канал уведомлений сохранён: Telegram чат ${telegramChatId}. Тестовое сообщение отправлено.`;
+        } else if (testResult?.description) {
+          ui.orderChatStatus.textContent = `Канал уведомлений сохранён, но тест не отправлен: ${String(testResult.description || '').trim()}`;
+        } else if (testResult?.error) {
+          ui.orderChatStatus.textContent = `Канал уведомлений сохранён, но тест не отправлен: ${String(testResult.error || '').trim()}`;
+        } else {
+          ui.orderChatStatus.textContent = `Канал уведомлений сохранён: Telegram чат ${telegramChatId}.`;
+        }
+      } else {
+        ui.orderChatStatus.textContent = mode === 'chat'
+          ? 'Режим заявок сохранён.'
+          : 'Режим онлайн-оплаты сохранён.';
+      }
     }
   } catch (error) {
     if (ui.orderChatStatus) {
@@ -9024,8 +9046,14 @@ function bindEvents() {
   on(ui.orderRequestTargetInput, 'input', () => {
     renderOrderChatSettings({ fromInputs: true });
   });
+  on(ui.orderRequestTargetInput, 'focus', () => {
+    scrollFieldIntoView(ui.orderRequestTargetInput);
+  });
   on(ui.orderRequestVkTokenInput, 'input', () => {
     renderOrderChatSettings({ fromInputs: true });
+  });
+  on(ui.orderRequestVkTokenInput, 'focus', () => {
+    scrollFieldIntoView(ui.orderRequestVkTokenInput);
   });
   on(ui.orderChatSettingsForm, 'submit', async (e) => {
     e.preventDefault();

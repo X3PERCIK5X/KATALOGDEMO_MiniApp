@@ -4648,6 +4648,34 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     req.storeId,
   );
 
+  let orderChatTest = { ok: false, skipped: true, reason: 'CHAT_TEST_NOT_REQUESTED' };
+  if (
+    normalizeOrderRequestChannelType(mergedSettings.orderRequestChannelType || '') === 'telegram_chat'
+    && normalizeTelegramChatId(mergedSettings.orderRequestChatId || mergedSettings.orderChatId || mergedSettings.chatId || mergedSettings.telegramChatId || '')
+  ) {
+    const targetChatId = normalizeTelegramChatId(
+      mergedSettings.orderRequestChatId
+      || mergedSettings.orderChatId
+      || mergedSettings.chatId
+      || mergedSettings.telegramChatId
+      || '',
+    );
+    if (ADMIN_BOT_TOKEN) {
+      orderChatTest = await sendTelegramTextByToken(
+        ADMIN_BOT_TOKEN,
+        targetChatId,
+        [
+          'Канал уведомлений о заказах подключен.',
+          `Store ID: ${req.storeId}`,
+          `Telegram чат: ${targetChatId}`,
+          'Тестовое сообщение отправлено успешно.',
+        ].join('\n'),
+      );
+    } else {
+      orderChatTest = { ok: false, skipped: true, reason: 'ADMIN_BOT_NOT_CONFIGURED' };
+    }
+  }
+
   let menuSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
   let webhookSetup = { ok: false, skipped: true, reason: 'BOT_TOKEN_NOT_CHANGED' };
   if (botToken) {
@@ -4673,6 +4701,7 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
     botUsername: String(validation.username || '').trim(),
     menuSetup,
     webhookSetup,
+    orderChatTest,
     settings: mergedSettings,
     connections: listStoreCatalogConnections(req.storeId, { req }),
   });
