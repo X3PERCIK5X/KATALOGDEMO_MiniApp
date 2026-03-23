@@ -1855,10 +1855,10 @@ function updateBottomNav(screen) {
     'orders-active': ui.statsButton,
     'orders-completed': ui.statsButton,
     'orders-canceled': ui.statsButton,
-    stats: ui.profileButton,
-    'stats-revenue': ui.profileButton,
-    'stats-orders': ui.profileButton,
-    'stats-popular': ui.profileButton,
+    stats: ui.ordersButton,
+    'stats-revenue': ui.ordersButton,
+    'stats-orders': ui.ordersButton,
+    'stats-popular': ui.ordersButton,
     favorites: ui.favoritesButton,
     menu: ui.menuButton,
   };
@@ -4089,6 +4089,7 @@ function applyAdminModeUi() {
   });
   if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (ui.statsButton) ui.statsButton.classList.toggle('nav-hidden', !state.admin.enabled);
+  if (ui.ordersButton) ui.ordersButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (!state.admin.enabled) {
     if (ui.cartButton) ui.cartButton.classList.remove('admin-hidden-nav');
     if (ui.favoritesButton) ui.favoritesButton.classList.remove('admin-hidden-nav');
@@ -8308,7 +8309,7 @@ function renderProfile() {
     ui.profileSubscriptionSection.classList.toggle('hidden', !state.admin.enabled);
   }
   if (ui.profileStatsSection) {
-    ui.profileStatsSection.classList.toggle('hidden', !state.admin.enabled);
+    ui.profileStatsSection.classList.add('hidden');
   }
   if (ui.profileOrderChatSection) {
     ui.profileOrderChatSection.classList.toggle('hidden', !state.admin.enabled);
@@ -10018,14 +10019,6 @@ function bindEvents() {
 
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
-  on(ui.ordersButton, 'click', () => {
-    renderProfile();
-    if (!state.admin.enabled) {
-      renderOrders();
-      void syncCustomerOrdersFromServer().then(() => renderOrders());
-    }
-    setScreen('profile');
-  });
   on(ui.profileButton, 'click', () => {
     if (state.admin.enabled) {
       void refreshSubscriptionStatus().then(() => {
@@ -10055,6 +10048,12 @@ function bindEvents() {
     if (!requireAdminFeatureAccess()) return;
     void renderAdminOrdersOverview();
     setScreen('orders');
+  });
+  on(ui.ordersButton, 'click', () => {
+    if (!state.admin.enabled) return;
+    if (!requireAdminFeatureAccess()) return;
+    void renderAdminStatsOverview();
+    setScreen('stats');
   });
   on(ui.ordersOpenNewButton, 'click', () => {
     if (!state.admin.enabled) return;
