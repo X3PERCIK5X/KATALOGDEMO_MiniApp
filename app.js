@@ -351,7 +351,7 @@ const ui = {
   platformBindingSaveButton: document.getElementById('platformBindingSaveButton'),
   platformBindingSetupInfo: document.getElementById('platformBindingSetupInfo'),
   platformBindingsList: document.getElementById('platformBindingsList'),
-  profileOrdersTitle: document.querySelector('#screen-profile .home-section-title'),
+  profileOrdersTitle: document.getElementById('profileOrdersTitle'),
   profileHistorySection: document.getElementById('profileHistorySection'),
   ordersOpenNewButton: document.getElementById('ordersOpenNewButton'),
   ordersOpenActiveButton: document.getElementById('ordersOpenActiveButton'),
@@ -1850,6 +1850,7 @@ function updateBottomNav(screen) {
     'settings-platforms': ui.botButton,
     'settings-checkout': ui.botButton,
     'settings-store': ui.botButton,
+    'customer-orders': ui.statsButton,
     orders: ui.statsButton,
     'orders-new': ui.statsButton,
     'orders-active': ui.statsButton,
@@ -4088,7 +4089,7 @@ function applyAdminModeUi() {
     btn.disabled = false;
   });
   if (ui.botButton) ui.botButton.classList.toggle('nav-hidden', !state.admin.enabled);
-  if (ui.statsButton) ui.statsButton.classList.toggle('nav-hidden', !state.admin.enabled);
+  if (ui.statsButton) ui.statsButton.classList.remove('nav-hidden');
   if (ui.ordersButton) ui.ordersButton.classList.toggle('nav-hidden', !state.admin.enabled);
   if (!state.admin.enabled) {
     if (ui.cartButton) ui.cartButton.classList.remove('admin-hidden-nav');
@@ -8336,7 +8337,7 @@ function renderProfile() {
     }
   }
   if (ui.profileHistorySection) {
-    ui.profileHistorySection.classList.toggle('hidden', state.admin.enabled);
+    ui.profileHistorySection.classList.add('hidden');
   }
 }
 
@@ -9528,10 +9529,9 @@ function bindEvents() {
     const target = btn.dataset.screen;
     if (!target) return;
     setScreen(target);
-    if (target === 'orders') renderOrders();
+    if (target === 'customer-orders') renderOrders();
     if (target === 'profile') {
       renderProfile();
-      if (!state.admin.enabled) renderOrders();
     }
   });
 
@@ -10027,7 +10027,6 @@ function bindEvents() {
       });
     } else {
       renderProfile();
-      renderOrders();
     }
     setScreen('profile');
   });
@@ -10044,10 +10043,15 @@ function bindEvents() {
     setScreen('stats');
   });
   on(ui.statsButton, 'click', () => {
-    if (!state.admin.enabled) return;
-    if (!requireAdminFeatureAccess()) return;
-    void renderAdminOrdersOverview();
-    setScreen('orders');
+    if (state.admin.enabled) {
+      if (!requireAdminFeatureAccess()) return;
+      void renderAdminOrdersOverview();
+      setScreen('orders');
+      return;
+    }
+    renderOrders();
+    void syncCustomerOrdersFromServer().then(() => renderOrders());
+    setScreen('customer-orders');
   });
   on(ui.ordersButton, 'click', () => {
     if (!state.admin.enabled) return;

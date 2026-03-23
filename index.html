@@ -398,10 +398,7 @@
           <p class="feedback-note">Выручка, продажи и список заказов текущего магазина открываются отдельным экраном.</p>
           <button id="profileOpenStatsButton" class="primary-button" type="button">Открыть статистику</button>
         </div>
-        <div id="profileHistorySection">
-          <div class="home-section-title">История заказов</div>
-          <div id="ordersList" class="orders-list"></div>
-        </div>
+        <div id="profileHistorySection" class="hidden"></div>
         <div id="profileLegalSection" class="profile-subscription-card hidden">
           <div class="section-title">Оферта и политика</div>
           <p class="feedback-note">Юридические документы сервиса «МессКаталог».</p>
@@ -410,6 +407,14 @@
             <a class="secondary-button profile-admin-logout" href="/privacy" target="_blank" rel="noopener">Открыть политику</a>
           </div>
         </div>
+      </section>
+
+      <section id="screen-customer-orders" class="screen">
+        <div class="screen-head">
+          <button class="back-button icon-only" data-back="categories" aria-label="Назад">←</button>
+          <h2 id="profileOrdersTitle">История заказов</h2>
+        </div>
+        <div id="ordersList" class="orders-list"></div>
       </section>
 
       <section id="screen-bot" class="screen">
@@ -912,6 +917,17 @@
         </svg>
         <span>Каталог</span>
       </button>
+      <button id="statsButton" class="bottom-item" type="button" aria-label="Заказы">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6h11" />
+          <path d="M9 12h11" />
+          <path d="M9 18h11" />
+          <path d="M4 6h.01" />
+          <path d="M4 12h.01" />
+          <path d="M4 18h.01" />
+        </svg>
+        <span>Заказы</span>
+      </button>
       <button id="cartButton" class="bottom-item bottom-center" type="button" aria-label="Корзина">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="m15 11-1 9" />
@@ -943,17 +959,6 @@
         </svg>
         <span>Настройки</span>
       </button>
-      <button id="statsButton" class="bottom-item nav-hidden" type="button" aria-label="Заказы">
-        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 6h11" />
-          <path d="M9 12h11" />
-          <path d="M9 18h11" />
-          <path d="M4 6h.01" />
-          <path d="M4 12h.01" />
-          <path d="M4 18h.01" />
-        </svg>
-        <span>Заказы</span>
-      </button>
       <button id="ordersButton" class="bottom-item nav-hidden" type="button" aria-label="Статистика">
         <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4 19h16" />
@@ -965,12 +970,12 @@
       </button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260324-314"></script>
-    <script src="/platform.js?v=20260324-314"></script>
-    <script src="/telegram.js?v=20260324-314"></script>
-    <script src="/client-utils.js?v=20260324-314"></script>
-    <script src="/client-routing.js?v=20260324-314"></script>
-    <script src="/client-presentation.js?v=20260324-314"></script>
-    <script src="/app.js?v=20260324-314"></script>
+    <script src="/vk-bridge.min.js?v=20260324-315"></script>
+    <script src="/platform.js?v=20260324-315"></script>
+    <script src="/telegram.js?v=20260324-315"></script>
+    <script src="/client-utils.js?v=20260324-315"></script>
+    <script src="/client-routing.js?v=20260324-315"></script>
+    <script src="/client-presentation.js?v=20260324-315"></script>
+    <script src="/app.js?v=20260324-315"></script>
   </body>
 </html>
