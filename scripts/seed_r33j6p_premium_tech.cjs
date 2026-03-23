@@ -303,9 +303,15 @@ const IMG = {
   charger3in1: unique([
     'https://www.belkin.com/dw/image/v2/BGBH_PRD/on/demandware.static/-/Sites-master-product-catalog-blk/default/dw0658cfb7/images/hi-res/e/55726a1d4ed91588_WIZ037wh-3-in-1-25w-wirless-charger-shot-hero-01.jpg',
   ]),
+  charger100w: unique([
+    'https://cdn.shopify.com/s/files/1/0493/9834/9974/files/A2343_Anker_737_Wall_Charger_GaNPrime_120W_Black_1.png?v=1711531895',
+  ]),
   accessoryCable: unique([
     'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MU2G3?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1770844098592',
     'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/HRGW2?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1717527836031',
+  ]),
+  accessoryMagsafe3Cable: unique([
+    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MWR03?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1693248282339',
   ]),
   accessoryCaseApple: unique([
     'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MYYV3?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1741639715864',
@@ -322,6 +328,12 @@ const IMG = {
   ]),
   accessoryGlassSamsung: unique([
     'https://www.belkin.com/dw/image/v2/BGBH_PRD/on/demandware.static/-/Sites-master-product-catalog-blk/default/dw29fb1267/images/hi-res/6/6d918bf77e58bafc_OVB072fq%20OVB072hq-NDA64%20(Hassium)%20Titan%20Glass%20PET%20Anti-Reflective%20Privacy%20Screen%20Protector-webgg-01-hero.jpg',
+  ]),
+  accessoryWallet: unique([
+    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MT263?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1692994299282',
+  ]),
+  accessoryWatchBand: unique([
+    'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MXLX3?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1724187468412',
   ]),
   homepod: unique([
     'https://www.apple.com/v/homepod-mini/j/images/meta/homepod-mini__bnxwvz5xrtpy_og.png?202504171218',
@@ -457,14 +469,18 @@ function buildProducts() {
     p({ id:'belkin-3in1-wireless-stand', categoryId:'accessories-chargers', title:'Belkin 3-in-1 Wireless Charger Stand 25W', sku:'ACC-BELKIN-3IN1-25W', price:12990, oldPrice:14990, stock:7, images:IMG.charger3in1, shortDescription:'Вертикальная 3-in-1 зарядка для смартфона, часов и наушников.', description:'Функциональный аксессуар витринного уровня: аккуратно выглядит на столе, заряжает три устройства и усиливает экосистемный сценарий покупки.', specs:[{label:'Тип',value:'Беспроводная зарядная станция'},{label:'Устройства',value:'Смартфон / часы / наушники'},{label:'Мощность',value:'до 25 Вт'},{label:'Цвет',value:'White'},{label:'Форм-фактор',value:'Stand'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'usbc-cable-2m-braided', categoryId:'accessories-cables', title:'USB-C Cable 2m Braided', sku:'ACC-USBC-2M-BR', price:2990, stock:24, images:IMG.accessoryCable, shortDescription:'Плетеный кабель USB-C для быстрой зарядки и ноутбуков.', description:'Практичный аксессуар для работы дома, в офисе и в поездке — рассчитан на смартфоны, планшеты, ноутбуки и power-delivery сценарии.', specs:[{label:'Тип',value:'USB‑C / USB‑C'},{label:'Длина',value:'2 м'},{label:'Оплетка',value:'Плетеная'},{label:'Мощность',value:'до 240 Вт'},{label:'Цвет',value:'Space Gray'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'mophie-usbc-cable-2m-black', categoryId:'accessories-cables', title:'mophie USB-C to USB-C Cable 2m Black', sku:'ACC-MOPHIE-USBC-2M', price:3490, stock:17, images:[IMG.accessoryCable[1]], shortDescription:'Черный кабель USB-C для смартфонов, планшетов и ноутбуков.', description:'Аккуратный кабель для тех, кто хочет более строгую, темную аксессуарную линейку в витрине и в ежедневном использовании.', specs:[{label:'Тип',value:'USB‑C / USB‑C'},{label:'Длина',value:'2 м'},{label:'Материал',value:'Усиленная изоляция'},{label:'Цвет',value:'Black'},{label:'Назначение',value:'Зарядка и синхронизация'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'usb-c-to-magsafe-3-cable', categoryId:'accessories-cables', title:'USB-C to MagSafe 3 Cable 2m', sku:'ACC-MAGSAFE3-2M', price:5990, stock:12, images:IMG.accessoryMagsafe3Cable, shortDescription:'Фирменный кабель для зарядки MacBook с MagSafe 3.', description:'Полезный аксессуар для пользователей MacBook: безопасное магнитное подключение, чистая упаковка и понятный premium-сценарий покупки.', specs:[{label:'Тип',value:'USB‑C / MagSafe 3'},{label:'Длина',value:'2 м'},{label:'Совместимость',value:'MacBook Air / Pro'},{label:'Цвет',value:'Silver'},{label:'Назначение',value:'Зарядка ноутбука'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'iphone-16-pro-max-case', categoryId:'accessories-cases', title:'Silicone Case for iPhone 16 Pro Max', sku:'ACC-IP16PM-CASE', price:4990, stock:16, images:IMG.accessoryCaseApple, shortDescription:'Тонкий защитный чехол с мягкой подкладкой и поддержкой MagSafe.', description:'Аккуратный аксессуар для премиальной витрины: защищает смартфон, сохраняет комфорт хвата и поддерживает ежедневный MagSafe-сценарий.', specs:[{label:'Совместимость',value:'iPhone 16 Pro Max'},{label:'Материал',value:'Силикон + microfiber'},{label:'Поддержка',value:'MagSafe'},{label:'Цвет',value:'Stone Gray'},{label:'Форм-фактор',value:'Slim fit'},{label:'Гарантия',value:'6 месяцев'}] }),
     p({ id:'galaxy-s25-ultra-case', categoryId:'accessories-cases', title:'Protective Case for Galaxy S25 Ultra', sku:'ACC-S25U-CASE', price:3990, stock:15, images:IMG.accessoryCaseSamsung, shortDescription:'Матовый защитный чехол для флагмана Samsung.', description:'Практичное решение для ежедневной защиты флагманского Galaxy с аккуратным внешним видом и slim-профилем.', specs:[{label:'Совместимость',value:'Galaxy S25 Ultra'},{label:'Материал',value:'TPU + поликарбонат'},{label:'Особенность',value:'Усиленные углы'},{label:'Цвет',value:'Midnight Blue'},{label:'Форм-фактор',value:'Slim armor'},{label:'Гарантия',value:'6 месяцев'}] }),
     p({ id:'iphone-16-pro-clear-case', categoryId:'accessories-cases', title:'Clear Case for iPhone 16 Pro', sku:'ACC-IP16P-CLEAR', price:4490, stock:14, images:IMG.accessoryCaseApple, shortDescription:'Прозрачный чехол с поддержкой MagSafe для iPhone 16 Pro.', description:'Легкий и практичный вариант для клиентов, которые хотят сохранить внешний вид смартфона и добавить защиту без лишнего объема.', specs:[{label:'Совместимость',value:'iPhone 16 Pro'},{label:'Материал',value:'Прозрачный поликарбонат'},{label:'Поддержка',value:'MagSafe'},{label:'Цвет',value:'Clear'},{label:'Форм-фактор',value:'Slim fit'},{label:'Гарантия',value:'6 месяцев'}] }),
+    p({ id:'finewoven-wallet-magsafe', categoryId:'accessories-magsafe', title:'FineWoven Wallet with MagSafe', sku:'ACC-MAGSAFE-WALLET', price:7490, stock:8, images:IMG.accessoryWallet, shortDescription:'Компактный кошелек MagSafe для карт и повседневных поездок.', description:'Лаконичный премиальный аксессуар для iPhone, который хорошо смотрится в витрине и дополняет экосистемную покупку.', specs:[{label:'Тип',value:'Кошелек MagSafe'},{label:'Совместимость',value:'iPhone с MagSafe'},{label:'Вместимость',value:'2–3 карты'},{label:'Материал',value:'FineWoven'},{label:'Цвет',value:'Taupe'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'power-bank-20000-65w', categoryId:'accessories-power', title:'Power Bank 20000 mAh 65W', sku:'ACC-PB20K-65W', price:8990, oldPrice:10490, stock:12, images:IMG.accessoryPower, shortDescription:'Быстрый power bank для смартфонов, планшетов и ноутбуков.', description:'Универсальный аксессуар для поездок и мобильной работы — мощный, емкий и удобный для техники с USB-C Power Delivery.', specs:[{label:'Емкость',value:'20000 мА·ч'},{label:'Мощность',value:'до 65 Вт'},{label:'Порты',value:'USB-C + USB-A'},{label:'Поддержка',value:'PD / QC'},{label:'Цвет',value:'Black'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'belkin-magnetic-power-bank-5k', categoryId:'accessories-power', title:'Belkin Magnetic Power Bank 5000 mAh', sku:'ACC-BELKIN-POWER-5K', price:6990, stock:11, images:[IMG.accessoryPower[1]], shortDescription:'Компактный магнитный power bank для iPhone и ежедневных поездок.', description:'Компактный power bank для быстрой подзарядки в течение дня. Подходит для витрины с акцентом на аксессуары Apple и мобильный lifestyle.', specs:[{label:'Емкость',value:'5000 мА·ч'},{label:'Тип',value:'Магнитный power bank'},{label:'Совместимость',value:'iPhone / USB‑C устройства'},{label:'Цвет',value:'White'},{label:'Особенность',value:'Подставка'},{label:'Гарантия',value:'12 месяцев'}] }),
+    p({ id:'anker-prime-100w-charger', categoryId:'accessories-chargers', title:'Anker Prime Charger 100W', sku:'ACC-ANKER-100W', price:9990, stock:10, images:IMG.charger100w, shortDescription:'Мощное GaN-зарядное устройство для ноутбуков, планшетов и смартфонов.', description:'Практичный premium-аксессуар для тех, кто заряжает сразу несколько устройств и хочет компактный блок питания без лишнего объема.', specs:[{label:'Тип',value:'Сетевой адаптер GaN'},{label:'Мощность',value:'100 Вт'},{label:'Порты',value:'USB-C + USB-C + USB-A'},{label:'Назначение',value:'Ноутбуки / планшеты / смартфоны'},{label:'Цвет',value:'Black'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'glass-iphone-16-pro', categoryId:'accessories-glass', title:'Tempered Glass for iPhone 16 Pro', sku:'ACC-IP16P-GLASS', price:1990, stock:22, images:IMG.accessoryGlassApple, shortDescription:'Защитное стекло с прозрачным покрытием и ровной геометрией.', description:'Базовый, но важный аксессуар для витрины premium-retail: аккуратная защита экрана без лишней толщины и визуального шума.', specs:[{label:'Совместимость',value:'iPhone 16 Pro'},{label:'Твердость',value:'9H'},{label:'Покрытие',value:'Олеофобное'},{label:'Толщина',value:'0.33 мм'},{label:'Комплект',value:'1 стекло + салфетки'},{label:'Гарантия',value:'14 дней'}] }),
     p({ id:'glass-galaxy-s25-ultra', categoryId:'accessories-glass', title:'Tempered Glass for Galaxy S25 Ultra', sku:'ACC-S25U-GLASS', price:2190, stock:19, images:IMG.accessoryGlassSamsung, shortDescription:'Прочное защитное стекло для изогнутого флагманского дисплея Samsung.', description:'Аксессуар для клиентов, которым важна защита экрана без потери яркости, четкости и ощущений от премиального смартфона.', specs:[{label:'Совместимость',value:'Galaxy S25 Ultra'},{label:'Твердость',value:'9H'},{label:'Покрытие',value:'Олеофобное'},{label:'Толщина',value:'0.33 мм'},{label:'Комплект',value:'1 стекло + салфетки'},{label:'Гарантия',value:'14 дней'}] }),
-    p({ id:'privacy-glass-iphone-16-pro-max', categoryId:'accessories-glass', title:'Privacy Glass for iPhone 16 Pro Max', sku:'ACC-IP16PM-PRIVACY', price:2490, stock:16, images:[IMG.accessoryGlassSamsung[0]], shortDescription:'Приватное защитное стекло для iPhone с затемнением бокового обзора.', description:'Подходит для покупателей, которым важна конфиденциальность экрана в поездках, офисе и общественных местах без потери премиального вида аксессуара.', specs:[{label:'Совместимость',value:'iPhone 16 Pro Max'},{label:'Тип',value:'Privacy glass'},{label:'Твердость',value:'9H'},{label:'Покрытие',value:'Олеофобное'},{label:'Толщина',value:'0.33 мм'},{label:'Гарантия',value:'14 дней'}] }),
+    p({ id:'privacy-glass-iphone-16-pro-max', categoryId:'accessories-glass', title:'Privacy Glass for iPhone 16 Pro Max', sku:'ACC-IP16PM-PRIVACY', price:2490, stock:16, images:IMG.accessoryGlassApple, shortDescription:'Приватное защитное стекло для iPhone с затемнением бокового обзора.', description:'Подходит для покупателей, которым важна конфиденциальность экрана в поездках, офисе и общественных местах без потери премиального вида аксессуара.', specs:[{label:'Совместимость',value:'iPhone 16 Pro Max'},{label:'Тип',value:'Privacy glass'},{label:'Твердость',value:'9H'},{label:'Покрытие',value:'Олеофобное'},{label:'Толщина',value:'0.33 мм'},{label:'Гарантия',value:'14 дней'}] }),
+    p({ id:'sport-band-45mm-midnight', categoryId:'accessories-cases', title:'Sport Band 45mm Midnight', sku:'ACC-WATCH-BAND-45', price:5990, stock:13, images:IMG.accessoryWatchBand, shortDescription:'Фирменный ремешок для Apple Watch на каждый день.', description:'Аккуратный аксессуар для витрины Apple-экосистемы: спортивный ремешок с чистой посадкой и повседневным сценарием использования.', specs:[{label:'Совместимость',value:'Apple Watch 45 / 46 / 49 мм'},{label:'Материал',value:'Fluoroelastomer'},{label:'Тип',value:'Sport Band'},{label:'Цвет',value:'Midnight'},{label:'Размер',value:'M/L'},{label:'Гарантия',value:'12 месяцев'}] }),
 
     p({ id:'homepod-mini', categoryId:'smart-home-speakers', title:'HomePod mini', sku:'APL-HPMINI', price:14990, oldPrice:16990, stock:9, images:IMG.homepod, shortDescription:'Компактная умная колонка Apple для музыки и сценариев умного дома.', description:'Колонка для тех, кому важны экосистема Apple, аккуратный внешний вид и голосовое управление в домашнем пространстве.', specs:[{label:'Тип',value:'Умная колонка'},{label:'Связь',value:'Wi‑Fi / Bluetooth'},{label:'Ассистент',value:'Siri'},{label:'Цвет',value:'Midnight'},{label:'Питание',value:'Сеть'},{label:'Гарантия',value:'12 месяцев'}] }),
     p({ id:'google-nest-audio', categoryId:'smart-home-speakers', title:'Google Nest Audio', sku:'GGL-NEST-AUDIO', price:12990, stock:8, images:IMG.nestAudio, shortDescription:'Умная колонка Google с акцентом на голосовое управление и музыку.', description:'Подойдет для кухни, спальни или рабочего места — хороший старт для Android-экосистемы и базового smart-home сценария.', specs:[{label:'Тип',value:'Умная колонка'},{label:'Связь',value:'Wi‑Fi / Bluetooth'},{label:'Ассистент',value:'Google Assistant'},{label:'Цвет',value:'Chalk'},{label:'Питание',value:'Сеть'},{label:'Гарантия',value:'12 месяцев'}] }),
@@ -495,26 +511,26 @@ function buildConfig(currentConfig, art) {
     homeBanners: [
       {
         id: 'hero-apple-premium',
-        image: 'https://images.unsplash.com/photo-1580910051074-3eb694886505?auto=format&fit=crop&w=1800&q=80',
-        kicker: 'Флагманы сезона',
-        title: 'Флагманские смартфоны',
-        text: 'iPhone, Galaxy, Pixel и Xiaomi в чистой premium-tech подаче.',
+        image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1800&q=80',
+        kicker: 'Смартфоны',
+        title: 'Флагманы без компромиссов',
+        text: 'iPhone, Galaxy, Pixel и Xiaomi в аккуратной retail-подаче.',
         cta: 'Открыть каталог',
       },
       {
         id: 'hero-ecosystem',
-        image: 'https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?auto=format&fit=crop&w=1800&q=80',
+        image: 'https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=1800&q=80',
         kicker: 'Work & create',
         title: 'Ноутбуки и планшеты',
-        text: 'MacBook, iPad и премиальные Windows-устройства для работы и учебы.',
+        text: 'MacBook, iPad и премиальные Windows-модели для работы и учебы.',
         cta: 'Смотреть новинки',
       },
       {
         id: 'hero-accessories',
-        image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1800&q=80',
-        kicker: 'Audio & accessories',
-        title: 'Аксессуары и аудио',
-        text: 'AirPods, зарядки, кабели, чехлы и power bank для полноценной витрины.',
+        image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1800&q=80',
+        kicker: 'Аксессуары',
+        title: 'Аудио и аксессуары',
+        text: 'AirPods, зарядки, кабели, чехлы и power bank для полного чека.',
         cta: 'Смотреть аксессуары',
       },
     ],
