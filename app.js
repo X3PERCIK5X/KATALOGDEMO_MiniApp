@@ -6513,7 +6513,7 @@ function renderCategories() {
     const featuredProductImage = featuredProduct && Array.isArray(featuredProduct.images) && featuredProduct.images[0]
       ? featuredProduct.images[0]
       : '';
-    const image = featuredProductImage || String(c.image || '').trim();
+    const image = String(c.image || '').trim() || featuredProductImage;
     const selectedClass = state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'category' && selectedCategories.has(c.id)
       ? ' admin-selected-target'
       : '';
