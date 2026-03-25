@@ -2509,8 +2509,26 @@ function buildCanonicalOrderItem(rawItem, productMap = new Map()) {
   const product = productId ? productMap.get(productId) || null : null;
   const qtyRaw = Number(rawItem?.qty || 1);
   const qty = Number.isFinite(qtyRaw) ? Math.max(1, Math.round(qtyRaw)) : 1;
+  const normalizeSelectedOptions = (sourceProduct, rawSelectedOptions) => {
+    const rawMap = rawSelectedOptions && typeof rawSelectedOptions === 'object' ? rawSelectedOptions : {};
+    const sourceOptions = Array.isArray(sourceProduct?.options) ? sourceProduct.options : [];
+    const selectedOptions = {};
+    const selectedOptionLines = [];
+    sourceOptions.slice(0, 3).forEach((option) => {
+      const optionId = String(option?.id || '').trim();
+      const optionName = String(option?.name || '').trim();
+      const values = Array.isArray(option?.values) ? option.values.map((value) => String(value || '').trim()).filter(Boolean) : [];
+      if (!optionId || !optionName || !values.length) return;
+      const value = String(rawMap[optionId] || '').trim();
+      if (!value || !values.includes(value)) return;
+      selectedOptions[optionId] = value;
+      selectedOptionLines.push({ id: optionId, name: optionName, value });
+    });
+    return { selectedOptions, selectedOptionLines };
+  };
   if (product) {
     const hasPrice = hasServerProductPrice(product);
+    const normalizedOptions = normalizeSelectedOptions(product, rawItem?.selectedOptions);
     return {
       id: product.id,
       title: String(product.title || rawItem?.title || 'Товар'),
@@ -2520,10 +2538,14 @@ function buildCanonicalOrderItem(rawItem, productMap = new Map()) {
       basePrice: hasPrice ? Number(product.price || 0) : 0,
       isRequestPrice: !hasPrice,
       isSaleItem: isServerProductOnSale(product),
+      selectedOptions: normalizedOptions.selectedOptions,
+      selectedOptionLines: normalizedOptions.selectedOptionLines,
       payloadProduct: product,
     };
   }
   const rawPrice = Number(rawItem?.price || 0);
+  const rawSelectedOptions = rawItem?.selectedOptions && typeof rawItem.selectedOptions === 'object' ? rawItem.selectedOptions : {};
+  const rawSelectedOptionLines = Array.isArray(rawItem?.selectedOptionLines) ? rawItem.selectedOptionLines : [];
   return {
     id: productId,
     title: String(rawItem?.title || 'Товар'),
@@ -2533,6 +2555,8 @@ function buildCanonicalOrderItem(rawItem, productMap = new Map()) {
     basePrice: Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0,
     isRequestPrice: Boolean(rawItem?.isRequestPrice) || !(Number.isFinite(rawPrice) && rawPrice > 0),
     isSaleItem: false,
+    selectedOptions: rawSelectedOptions,
+    selectedOptionLines: rawSelectedOptionLines,
     payloadProduct: null,
   };
 }

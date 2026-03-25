@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>МессКаталог</title>
-    <link rel="stylesheet" href="/style.css?v=20260324-318" />
+    <link rel="stylesheet" href="/style.css?v=20260325-320" />
   </head>
   <body>
     <header class="header">
@@ -208,6 +208,21 @@
         <div id="productView" class="product-view"></div>
       </section>
 
+      <div id="productOptionsModal" class="product-options-modal hidden" aria-hidden="true">
+        <div class="product-options-sheet">
+          <div class="product-options-sheet-head">
+            <div id="productOptionsModalTitle" class="product-options-sheet-title">Выберите характеристики</div>
+            <div id="productOptionsModalSubtitle" class="product-options-sheet-subtitle">Уточните параметры товара перед добавлением в корзину.</div>
+          </div>
+          <div id="productOptionsModalContent" class="product-options-sheet-content"></div>
+          <div id="productOptionsModalStatus" class="status product-options-sheet-status"></div>
+          <div class="product-options-sheet-actions">
+            <button id="productOptionsModalCancel" class="ghost-button" type="button">Отмена</button>
+            <button id="productOptionsModalConfirm" class="primary-button" type="button">Добавить в корзину</button>
+          </div>
+        </div>
+      </div>
+
       <section id="screen-favorites" class="screen">
         <div class="screen-head">
           <h2>Избранное</h2>
@@ -307,6 +322,7 @@
               <input id="marketingConsentCheck" type="checkbox" />
               <span>Хочу получать акции и предложения</span>
             </label>
+            <div id="checkoutItemsSummary" class="checkout-items-summary hidden"></div>
             <div class="cart-totals">
               <div><span>Товаров</span><strong id="cartItemsCount">0</strong></div>
               <div><span>Итого</span><strong id="checkoutTotal">0 ₽</strong></div>
@@ -979,12 +995,12 @@
       </button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260324-318"></script>
-    <script src="/platform.js?v=20260324-318"></script>
-    <script src="/telegram.js?v=20260324-318"></script>
-    <script src="/client-utils.js?v=20260324-318"></script>
-    <script src="/client-routing.js?v=20260324-318"></script>
-    <script src="/client-presentation.js?v=20260324-318"></script>
-    <script src="/app.js?v=20260324-318"></script>
+    <script src="/vk-bridge.min.js?v=20260325-320"></script>
+    <script src="/platform.js?v=20260325-320"></script>
+    <script src="/telegram.js?v=20260325-320"></script>
+    <script src="/client-utils.js?v=20260325-320"></script>
+    <script src="/client-routing.js?v=20260325-320"></script>
+    <script src="/client-presentation.js?v=20260325-320"></script>
+    <script src="/app.js?v=20260325-320"></script>
   </body>
 </html>

@@ -13,6 +13,7 @@ const state = {
   favorites: new Set(),
   selectedFavorites: new Set(),
   cart: {},
+  productOptionSelections: {},
   selectedCart: new Set(),
   cartSelectionTouched: false,
   favoritesSelectionTouched: false,
@@ -226,6 +227,7 @@ const ui = {
   cartItemsCount: document.getElementById('cartItemsCount'),
   checkoutTotal: document.getElementById('checkoutTotal'),
   checkoutButton: document.getElementById('checkoutButton'),
+  checkoutItemsSummary: document.getElementById('checkoutItemsSummary'),
   cartSelectAll: document.getElementById('cartSelectAll'),
   cartRemoveSelected: document.getElementById('cartRemoveSelected'),
   orderForm: document.getElementById('orderForm'),
@@ -276,6 +278,13 @@ const ui = {
   promoSort: document.getElementById('promoSort'),
   homeProductionButton: document.getElementById('homeProductionButton'),
   dataStatus: document.getElementById('dataStatus'),
+  productOptionsModal: document.getElementById('productOptionsModal'),
+  productOptionsModalTitle: document.getElementById('productOptionsModalTitle'),
+  productOptionsModalSubtitle: document.getElementById('productOptionsModalSubtitle'),
+  productOptionsModalContent: document.getElementById('productOptionsModalContent'),
+  productOptionsModalStatus: document.getElementById('productOptionsModalStatus'),
+  productOptionsModalCancel: document.getElementById('productOptionsModalCancel'),
+  productOptionsModalConfirm: document.getElementById('productOptionsModalConfirm'),
   headerStoreButton: document.getElementById('headerStoreButton'),
   headerStoreCity: document.getElementById('headerStoreCity'),
   headerSearchButton: document.getElementById('headerSearchButton'),
@@ -1712,7 +1721,7 @@ function setScreen(name) {
   scrollToTop();
   adminRefreshBindings();
   if (name === 'checkout') {
-    saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
+    saasTrackEvent('begin_checkout', { payload: { cartItems: getCartEntries().length } });
   }
 }
 
@@ -2801,6 +2810,7 @@ function adminAddProductTemplate() {
     discountPercent: 0,
     badge: '',
     tags: [],
+    options: [],
   });
   adminSaveDraft(true);
   renderProducts();
@@ -4113,7 +4123,419 @@ function handleAdminInlineAdd(action) {
   if (action === 'product') adminAddProductTemplate();
   if (action === 'image') adminAddProductImage();
   if (action === 'spec') adminAddProductSpec();
+  if (action === 'product-option') adminAddProductOption();
   adminSaveDraft(true);
+}
+
+const MAX_PRODUCT_SELECTION_OPTIONS = 3;
+
+function slugifyProductOptionId(value, fallback = 'option') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || fallback;
+}
+
+function parseProductOptionValuesInput(raw) {
+  const source = Array.isArray(raw) ? raw : String(raw || '').split(/\n|,/);
+  const unique = new Set();
+  return source
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (unique.has(key)) return false;
+      unique.add(key);
+      return true;
+    });
+}
+
+function normalizeProductOptionDefinition(raw, index = 0) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || raw.title || '').trim() || `Характеристика ${index + 1}`;
+  const values = parseProductOptionValuesInput(raw.values || raw.choices || []).slice(0, 24);
+  if (!values.length) return null;
+  return {
+    id: slugifyProductOptionId(raw.id || name, `option_${index + 1}`),
+    name,
+    required: Boolean(raw.required),
+    values,
+  };
+}
+
+function getProductOptionDefinitions(product, { mutate = false } = {}) {
+  const source = Array.isArray(product?.options)
+    ? product.options
+    : Array.isArray(product?.selectionOptions)
+      ? product.selectionOptions
+      : [];
+  const normalized = source
+    .map((item, index) => normalizeProductOptionDefinition(item, index))
+    .filter(Boolean)
+    .slice(0, MAX_PRODUCT_SELECTION_OPTIONS);
+  if (mutate && product) product.options = normalized;
+  return normalized;
+}
+
+function getProductOptionSelections(productId) {
+  const raw = state.productOptionSelections?.[productId];
+  return raw && typeof raw === 'object' ? { ...raw } : {};
+}
+
+function normalizeProductOptionSelections(product, rawSelections = {}) {
+  const defs = getProductOptionDefinitions(product);
+  const source = rawSelections && typeof rawSelections === 'object' ? rawSelections : {};
+  return defs.reduce((acc, option) => {
+    const value = String(source[option.id] || '').trim();
+    if (value && option.values.includes(value)) acc[option.id] = value;
+    return acc;
+  }, {});
+}
+
+function setProductOptionSelection(productId, optionId, value) {
+  if (!productId || !optionId) return;
+  const product = getProduct(productId);
+  if (!product) return;
+  const current = getProductOptionSelections(productId);
+  const next = { ...current };
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) delete next[optionId];
+  else next[optionId] = normalizedValue;
+  state.productOptionSelections[productId] = normalizeProductOptionSelections(product, next);
+  saveStorage();
+}
+
+function buildProductOptionSelectionKey(selectedOptions = {}) {
+  const entries = Object.entries(selectedOptions || {})
+    .map(([key, value]) => [String(key || '').trim(), String(value || '').trim()])
+    .filter(([key, value]) => key && value)
+    .sort(([a], [b]) => a.localeCompare(b, 'ru'));
+  if (!entries.length) return '';
+  return entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&');
+}
+
+function buildCartLineKey(productId, selectedOptions = {}) {
+  const baseId = String(productId || '').trim();
+  const suffix = buildProductOptionSelectionKey(selectedOptions);
+  return suffix ? `${baseId}::${suffix}` : baseId;
+}
+
+function normalizeCartEntry(key, rawEntry) {
+  const entryKey = String(key || '').trim();
+  if (!entryKey) return null;
+  if (typeof rawEntry === 'number') {
+    const qty = Math.max(1, Math.round(Number(rawEntry || 0)));
+    return qty > 0 ? { key: entryKey, productId: entryKey, qty, selectedOptions: {} } : null;
+  }
+  if (!rawEntry || typeof rawEntry !== 'object') return null;
+  const productId = String(rawEntry.productId || entryKey.split('::')[0] || '').trim();
+  const qty = Math.max(1, Math.round(Number(rawEntry.qty || 0)));
+  if (!productId || !qty) return null;
+  return {
+    key: entryKey,
+    productId,
+    qty,
+    selectedOptions: rawEntry.selectedOptions && typeof rawEntry.selectedOptions === 'object'
+      ? rawEntry.selectedOptions
+      : {},
+  };
+}
+
+function normalizeCartState() {
+  const nextCart = {};
+  Object.entries(state.cart || {}).forEach(([key, rawEntry]) => {
+    const entry = normalizeCartEntry(key, rawEntry);
+    if (!entry) return;
+    nextCart[entry.key] = {
+      productId: entry.productId,
+      qty: entry.qty,
+      selectedOptions: entry.selectedOptions,
+    };
+  });
+  state.cart = nextCart;
+  state.selectedCart = new Set(Array.from(state.selectedCart || []).map((item) => String(item || '')).filter((key) => nextCart[key]));
+}
+
+function getCartEntries() {
+  normalizeCartState();
+  return Object.entries(state.cart)
+    .map(([key, rawEntry]) => normalizeCartEntry(key, rawEntry))
+    .filter(Boolean);
+}
+
+function getProductSelectedOptionLines(product, rawSelections = {}) {
+  const selections = normalizeProductOptionSelections(product, rawSelections);
+  return getProductOptionDefinitions(product)
+    .map((option) => {
+      const value = selections[option.id];
+      if (!value) return null;
+      return { id: option.id, name: option.name, value };
+    })
+    .filter(Boolean);
+}
+
+function getMissingRequiredProductOptions(product, rawSelections = {}) {
+  const selections = normalizeProductOptionSelections(product, rawSelections);
+  return getProductOptionDefinitions(product).filter((option) => option.required && !String(selections[option.id] || '').trim());
+}
+
+function getExactCartLineQty(productId, selectedOptions = {}) {
+  const lineKey = buildCartLineKey(productId, selectedOptions);
+  return Number(state.cart?.[lineKey]?.qty || 0);
+}
+
+function getSimpleCartQty(productId) {
+  return Number(state.cart?.[String(productId || '').trim()]?.qty || 0);
+}
+
+function setCartLineQty(productId, selectedOptions = {}, nextQty = 0) {
+  const lineKey = buildCartLineKey(productId, selectedOptions);
+  const qty = Math.max(0, Math.round(Number(nextQty || 0)));
+  if (!qty) {
+    delete state.cart[lineKey];
+    state.selectedCart.delete(lineKey);
+    return lineKey;
+  }
+  state.cart[lineKey] = {
+    productId: String(productId || '').trim(),
+    qty,
+    selectedOptions: normalizeProductOptionSelections(getProduct(productId), selectedOptions),
+  };
+  return lineKey;
+}
+
+function addToCart(productId, rawSelectedOptions = {}) {
+  const product = getProduct(productId);
+  if (!product) return '';
+  const selectedOptions = normalizeProductOptionSelections(product, rawSelectedOptions);
+  const lineKey = buildCartLineKey(productId, selectedOptions);
+  const currentQty = Number(state.cart?.[lineKey]?.qty || 0);
+  setCartLineQty(productId, selectedOptions, currentQty + 1);
+  saveStorage();
+  updateBadges();
+  saasTrackEvent('add_to_cart', { productId, payload: { qty: Number(state.cart?.[lineKey]?.qty || 0), selectedOptions } });
+  return lineKey;
+}
+
+function decrementCartLine(lineKey) {
+  const entry = normalizeCartEntry(lineKey, state.cart?.[lineKey]);
+  if (!entry) return;
+  setCartLineQty(entry.productId, entry.selectedOptions, entry.qty - 1);
+  saveStorage();
+  updateBadges();
+}
+
+function removeCartLine(lineKey) {
+  delete state.cart[String(lineKey || '').trim()];
+  state.selectedCart.delete(String(lineKey || '').trim());
+  saveStorage();
+  updateBadges();
+}
+
+function renderProductOptionBlocks(product, rawSelections = {}, { scope = 'inline', compact = false } = {}) {
+  const selections = normalizeProductOptionSelections(product, rawSelections);
+  const options = getProductOptionDefinitions(product);
+  if (!options.length) return '';
+  return options.map((option) => `
+    <div class="product-option-block${compact ? ' compact' : ''}">
+      <div class="product-option-head">
+        <span class="product-option-name">${escapeHtml(option.name)}</span>
+        <span class="product-option-meta">${option.required ? 'Обязательно' : 'Необязательно'}</span>
+      </div>
+      <div class="product-option-values">
+        ${option.values.map((value) => `
+          <button
+            class="product-option-chip ${selections[option.id] === value ? 'active' : ''}"
+            type="button"
+            data-option-scope="${escapeHtml(scope)}"
+            data-option-product="${escapeHtml(String(product.id || ''))}"
+            data-option-id="${escapeHtml(option.id)}"
+            data-option-value="${escapeHtml(value)}"
+          >${escapeHtml(value)}</button>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderSelectedOptionLinesHtml(product, rawSelections = {}) {
+  const lines = getProductSelectedOptionLines(product, rawSelections);
+  if (!lines.length) return '';
+  return `
+    <div class="selected-option-lines">
+      ${lines.map((line) => `
+        <div class="selected-option-line"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderCheckoutItemsSummary(items = cartItems()) {
+  if (!ui.checkoutItemsSummary) return;
+  if (!items.length) {
+    ui.checkoutItemsSummary.innerHTML = '';
+    ui.checkoutItemsSummary.classList.add('hidden');
+    return;
+  }
+  ui.checkoutItemsSummary.innerHTML = `
+    <div class="checkout-items-card">
+      <div class="section-title">Состав заказа</div>
+      <div class="checkout-items-list">
+        ${items.map((item) => {
+          const priceView = getProductPriceView(item, { withOldPrice: false });
+          const priceLabel = priceView.hasPrice ? `${formatPrice(priceView.finalPrice)} ₽` : 'Запрос цены';
+          return `
+            <div class="checkout-item-row">
+              <div class="checkout-item-main">
+                <div class="checkout-item-title">${escapeHtml(item.title || '')}</div>
+                <div class="checkout-item-meta">${item.qty} × ${escapeHtml(priceLabel)}</div>
+                ${item.optionLines?.length ? `
+                  <div class="checkout-item-options">
+                    ${item.optionLines.map((line) => `<div class="checkout-item-option"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>`).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  ui.checkoutItemsSummary.classList.remove('hidden');
+}
+
+function renderProductOptionsModal() {
+  if (!ui.productOptionsModal || ui.productOptionsModal.classList.contains('hidden')) return;
+  const productId = String(ui.productOptionsModal.dataset.productId || '').trim();
+  const product = getProduct(productId);
+  if (!product) {
+    closeProductOptionsModal();
+    return;
+  }
+  const selections = getProductOptionSelections(productId);
+  const missing = getMissingRequiredProductOptions(product, selections);
+  if (ui.productOptionsModalTitle) ui.productOptionsModalTitle.textContent = product.title || 'Выберите характеристики';
+  if (ui.productOptionsModalSubtitle) {
+    ui.productOptionsModalSubtitle.textContent = missing.length
+      ? 'Выберите обязательные характеристики перед добавлением в корзину.'
+      : 'При необходимости уточните характеристики и продолжите.';
+  }
+  if (ui.productOptionsModalContent) {
+    ui.productOptionsModalContent.innerHTML = renderProductOptionBlocks(product, selections, { scope: 'modal' });
+  }
+  if (ui.productOptionsModalStatus) {
+    ui.productOptionsModalStatus.textContent = missing.length
+      ? `Не выбрано: ${missing.map((option) => option.name).join(', ')}`
+      : '';
+  }
+}
+
+function openProductOptionsModal(productId, { checkoutAfter = false, requestMode = false } = {}) {
+  if (!ui.productOptionsModal) return;
+  ui.productOptionsModal.dataset.productId = String(productId || '').trim();
+  ui.productOptionsModal.dataset.checkoutAfter = checkoutAfter ? '1' : '0';
+  ui.productOptionsModal.dataset.requestMode = requestMode ? '1' : '0';
+  ui.productOptionsModal.classList.remove('hidden');
+  requestAnimationFrame(() => ui.productOptionsModal.classList.add('show'));
+  renderProductOptionsModal();
+}
+
+function closeProductOptionsModal() {
+  if (!ui.productOptionsModal) return;
+  ui.productOptionsModal.classList.remove('show');
+  ui.productOptionsModal.classList.add('hidden');
+  delete ui.productOptionsModal.dataset.productId;
+  delete ui.productOptionsModal.dataset.checkoutAfter;
+  delete ui.productOptionsModal.dataset.requestMode;
+  if (ui.productOptionsModalStatus) ui.productOptionsModalStatus.textContent = '';
+}
+
+function attemptAddProductToCart(productId, { checkoutAfter = false, requestMode = false } = {}) {
+  const product = getProduct(productId);
+  if (!product) return false;
+  const selections = getProductOptionSelections(productId);
+  const missing = getMissingRequiredProductOptions(product, selections);
+  if (missing.length) {
+    openProductOptionsModal(productId, { checkoutAfter, requestMode });
+    return false;
+  }
+  addToCart(productId, selections);
+  if (requestMode) {
+    renderCart();
+    setScreen('checkout');
+  }
+  return true;
+}
+
+function adminAddProductOption() {
+  const product = getProduct(state.currentProduct);
+  if (!product) return;
+  const options = getProductOptionDefinitions(product, { mutate: true });
+  if (options.length >= MAX_PRODUCT_SELECTION_OPTIONS) {
+    reportStatus('У товара может быть не более 3 характеристик');
+    return;
+  }
+  options.push({
+    id: `option_${Date.now()}`,
+    name: `Характеристика ${options.length + 1}`,
+    required: true,
+    values: ['Вариант 1', 'Вариант 2'],
+  });
+  product.options = options;
+  adminSaveDraft(true);
+  renderProductView();
+  reportStatus('Характеристика добавлена');
+}
+
+function adminEditProductOption(index, action) {
+  const product = getProduct(state.currentProduct);
+  if (!product) return;
+  const options = getProductOptionDefinitions(product, { mutate: true });
+  const option = options[index];
+  if (!option) return;
+  if (action === 'toggle-required') {
+    option.required = !option.required;
+    product.options = options;
+    adminSaveDraft(true);
+    renderProductView();
+    reportStatus(option.required ? 'Характеристика сделана обязательной' : 'Характеристика сделана необязательной');
+    return;
+  }
+  if (action === 'delete') {
+    options.splice(index, 1);
+    product.options = options;
+    adminSaveDraft(true);
+    renderProductView();
+    reportStatus('Характеристика удалена');
+    return;
+  }
+  if (action === 'edit-name') {
+    adminEditValue(`Название характеристики #${index + 1}`, option.name || '').then((value) => {
+      if (value == null || value.__delete) return;
+      option.name = String(value || '').trim() || option.name;
+      option.id = slugifyProductOptionId(option.name, option.id);
+      product.options = options;
+      adminSaveDraft(true);
+      renderProductView();
+    });
+    return;
+  }
+  if (action === 'edit-values') {
+    adminEditValue(`Значения характеристики "${option.name}"`, option.values.join('\n'), { multiline: true }).then((value) => {
+      if (value == null || value.__delete) return;
+      const nextValues = parseProductOptionValuesInput(String(value || ''));
+      if (!nextValues.length) {
+        reportStatus('Добавьте хотя бы одно значение');
+        return;
+      }
+      option.values = nextValues.slice(0, 24);
+      product.options = options;
+      adminSaveDraft(true);
+      renderProductView();
+    });
+  }
 }
 
 function getSku(p) {
@@ -5906,6 +6328,7 @@ async function refreshPublicDataset(force = false) {
 function loadStorage() {
   state.favorites = new Set(safeParse(readScopedStorage('demo_catalog_favorites', '[]'), []));
   state.cart = safeParse(readScopedStorage('demo_catalog_cart', '{}'), {});
+  state.productOptionSelections = safeParse(readScopedStorage('demo_catalog_product_option_selections', '{}'), {});
   state.selectedCart = new Set(safeParse(readScopedStorage('demo_catalog_cart_selected', '[]'), []));
   state.selectedFavorites = new Set(safeParse(readScopedStorage('demo_catalog_fav_selected', '[]'), []));
   state.profile = safeParse(readScopedStorage('demo_catalog_profile', '{}'), {});
@@ -5924,12 +6347,15 @@ function loadStorage() {
   state.searchHistory = safeParse(readScopedStorage('demo_catalog_search_history', '[]'), [])
     .filter((item) => typeof item === 'string' && item.trim())
     .slice(0, 8);
+  normalizeCartState();
 }
 
 function saveStorage() {
   try {
+    normalizeCartState();
     localStorage.setItem(scopedStorageKey('demo_catalog_favorites'), JSON.stringify(Array.from(state.favorites)));
     localStorage.setItem(scopedStorageKey('demo_catalog_cart'), JSON.stringify(state.cart));
+    localStorage.setItem(scopedStorageKey('demo_catalog_product_option_selections'), JSON.stringify(state.productOptionSelections || {}));
     localStorage.setItem(scopedStorageKey('demo_catalog_cart_selected'), JSON.stringify(Array.from(state.selectedCart)));
     localStorage.setItem(scopedStorageKey('demo_catalog_fav_selected'), JSON.stringify(Array.from(state.selectedFavorites)));
     localStorage.setItem(scopedStorageKey('demo_catalog_profile'), JSON.stringify(state.profile));
@@ -6087,14 +6513,24 @@ function normalizePhone(value) {
 function getProduct(id) { return state.products.find((p) => p.id === id); }
 
 function cartItems() {
-  return Object.entries(state.cart)
-    .map(([id, qty]) => ({ ...getProduct(id), qty }))
-    .filter((p) => p.id);
+  return getCartEntries()
+    .map((entry) => {
+      const product = getProduct(entry.productId);
+      if (!product) return null;
+      return {
+        ...product,
+        qty: entry.qty,
+        cartKey: entry.key,
+        selectedOptions: normalizeProductOptionSelections(product, entry.selectedOptions),
+        optionLines: getProductSelectedOptionLines(product, entry.selectedOptions),
+      };
+    })
+    .filter((product) => product?.id);
 }
 
 function cartSummary() {
   if (!state.selectedCart.size) return { sum: 0, missing: false, count: 0, requestCount: 0 };
-  const selected = cartItems().filter((i) => state.selectedCart.has(i.id));
+  const selected = cartItems().filter((item) => state.selectedCart.has(item.cartKey || item.id));
   let sum = 0;
   let eligibleSum = 0;
   let missing = false;
@@ -6155,7 +6591,7 @@ function formatSummaryTotal(summary) {
 }
 
 function updateBadges() {
-  const cartCount = Object.values(state.cart).reduce((s, q) => s + q, 0);
+  const cartCount = getCartEntries().reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
   ui.cartCount.textContent = cartCount;
   ui.favoritesCount.textContent = state.favorites.size;
 }
@@ -6558,6 +6994,8 @@ function buildProductCards(list, options = {}) {
   const selectedProducts = new Set(getSelectedProductIds());
   return list.map((p) => {
     const priceView = getProductPriceView(p);
+    const hasSelectableOptions = getProductOptionDefinitions(p).length > 0;
+    const simpleQty = hasSelectableOptions ? 0 : getSimpleCartQty(p.id);
     return `
     <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && selectedProducts.has(p.id) ? ' admin-selected-target' : ''}" data-open="${p.id}">
       ${priceView.badgeHtml}
@@ -6574,11 +7012,11 @@ function buildProductCards(list, options = {}) {
         <div class="product-price">
           ${priceView.html}
         </div>
-        ${state.cart[p.id]
+        ${simpleQty
           ? `
             <div class="card-qty" data-qty="${p.id}">
               <button class="qty-btn" data-qty-dec="${p.id}" type="button">−</button>
-              <span class="qty-count">${state.cart[p.id]}</span>
+              <span class="qty-count">${simpleQty}</span>
               <button class="qty-btn" data-qty-inc="${p.id}" type="button">+</button>
             </div>
           `
@@ -6896,6 +7334,14 @@ function renderStores() {
 function renderProductView() {
   const p = getProduct(state.currentProduct);
   if (!p) return;
+  const productOptions = getProductOptionDefinitions(p, { mutate: state.admin.enabled });
+  const optionSelections = getProductOptionSelections(p.id);
+  const missingRequiredOptions = getMissingRequiredProductOptions(p, optionSelections);
+  const selectedOptionLinesHtml = renderSelectedOptionLinesHtml(p, optionSelections);
+  const inlineOptionBlocks = renderProductOptionBlocks(p, optionSelections, { scope: 'inline' });
+  const exactVariantQty = productOptions.length
+    ? (missingRequiredOptions.length ? 0 : getExactCartLineQty(p.id, optionSelections))
+    : getSimpleCartQty(p.id);
   if (ui.productTitle) ui.productTitle.textContent = p.title || '';
   if (ui.productFavoriteTop) {
     ui.productFavoriteTop.dataset.favorite = p.id;
@@ -6953,18 +7399,29 @@ function renderProductView() {
     </div>
     <div class="product-title">${p.title}</div>
     <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
+    ${productOptions.length ? `
+      <div class="detail-section product-options-inline-section">
+        <div class="section-title">
+          <span>Выберите характеристики</span>
+        </div>
+        <div class="product-options-inline">
+          ${inlineOptionBlocks}
+          ${selectedOptionLinesHtml}
+        </div>
+      </div>
+    ` : ''}
     <div class="product-price-row">
       <div class="product-price">
         ${hasProductPromo
           ? `<span class="promo-new">${formatPrice(productPromoPrice)} ₽</span><span class="promo-old">${formatPrice(p.price)} ₽</span><span class="promo-badge promo-badge-inline">-${productPromoPercent}%</span>`
           : priceLabel(p)}
       </div>
-      ${state.cart[p.id]
+      ${exactVariantQty
         ? `
-          <div class="product-qty" data-qty="${p.id}">
-            <button class="qty-btn" data-qty-dec="${p.id}" type="button">−</button>
-            <span class="qty-count">${state.cart[p.id]}</span>
-            <button class="qty-btn" data-qty-inc="${p.id}" type="button">+</button>
+          <div class="product-qty" data-qty="${escapeHtml(buildCartLineKey(p.id, optionSelections))}">
+            <button class="qty-btn" data-cart-line-dec="${escapeHtml(buildCartLineKey(p.id, optionSelections))}" type="button">−</button>
+            <span class="qty-count">${exactVariantQty}</span>
+            <button class="qty-btn" data-cart-line-inc="${escapeHtml(buildCartLineKey(p.id, optionSelections))}" type="button">+</button>
           </div>
         `
         : hasPrice(p)
@@ -6985,6 +7442,35 @@ function renderProductView() {
       </div>
       <div class="product-specs">${specs}</div>
     </div>
+    ${state.admin.enabled ? `
+      <div class="detail-section">
+        <div class="section-title section-title-admin">
+          <span>Опции для выбора</span>
+          <button class="admin-inline-plus" data-admin-add="product-option" type="button" aria-label="Добавить опцию выбора">+</button>
+        </div>
+        <div class="product-option-admin-list">
+          ${productOptions.length ? productOptions.map((option, index) => `
+            <div class="product-option-admin-card">
+              <div class="product-option-admin-row">
+                <div>
+                  <div class="product-option-admin-title">${escapeHtml(option.name)}</div>
+                  <div class="product-option-admin-meta">${option.required ? 'Обязательная' : 'Необязательная'}</div>
+                </div>
+                <div class="product-option-admin-actions">
+                  <button class="secondary-button compact-button" type="button" data-admin-option-action="edit-name" data-admin-option-index="${index}">Название</button>
+                  <button class="secondary-button compact-button" type="button" data-admin-option-action="edit-values" data-admin-option-index="${index}">Значения</button>
+                  <button class="secondary-button compact-button" type="button" data-admin-option-action="toggle-required" data-admin-option-index="${index}">${option.required ? 'Сделать необязательной' : 'Сделать обязательной'}</button>
+                  <button class="secondary-button compact-button" type="button" data-admin-option-action="delete" data-admin-option-index="${index}">Удалить</button>
+                </div>
+              </div>
+              <div class="product-option-admin-values">
+                ${option.values.map((value) => `<span class="product-option-chip static">${escapeHtml(value)}</span>`).join('')}
+              </div>
+            </div>
+          `).join('') : '<div class="text-card">У товара пока нет настраиваемых характеристик для выбора.</div>'}
+        </div>
+      </div>
+    ` : ''}
     ${recommended.length ? `
       <div class="detail-section recommended-section">
         <div class="section-title">Рекомендуем</div>
@@ -7055,7 +7541,7 @@ function renderFavorites() {
 function renderCart() {
   const items = cartItems();
   if (!state.selectedCart.size && items.length && !state.cartSelectionTouched) {
-    state.selectedCart = new Set(items.map((i) => i.id));
+    state.selectedCart = new Set(items.map((item) => item.cartKey || item.id));
     saveStorage();
   }
   const summary = cartSummary();
@@ -7065,25 +7551,30 @@ function renderCart() {
     return `
     <div class="cart-item">
       <label class="select-dot">
-        <input type="checkbox" data-cart-select="${p.id}" ${state.selectedCart.has(p.id) ? 'checked' : ''} />
+        <input type="checkbox" data-cart-select="${escapeHtml(p.cartKey || p.id)}" ${state.selectedCart.has(p.cartKey || p.id) ? 'checked' : ''} />
         <span></span>
       </label>
       <img class="cart-image" src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
       <div class="cart-info">
         <button class="cart-title-link" data-open="${p.id}">${p.title}</button>
         <div class="cart-sku">Артикул: ${getSku(p) || '—'}</div>
+        ${p.optionLines?.length ? `
+          <div class="cart-options">
+            ${p.optionLines.map((line) => `<div class="cart-option-line"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>`).join('')}
+          </div>
+        ` : ''}
         <div class="cart-price">${cartPriceLabel}</div>
       </div>
       <div class="cart-controls">
-        <button class="qty-btn" data-qty="${p.id}" data-action="dec">−</button>
+        <button class="qty-btn" data-cart-line="${escapeHtml(p.cartKey || p.id)}" data-action="dec">−</button>
         <span class="qty-count">${p.qty}</span>
-        <button class="qty-btn" data-qty="${p.id}" data-action="inc">+</button>
+        <button class="qty-btn" data-cart-line="${escapeHtml(p.cartKey || p.id)}" data-action="inc">+</button>
         <button class="icon-btn ${state.favorites.has(p.id) ? 'active' : ''}" data-favorite="${p.id}" aria-label="В избранное">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />
           </svg>
         </button>
-        <button class="icon-btn" data-remove="${p.id}" aria-label="Удалить">
+        <button class="icon-btn" data-remove="${escapeHtml(p.cartKey || p.id)}" aria-label="Удалить">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 6h18" />
             <path d="M8 6V4h8v2" />
@@ -7103,8 +7594,9 @@ function renderCart() {
   if (ui.checkoutTotal) {
     ui.checkoutTotal.textContent = formatSummaryTotal(summary);
   }
+  renderCheckoutItemsSummary(items);
   if (ui.cartSelectAll) {
-    ui.cartSelectAll.checked = items.length && items.every((i) => state.selectedCart.has(i.id));
+    ui.cartSelectAll.checked = items.length && items.every((item) => state.selectedCart.has(item.cartKey || item.id));
   }
   if (ui.promoCodeInput) ui.promoCodeInput.value = state.promoCode || '';
   if (ui.promoStatus) {
@@ -7237,6 +7729,11 @@ function renderOrders() {
               <li>
                 <span class="order-item-title">${escapeHtml(String(i?.title || 'Товар'))}</span>
                 <span class="order-item-qty">× ${Number(i?.qty || 1)}</span>
+                ${Array.isArray(i?.selectedOptionLines) && i.selectedOptionLines.length ? `
+                  <div class="order-item-options">
+                    ${i.selectedOptionLines.map((line) => `<div>${escapeHtml(String(line?.name || 'Опция'))}: ${escapeHtml(String(line?.value || ''))}</div>`).join('')}
+                  </div>
+                ` : ''}
               </li>
             `).join('')}
           </ul>
@@ -8815,7 +9312,7 @@ function applyPromoCode() {
     renderCart();
     return;
   }
-  const selected = cartItems().filter((i) => state.selectedCart.has(i.id));
+  const selected = cartItems().filter((item) => state.selectedCart.has(item.cartKey || item.id));
   const eligibleCount = selected.filter((item) => isEligibleFirstOrderPromoItem(item)).length;
   if (!eligibleCount) {
     if (ui.promoStatus) {
@@ -8850,13 +9347,6 @@ function refreshFavoriteViews() {
   if (state.currentScreen === 'product') {
     renderProductView();
   }
-}
-
-function addToCart(id) {
-  state.cart[id] = (state.cart[id] || 0) + 1;
-  saveStorage();
-  updateBadges();
-  saasTrackEvent('add_to_cart', { productId: id, payload: { qty: state.cart[id] } });
 }
 
 function bindHorizontalTrackSwipe(track) {
@@ -9700,31 +10190,26 @@ function bindEvents() {
       return;
     }
     if (btn && btn.dataset.cart) {
-      addToCart(btn.dataset.cart);
+      attemptAddProductToCart(btn.dataset.cart);
       renderProducts();
       e.stopPropagation();
       return;
     }
     if (btn && btn.dataset.request) {
       const id = btn.dataset.request;
-      addToCart(id);
-      renderCart();
-      setScreen('checkout');
+      attemptAddProductToCart(id, { checkoutAfter: true, requestMode: true });
       e.stopPropagation();
       return;
     }
     if (btn && btn.dataset.qtyInc) {
-      addToCart(btn.dataset.qtyInc);
+      attemptAddProductToCart(btn.dataset.qtyInc);
       renderProducts();
       e.stopPropagation();
       return;
     }
     if (btn && btn.dataset.qtyDec) {
       const id = btn.dataset.qtyDec;
-      state.cart[id] = Math.max(0, (state.cart[id] || 0) - 1);
-      if (!state.cart[id]) delete state.cart[id];
-      saveStorage();
-      updateBadges();
+      decrementCartLine(id);
       renderProducts();
       e.stopPropagation();
       return;
@@ -9854,23 +10339,20 @@ function bindEvents() {
       return;
     }
     if (btn && btn.dataset.cart) {
-      addToCart(btn.dataset.cart);
+      attemptAddProductToCart(btn.dataset.cart);
       renderPromos();
       e.stopPropagation();
       return;
     }
     if (btn && btn.dataset.qtyInc) {
-      addToCart(btn.dataset.qtyInc);
+      attemptAddProductToCart(btn.dataset.qtyInc);
       renderPromos();
       e.stopPropagation();
       return;
     }
     if (btn && btn.dataset.qtyDec) {
       const id = btn.dataset.qtyDec;
-      state.cart[id] = Math.max(0, (state.cart[id] || 0) - 1);
-      if (!state.cart[id]) delete state.cart[id];
-      saveStorage();
-      updateBadges();
+      decrementCartLine(id);
       renderPromos();
       e.stopPropagation();
       return;
@@ -9983,6 +10465,9 @@ function bindEvents() {
         const product = getProduct(btn.dataset.adminPromo);
         if (product) adminConfigureProductPromo(product);
       }
+      if (btn.dataset.adminOptionAction) {
+        adminEditProductOption(Number(btn.dataset.adminOptionIndex || 0), btn.dataset.adminOptionAction || '');
+      }
       return;
     }
     if (btn.dataset.open) {
@@ -9992,21 +10477,31 @@ function bindEvents() {
       return;
     }
     if (btn.dataset.favorite) { toggleFavorite(btn.dataset.favorite); }
-    if (btn.dataset.cart) { addToCart(btn.dataset.cart); renderProductView(); }
-    if (btn.dataset.request) {
-      const id = btn.dataset.request;
-      addToCart(id);
-      renderCart();
-      setScreen('checkout');
+    if (btn.dataset.optionProduct && btn.dataset.optionId) {
+      const productId = btn.dataset.optionProduct;
+      const optionId = btn.dataset.optionId;
+      const value = btn.dataset.optionValue || '';
+      const current = getProductOptionSelections(productId);
+      setProductOptionSelection(productId, optionId, current[optionId] === value ? '' : value);
+      if (btn.dataset.optionScope === 'modal') renderProductOptionsModal();
+      else renderProductView();
       return;
     }
-    if (btn.dataset.qtyInc) { addToCart(btn.dataset.qtyInc); renderProductView(); }
+    if (btn.dataset.cart) {
+      attemptAddProductToCart(btn.dataset.cart);
+      renderProductView();
+    }
+    if (btn.dataset.request) {
+      const id = btn.dataset.request;
+      attemptAddProductToCart(id, { checkoutAfter: true, requestMode: true });
+      return;
+    }
+    if (btn.dataset.cartLineInc) { const entry = normalizeCartEntry(btn.dataset.cartLineInc, state.cart?.[btn.dataset.cartLineInc]); if (entry) addToCart(entry.productId, entry.selectedOptions); renderProductView(); return; }
+    if (btn.dataset.cartLineDec) { decrementCartLine(btn.dataset.cartLineDec); renderProductView(); return; }
+    if (btn.dataset.qtyInc) { attemptAddProductToCart(btn.dataset.qtyInc); renderProductView(); }
     if (btn.dataset.qtyDec) {
       const id = btn.dataset.qtyDec;
-      state.cart[id] = Math.max(0, (state.cart[id] || 0) - 1);
-      if (!state.cart[id]) delete state.cart[id];
-      saveStorage();
-      updateBadges();
+      decrementCartLine(id);
       renderProductView();
     }
   });
@@ -10033,7 +10528,7 @@ function bindEvents() {
         return;
       }
       if (btn.dataset.cart) {
-        addToCart(btn.dataset.cart);
+        attemptAddProductToCart(btn.dataset.cart);
         renderFavorites();
         return;
       }
@@ -10053,6 +10548,36 @@ function bindEvents() {
 
   on(ui.favoritesButton, 'click', () => { renderFavorites(); setScreen('favorites'); });
   on(ui.cartButton, 'click', () => { renderCart(); setScreen('cart'); });
+  on(ui.productOptionsModal, 'click', (e) => {
+    const optionButton = e.target.closest('[data-option-product][data-option-id]');
+    if (optionButton) {
+      const productId = optionButton.dataset.optionProduct || '';
+      const optionId = optionButton.dataset.optionId || '';
+      const value = optionButton.dataset.optionValue || '';
+      const current = getProductOptionSelections(productId);
+      setProductOptionSelection(productId, optionId, current[optionId] === value ? '' : value);
+      renderProductOptionsModal();
+      return;
+    }
+    if (e.target === ui.productOptionsModal) {
+      closeProductOptionsModal();
+    }
+  });
+  on(ui.productOptionsModalCancel, 'click', () => closeProductOptionsModal());
+  on(ui.productOptionsModalConfirm, 'click', () => {
+    const productId = String(ui.productOptionsModal?.dataset.productId || '').trim();
+    if (!productId) return;
+    const checkoutAfter = String(ui.productOptionsModal?.dataset.checkoutAfter || '') === '1';
+    const requestMode = String(ui.productOptionsModal?.dataset.requestMode || '') === '1';
+    const added = attemptAddProductToCart(productId, { checkoutAfter, requestMode });
+    if (!added) {
+      renderProductOptionsModal();
+      return;
+    }
+    closeProductOptionsModal();
+    renderCart();
+    if (state.currentScreen === 'product') renderProductView();
+  });
   on(ui.profileButton, 'click', () => {
     if (state.admin.enabled) {
       void refreshSubscriptionStatus().then(() => {
@@ -10144,7 +10669,7 @@ function bindEvents() {
     openMenu();
   });
   on(ui.checkoutButton, 'click', () => {
-    saasTrackEvent('begin_checkout', { payload: { cartItems: Object.keys(state.cart || {}).length } });
+    saasTrackEvent('begin_checkout', { payload: { cartItems: getCartEntries().length } });
     renderCart();
     setScreen('checkout');
   });
@@ -10155,7 +10680,7 @@ function bindEvents() {
 
   on(ui.favoritesToCart, 'click', () => {
     const ids = state.selectedFavorites.size ? Array.from(state.selectedFavorites) : Array.from(state.favorites);
-    ids.forEach((id) => addToCart(id));
+    ids.forEach((id) => attemptAddProductToCart(id));
     renderFavorites();
   });
   on(ui.favoritesClear, 'click', () => {
@@ -10185,9 +10710,15 @@ function bindEvents() {
       return;
     }
     if (!id) return;
-    if (btn.dataset.action === 'inc') { addToCart(id); }
-    else if (btn.dataset.action === 'dec') { state.cart[id] = Math.max(0, (state.cart[id] || 0) - 1); if (!state.cart[id]) delete state.cart[id]; saveStorage(); updateBadges(); }
-    else if (btn.dataset.remove) { delete state.cart[id]; saveStorage(); updateBadges(); }
+    const lineKey = btn.dataset.cartLine || btn.dataset.remove || '';
+    if (btn.dataset.action === 'inc') {
+      const entry = normalizeCartEntry(lineKey, state.cart?.[lineKey]);
+      if (entry) addToCart(entry.productId, entry.selectedOptions);
+    } else if (btn.dataset.action === 'dec') {
+      decrementCartLine(lineKey);
+    } else if (btn.dataset.remove) {
+      removeCartLine(lineKey);
+    }
     renderCart();
   });
 
@@ -10195,8 +10726,8 @@ function bindEvents() {
     const select = e.target.closest('input[data-cart-select]');
     if (!select) return;
     state.cartSelectionTouched = true;
-    const id = select.dataset.cartSelect;
-    if (select.checked) state.selectedCart.add(id); else state.selectedCart.delete(id);
+    const lineKey = select.dataset.cartSelect;
+    if (select.checked) state.selectedCart.add(lineKey); else state.selectedCart.delete(lineKey);
     saveStorage();
     renderCart();
   });
@@ -10212,13 +10743,13 @@ function bindEvents() {
   if (ui.cartSelectAll) ui.cartSelectAll.addEventListener('change', () => {
     state.cartSelectionTouched = true;
     const items = cartItems();
-    state.selectedCart = new Set(ui.cartSelectAll.checked ? items.map((i) => i.id) : []);
+    state.selectedCart = new Set(ui.cartSelectAll.checked ? items.map((item) => item.cartKey || item.id) : []);
     saveStorage();
     renderCart();
   });
 
   if (ui.cartRemoveSelected) ui.cartRemoveSelected.addEventListener('click', () => {
-    state.selectedCart.forEach((id) => delete state.cart[id]);
+    state.selectedCart.forEach((lineKey) => delete state.cart[lineKey]);
     state.selectedCart.clear();
     saveStorage();
     updateBadges();
@@ -10308,6 +10839,8 @@ function bindEvents() {
         qty: i.qty,
         isPromo: priceView.hasPromo,
         isRequestPrice: !priceView.hasPrice,
+        selectedOptions: i.selectedOptions || {},
+        selectedOptionLines: Array.isArray(i.optionLines) ? i.optionLines : [],
       };
     });
     const pricedItems = mappedItems.filter((i) => !i.isRequestPrice);
@@ -10583,7 +11116,10 @@ function bindEvents() {
       if (e.target.closest('.order-repeat')) {
         order.items.forEach((i) => {
           if (!i.id) return;
-          state.cart[i.id] = (state.cart[i.id] || 0) + (i.qty || 1);
+          const selectedOptions = i.selectedOptions && typeof i.selectedOptions === 'object' ? i.selectedOptions : {};
+          for (let index = 0; index < Math.max(1, Number(i.qty || 1)); index += 1) {
+            addToCart(i.id, selectedOptions);
+          }
         });
         saveStorage();
         updateBadges();
