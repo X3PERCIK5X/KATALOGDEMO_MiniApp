@@ -8654,6 +8654,7 @@ function openExternalPaymentLink(url) {
 
 function renderPayScreen() {
   const provider = String(state.pendingPayment?.provider || '').trim();
+  const paymentKind = String(state.pendingPayment?.kind || '').trim();
   const providerLabelMap = {
     yookassa: 'ЮKassa',
     tbank: 'Т-Банк',
@@ -8663,11 +8664,19 @@ function renderPayScreen() {
     custom: 'Платёжный провайдер',
   };
   const providerLabel = providerLabelMap[provider] || 'Платёжный провайдер';
-  if (ui.payScreenTitle) ui.payScreenTitle.textContent = `Оплата через ${providerLabel}`;
+  if (ui.payScreenTitle) {
+    ui.payScreenTitle.textContent = paymentKind === 'subscription'
+      ? `Оплата подписки через ${providerLabel}`
+      : `Оплата через ${providerLabel}`;
+  }
   if (ui.payScreenText) {
-    ui.payScreenText.textContent = state.pendingPayment?.url
-      ? 'Нажмите кнопку ниже, чтобы открыть страницу оплаты.'
-      : 'Ссылка оплаты не настроена.';
+    if (!state.pendingPayment?.url) {
+      ui.payScreenText.textContent = 'Ссылка оплаты не настроена.';
+    } else if (paymentKind === 'subscription') {
+      ui.payScreenText.textContent = 'Если касса не открылась автоматически, нажмите кнопку ниже, чтобы перейти к оплате подписки.';
+    } else {
+      ui.payScreenText.textContent = 'Нажмите кнопку ниже, чтобы открыть страницу оплаты.';
+    }
   }
   if (ui.payOpenLinkButton) {
     ui.payOpenLinkButton.disabled = !state.pendingPayment?.url;
@@ -8725,9 +8734,20 @@ async function openSubscriptionPayment() {
     return;
   }
   if (ui.subscriptionStatus) {
-    ui.subscriptionStatus.textContent = `Переход к оплате: ${tariff.label} — ${formatPrice(tariff.amount)} ₽`;
+    ui.subscriptionStatus.textContent = `Ссылка оплаты готова: ${tariff.label} — ${formatPrice(tariff.amount)} ₽`;
   }
-  openExternalPaymentLink(link);
+  state.pendingPayment = {
+    kind: 'subscription',
+    url: link,
+    provider: 'yookassa',
+    tariffDays: Number(tariff.days || 0),
+    amount: Number(tariff.amount || 0),
+  };
+  renderPayScreen();
+  setScreen('pay');
+  window.setTimeout(() => {
+    openExternalPaymentLink(link);
+  }, 120);
 }
 
 function validatePhone(value) {
