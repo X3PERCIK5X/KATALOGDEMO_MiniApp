@@ -3618,7 +3618,8 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
     inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
   };
   try {
-    if (welcomeImage) {
+    const canSendPhoto = Boolean(welcomeImage) && !/^data:/i.test(welcomeImage);
+    if (canSendPhoto) {
       const photoResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendPhoto`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3630,8 +3631,9 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
         }),
       });
       const photoPayload = await photoResp.json().catch(() => ({}));
-      if (!photoResp.ok || !photoPayload?.ok) return { ok: false, error: 'SEND_START_PHOTO_FAILED' };
-      return { ok: true };
+      if (photoResp.ok && photoPayload?.ok) {
+        return { ok: true };
+      }
     }
 
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
@@ -4929,6 +4931,9 @@ app.post('/api/admin/stores/:storeId/bot', authMiddleware, storeParamMiddleware,
   let orderChatTest = { ok: false, skipped: true, reason: 'CHAT_TEST_NOT_REQUESTED' };
   const targetChatIds = resolveOrderRequestChatIdsFromSettings(mergedSettings);
   if (
+    hasOrderChatIdField
+    && orderChatId
+    && 
     normalizeOrderRequestChannelType(mergedSettings.orderRequestChannelType || '') === 'telegram_chat'
     && targetChatIds.length
   ) {
