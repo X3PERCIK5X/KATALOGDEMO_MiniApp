@@ -4334,16 +4334,55 @@ function removeCartLine(lineKey) {
   updateBadges();
 }
 
-function renderProductOptionBlocks(product, rawSelections = {}, { scope = 'inline', compact = false } = {}) {
+function isGenericProductOptionName(rawName) {
+  const name = String(rawName || '').trim();
+  return /^характеристик[а-я]*\s*\d*$/i.test(name);
+}
+
+function getCustomerOptionName(rawName) {
+  const name = String(rawName || '').trim();
+  if (!name || isGenericProductOptionName(name)) return '';
+  return name;
+}
+
+function normalizeDisplayOptionLine(rawLine) {
+  const value = String(rawLine?.value || '').trim();
+  if (!value) return null;
+  return {
+    name: getCustomerOptionName(rawLine?.name),
+    value,
+  };
+}
+
+function renderDisplayOptionLines(lines, { containerClass = 'selected-option-lines', itemClass = 'selected-option-line' } = {}) {
+  const normalized = (Array.isArray(lines) ? lines : [])
+    .map((line) => normalizeDisplayOptionLine(line))
+    .filter(Boolean);
+  if (!normalized.length) return '';
+  return `
+    <div class="${containerClass}">
+      ${normalized.map((line) => `
+        <div class="${itemClass}${line.name ? '' : ` ${itemClass}--value-only`}">
+          ${line.name ? `<span>${escapeHtml(line.name)}:</span>` : ''}
+          <strong>${escapeHtml(line.value)}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderProductOptionBlocks(product, rawSelections = {}, { scope = 'inline', compact = false, showMeta = false } = {}) {
   const selections = normalizeProductOptionSelections(product, rawSelections);
   const options = getProductOptionDefinitions(product);
   if (!options.length) return '';
   return options.map((option) => `
-    <div class="product-option-block${compact ? ' compact' : ''}">
+    <div class="product-option-block${compact ? ' compact' : ''}${getCustomerOptionName(option.name) ? '' : ' headless'}">
+      ${(getCustomerOptionName(option.name) || showMeta) ? `
       <div class="product-option-head">
-        <span class="product-option-name">${escapeHtml(option.name)}</span>
-        <span class="product-option-meta">${option.required ? 'Обязательно' : 'Необязательно'}</span>
+        ${getCustomerOptionName(option.name) ? `<span class="product-option-name">${escapeHtml(getCustomerOptionName(option.name))}</span>` : '<span></span>'}
+        ${showMeta ? `<span class="product-option-meta">${option.required ? 'Обязательно' : 'Необязательно'}</span>` : ''}
       </div>
+      ` : ''}
       <div class="product-option-values">
         ${option.values.map((value) => `
           <button
@@ -4362,14 +4401,7 @@ function renderProductOptionBlocks(product, rawSelections = {}, { scope = 'inlin
 
 function renderSelectedOptionLinesHtml(product, rawSelections = {}) {
   const lines = getProductSelectedOptionLines(product, rawSelections);
-  if (!lines.length) return '';
-  return `
-    <div class="selected-option-lines">
-      ${lines.map((line) => `
-        <div class="selected-option-line"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>
-      `).join('')}
-    </div>
-  `;
+  return renderDisplayOptionLines(lines);
 }
 
 function renderCheckoutItemsSummary(items = cartItems()) {
@@ -4392,9 +4424,7 @@ function renderCheckoutItemsSummary(items = cartItems()) {
                 <div class="checkout-item-title">${escapeHtml(item.title || '')}</div>
                 <div class="checkout-item-meta">${item.qty} × ${escapeHtml(priceLabel)}</div>
                 ${item.optionLines?.length ? `
-                  <div class="checkout-item-options">
-                    ${item.optionLines.map((line) => `<div class="checkout-item-option"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>`).join('')}
-                  </div>
+                  ${renderDisplayOptionLines(item.optionLines, { containerClass: 'checkout-item-options', itemClass: 'checkout-item-option' })}
                 ` : ''}
               </div>
             </div>
@@ -6994,8 +7024,18 @@ function buildProductCards(list, options = {}) {
   const selectedProducts = new Set(getSelectedProductIds());
   return list.map((p) => {
     const priceView = getProductPriceView(p);
-    const hasSelectableOptions = getProductOptionDefinitions(p).length > 0;
+    const productOptions = getProductOptionDefinitions(p);
+    const hasSelectableOptions = productOptions.length > 0;
+    const optionSelections = getProductOptionSelections(p.id);
+    const missingRequiredOptions = getMissingRequiredProductOptions(p, optionSelections);
+    const exactVariantKey = buildCartLineKey(p.id, optionSelections);
+    const exactVariantQty = hasSelectableOptions && !missingRequiredOptions.length
+      ? getExactCartLineQty(p.id, optionSelections)
+      : 0;
     const simpleQty = hasSelectableOptions ? 0 : getSimpleCartQty(p.id);
+    const cardOptionBlocks = hasSelectableOptions
+      ? renderProductOptionBlocks(p, optionSelections, { scope: options.promo ? 'promo-card' : 'card', compact: true })
+      : '';
     return `
     <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && selectedProducts.has(p.id) ? ' admin-selected-target' : ''}" data-open="${p.id}">
       ${priceView.badgeHtml}
@@ -7005,14 +7045,23 @@ function buildProductCards(list, options = {}) {
         </svg>
       </button>
       <img src="${safeSrc(p.images[0])}" alt="${p.title}" loading="lazy" decoding="async" />
-      <div>
+      <div class="product-card-body">
         <div class="product-title">${p.title}</div>
         <div class="product-meta">${p.shortDescription || ''}</div>
         <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
         <div class="product-price">
           ${priceView.html}
         </div>
-        ${simpleQty
+        ${cardOptionBlocks ? `<div class="product-card-options">${cardOptionBlocks}</div>` : ''}
+        ${exactVariantQty
+          ? `
+            <div class="card-qty" data-qty="${escapeHtml(exactVariantKey)}">
+              <button class="qty-btn" data-qty-dec="${escapeHtml(exactVariantKey)}" type="button">−</button>
+              <span class="qty-count">${exactVariantQty}</span>
+              <button class="qty-btn" data-qty-inc="${escapeHtml(exactVariantKey)}" type="button">+</button>
+            </div>
+          `
+          : simpleQty
           ? `
             <div class="card-qty" data-qty="${p.id}">
               <button class="qty-btn" data-qty-dec="${p.id}" type="button">−</button>
@@ -7337,7 +7386,6 @@ function renderProductView() {
   const productOptions = getProductOptionDefinitions(p, { mutate: state.admin.enabled });
   const optionSelections = getProductOptionSelections(p.id);
   const missingRequiredOptions = getMissingRequiredProductOptions(p, optionSelections);
-  const selectedOptionLinesHtml = renderSelectedOptionLinesHtml(p, optionSelections);
   const inlineOptionBlocks = renderProductOptionBlocks(p, optionSelections, { scope: 'inline' });
   const exactVariantQty = productOptions.length
     ? (missingRequiredOptions.length ? 0 : getExactCartLineQty(p.id, optionSelections))
@@ -7401,12 +7449,8 @@ function renderProductView() {
     <div class="product-meta">Артикул: ${getSku(p) || '—'}</div>
     ${productOptions.length ? `
       <div class="detail-section product-options-inline-section">
-        <div class="section-title">
-          <span>Выберите характеристики</span>
-        </div>
         <div class="product-options-inline">
           ${inlineOptionBlocks}
-          ${selectedOptionLinesHtml}
         </div>
       </div>
     ` : ''}
@@ -7560,7 +7604,7 @@ function renderCart() {
         <div class="cart-sku">Артикул: ${getSku(p) || '—'}</div>
         ${p.optionLines?.length ? `
           <div class="cart-options">
-            ${p.optionLines.map((line) => `<div class="cart-option-line"><span>${escapeHtml(line.name)}:</span><strong>${escapeHtml(line.value)}</strong></div>`).join('')}
+            ${renderDisplayOptionLines(p.optionLines, { containerClass: 'cart-options-grid', itemClass: 'cart-option-line' })}
           </div>
         ` : ''}
         <div class="cart-price">${cartPriceLabel}</div>
@@ -7730,9 +7774,7 @@ function renderOrders() {
                 <span class="order-item-title">${escapeHtml(String(i?.title || 'Товар'))}</span>
                 <span class="order-item-qty">× ${Number(i?.qty || 1)}</span>
                 ${Array.isArray(i?.selectedOptionLines) && i.selectedOptionLines.length ? `
-                  <div class="order-item-options">
-                    ${i.selectedOptionLines.map((line) => `<div>${escapeHtml(String(line?.name || 'Опция'))}: ${escapeHtml(String(line?.value || ''))}</div>`).join('')}
-                  </div>
+                  ${renderDisplayOptionLines(i.selectedOptionLines, { containerClass: 'order-item-options', itemClass: 'order-item-option-line' })}
                 ` : ''}
               </li>
             `).join('')}
@@ -10189,6 +10231,16 @@ function bindEvents() {
       e.stopPropagation();
       return;
     }
+    if (btn && btn.dataset.optionProduct && btn.dataset.optionId) {
+      const productId = btn.dataset.optionProduct;
+      const optionId = btn.dataset.optionId;
+      const value = btn.dataset.optionValue || '';
+      const current = getProductOptionSelections(productId);
+      setProductOptionSelection(productId, optionId, current[optionId] === value ? '' : value);
+      renderProducts();
+      e.stopPropagation();
+      return;
+    }
     if (btn && btn.dataset.cart) {
       attemptAddProductToCart(btn.dataset.cart);
       renderProducts();
@@ -10335,6 +10387,16 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (btn && btn.dataset.favorite) {
       toggleFavorite(btn.dataset.favorite);
+      e.stopPropagation();
+      return;
+    }
+    if (btn && btn.dataset.optionProduct && btn.dataset.optionId) {
+      const productId = btn.dataset.optionProduct;
+      const optionId = btn.dataset.optionId;
+      const value = btn.dataset.optionValue || '';
+      const current = getProductOptionSelections(productId);
+      setProductOptionSelection(productId, optionId, current[optionId] === value ? '' : value);
+      renderPromos();
       e.stopPropagation();
       return;
     }
