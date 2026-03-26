@@ -25,6 +25,58 @@ function specsToLines(items) {
   return (items || []).filter(Boolean).map((item) => `${item.label}: ${item.value}`);
 }
 
+function buildOption(id, name, values, required = false) {
+  const normalizedValues = unique((values || []).map((value) => String(value || '').trim()).filter(Boolean));
+  if (!id || !name || !normalizedValues.length) return null;
+  return {
+    id: String(id).trim(),
+    name: String(name).trim(),
+    required: Boolean(required),
+    values: normalizedValues,
+  };
+}
+
+function buildFashionOptions(data) {
+  const categoryId = String(data?.categoryId || '').trim();
+  const productId = String(data?.id || '').trim();
+  const apparelSizes = {
+    'women-dresses': ['XS', 'S', 'M', 'L'],
+    'women-knitwear': ['XS', 'S', 'M', 'L'],
+    'women-outerwear': ['XS', 'S', 'M', 'L'],
+    'women-suits': ['XS', 'S', 'M', 'L'],
+    'men-shirts': ['S', 'M', 'L', 'XL'],
+    'men-knitwear': ['S', 'M', 'L', 'XL'],
+    'men-outerwear': ['S', 'M', 'L', 'XL'],
+    'men-suits': ['S', 'M', 'L', 'XL'],
+    'basics-tshirts': ['S', 'M', 'L', 'XL'],
+    'basics-lounge': ['S', 'M', 'L', 'XL'],
+  };
+  const shoeSizes = {
+    'sh-sneakers-white': ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45'],
+    'sh-sneakers-black': ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45'],
+    'sh-loafers-women': ['36', '37', '38', '39', '40', '41'],
+    'sh-loafers-men': ['40', '41', '42', '43', '44', '45'],
+    'sh-boots-chelsea': ['37', '38', '39', '40', '41', '42', '43', '44', '45'],
+    'sh-heels-slingback': ['36', '37', '38', '39', '40'],
+  };
+  const denimSizes = {
+    'basics-denim-blue': ['XS', 'S', 'M', 'L', 'XL'],
+    'basics-denim-ecru': ['XS', 'S', 'M', 'L'],
+    'basics-denim-indigo': ['28', '30', '32', '34', '36'],
+  };
+
+  if (shoeSizes[productId]) {
+    return [buildOption('size', 'Размер', shoeSizes[productId], true)].filter(Boolean);
+  }
+  if (denimSizes[productId]) {
+    return [buildOption('size', 'Размер', denimSizes[productId], true)].filter(Boolean);
+  }
+  if (apparelSizes[categoryId]) {
+    return [buildOption('size', 'Размер', apparelSizes[categoryId], true)].filter(Boolean);
+  }
+  return [];
+}
+
 const IMG = {
   womenRoot: unique([
     'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1600&q=80',
@@ -158,6 +210,7 @@ function p(data) {
     description: data.description,
     specs: specsToLines(data.specs || []),
     images: unique(data.images || []),
+    options: Array.isArray(data.options) ? data.options : buildFashionOptions(data),
     active: true,
   };
 }

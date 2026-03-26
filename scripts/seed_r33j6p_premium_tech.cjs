@@ -36,6 +36,77 @@ function specsToLines(items) {
   return (items || []).filter(Boolean).map((item) => `${item.label}: ${item.value}`);
 }
 
+function getSpecValue(items, label) {
+  const match = (items || []).find((item) => String(item?.label || '').trim() === label);
+  return String(match?.value || '').trim();
+}
+
+function buildOption(id, name, values, required = false) {
+  const normalizedValues = unique((values || []).map((value) => String(value || '').trim()).filter(Boolean));
+  if (!id || !name || !normalizedValues.length) return null;
+  return {
+    id: String(id).trim(),
+    name: String(name).trim(),
+    required: Boolean(required),
+    values: normalizedValues,
+  };
+}
+
+const TECH_COLOR_OPTIONS = {
+  'iphone-16-pro-max-256': ['Black Titanium', 'White Titanium', 'Natural Titanium', 'Desert Titanium'],
+  'iphone-16-pro-128': ['Black Titanium', 'White Titanium', 'Natural Titanium', 'Desert Titanium'],
+  'iphone-16-128': ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'],
+  'iphone-15-128': ['Black', 'Blue', 'Green', 'Yellow', 'Pink'],
+  'galaxy-s25-ultra-256': ['Titanium Black', 'Titanium Gray', 'Titanium Silverblue', 'Titanium Whitesilver'],
+  'galaxy-s25-256': ['Navy', 'Icyblue', 'Mint', 'Silver Shadow'],
+  'galaxy-s25-plus-256': ['Navy', 'Icyblue', 'Mint', 'Silver Shadow'],
+  'galaxy-s24-fe-256': ['Graphite', 'Blue', 'Mint', 'Gray'],
+  'pixel-8-pro-256': ['Obsidian', 'Porcelain', 'Bay'],
+  'pixel-8-128': ['Obsidian', 'Hazel', 'Rose'],
+  'pixel-8a-128': ['Obsidian', 'Porcelain', 'Bay', 'Aloe'],
+  'xiaomi-15-ultra-512': ['Black', 'White', 'Silver Chrome'],
+  'xiaomi-15-256': ['Black', 'White', 'Green', 'Liquid Silver'],
+  'xiaomi-14t-pro-512': ['Titan Black', 'Titan Blue', 'Titan Gray'],
+  'macbook-air-13-m3-16-512': ['Midnight', 'Starlight', 'Silver', 'Space Gray'],
+  'macbook-air-15-m3-16-512': ['Midnight', 'Starlight', 'Silver', 'Space Gray'],
+  'macbook-pro-14-m4-16-512': ['Space Black', 'Silver'],
+  'macbook-pro-16-m4-pro-24-512': ['Space Black', 'Silver'],
+  'ipad-air-11-m2-128': ['Blue', 'Purple', 'Starlight', 'Space Gray'],
+  'ipad-pro-13-m4-256': ['Space Black', 'Silver'],
+  'ipad-mini-a17pro-128': ['Blue', 'Purple', 'Starlight', 'Space Gray'],
+  'galaxy-tab-s10-ultra-256': ['Moonstone Gray', 'Platinum Silver'],
+  'galaxy-tab-s9-fe-128': ['Gray', 'Mint', 'Silver'],
+  'airpods-max-usbc': ['Midnight', 'Blue', 'Purple', 'Orange', 'Starlight'],
+  'sony-wh-1000xm5': ['Black'],
+  'galaxy-buds3-pro': ['Silver', 'White'],
+  'nothing-ear-black': ['Black', 'White'],
+  'apple-watch-series-10-46': ['Jet Black', 'Rose Gold', 'Silver'],
+  'apple-watch-ultra-2': ['Natural Titanium', 'Black Titanium'],
+  'galaxy-watch7-44': ['Green', 'Silver', 'Cream'],
+  'galaxy-watch-ultra': ['Titanium Gray', 'Titanium Silver', 'Titanium White'],
+  'garmin-fenix-8-amoled': ['Slate Gray'],
+  'homepod-mini': ['Midnight', 'Blue', 'Yellow', 'Orange', 'White'],
+  'google-nest-audio': ['Chalk', 'Charcoal', 'Sage', 'Sand', 'Sky'],
+  'mx-keys-mini': ['Graphite', 'Pale Gray', 'Rose'],
+  'mx-master-3s': ['Graphite', 'Pale Gray'],
+};
+
+function buildTechOptions(data) {
+  const categoryId = String(data?.categoryId || '').trim();
+  const options = [];
+  if (/^(smartphones|laptops|tablets)-/.test(categoryId)) {
+    const memoryValue = getSpecValue(data?.specs, 'Память');
+    if (memoryValue) {
+      options.push(buildOption('memory', 'Память', [memoryValue], false));
+    }
+  }
+  const colorValues = TECH_COLOR_OPTIONS[String(data?.id || '').trim()];
+  if (Array.isArray(colorValues) && colorValues.length) {
+    options.push(buildOption('color', 'Цвет', colorValues, colorValues.length > 1));
+  }
+  return options.filter(Boolean).slice(0, 3);
+}
+
 function writeSvg(filename, svg) {
   ensureDir(UPLOADS_BASE);
   fs.writeFileSync(path.join(UPLOADS_BASE, filename), svg, 'utf8');
@@ -368,6 +439,7 @@ function p(data) {
     description: data.description,
     specs: specsToLines(data.specs || []),
     images: unique(data.images || []),
+    options: Array.isArray(data.options) ? data.options : buildTechOptions(data),
     active: true,
   };
 }
