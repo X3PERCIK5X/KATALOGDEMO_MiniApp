@@ -14,6 +14,7 @@ const state = {
   selectedFavorites: new Set(),
   cart: {},
   productOptionSelections: {},
+  productCardOptionPanels: {},
   selectedCart: new Set(),
   cartSelectionTouched: false,
   favoritesSelectionTouched: false,
@@ -4211,6 +4212,30 @@ function setProductOptionSelection(productId, optionId, value) {
   saveStorage();
 }
 
+function isProductCardOptionPanelExpanded(productId) {
+  return Boolean(state.productCardOptionPanels?.[String(productId || '').trim()]);
+}
+
+function setProductCardOptionPanelExpanded(productId, expanded) {
+  const key = String(productId || '').trim();
+  if (!key) return;
+  if (!state.productCardOptionPanels || typeof state.productCardOptionPanels !== 'object') {
+    state.productCardOptionPanels = {};
+  }
+  if (expanded) state.productCardOptionPanels[key] = true;
+  else delete state.productCardOptionPanels[key];
+}
+
+function buildProductOptionSummaryLabel(product, rawSelections = {}) {
+  const lines = getProductSelectedOptionLines(product, rawSelections);
+  if (lines.length) return lines.map((line) => line.value).join(' · ');
+  const optionNames = getProductOptionDefinitions(product)
+    .map((option) => getCustomerOptionName(option.name))
+    .filter(Boolean);
+  if (optionNames.length) return optionNames.join(' · ');
+  return 'Параметры товара';
+}
+
 function buildProductOptionSelectionKey(selectedOptions = {}) {
   const entries = Object.entries(selectedOptions || {})
     .map(([key, value]) => [String(key || '').trim(), String(value || '').trim()])
@@ -4401,6 +4426,30 @@ function renderProductOptionBlocks(product, rawSelections = {}, { scope = 'inlin
       </div>
     </div>
   `).join('');
+}
+
+function renderProductCardOptionPanel(product, rawSelections = {}, { scope = 'card' } = {}) {
+  const options = getProductOptionDefinitions(product);
+  if (!options.length) return '';
+  const productId = String(product.id || '').trim();
+  const expanded = isProductCardOptionPanelExpanded(productId);
+  const summaryLabel = buildProductOptionSummaryLabel(product, rawSelections);
+  return `
+    <div class="product-card-option-panel${expanded ? ' expanded' : ''}">
+      <button
+        class="product-card-option-toggle"
+        type="button"
+        data-option-toggle-product="${escapeHtml(productId)}"
+        aria-expanded="${expanded ? 'true' : 'false'}"
+      >
+        <span class="product-card-option-toggle-label">${escapeHtml(summaryLabel)}</span>
+        <span class="product-card-option-toggle-icon" aria-hidden="true">${expanded ? '−' : '+'}</span>
+      </button>
+      <div class="product-card-option-body${expanded ? '' : ' hidden'}">
+        ${renderProductOptionBlocks(product, rawSelections, { scope, compact: true })}
+      </div>
+    </div>
+  `;
 }
 
 function renderSelectedOptionLinesHtml(product, rawSelections = {}) {
@@ -7038,7 +7087,7 @@ function buildProductCards(list, options = {}) {
       : 0;
     const simpleQty = hasSelectableOptions ? 0 : getSimpleCartQty(p.id);
     const cardOptionBlocks = hasSelectableOptions
-      ? renderProductOptionBlocks(p, optionSelections, { scope: options.promo ? 'promo-card' : 'card', compact: true })
+      ? renderProductCardOptionPanel(p, optionSelections, { scope: options.promo ? 'promo-card' : 'card' })
       : '';
     return `
     <article class="product-card${state.admin.enabled && state.admin.selectionMode && state.admin.selectedType === 'product' && selectedProducts.has(p.id) ? ' admin-selected-target' : ''}" data-open="${p.id}">
@@ -10235,6 +10284,13 @@ function bindEvents() {
       e.stopPropagation();
       return;
     }
+    if (btn && btn.dataset.optionToggleProduct) {
+      const productId = btn.dataset.optionToggleProduct;
+      setProductCardOptionPanelExpanded(productId, !isProductCardOptionPanelExpanded(productId));
+      renderProducts();
+      e.stopPropagation();
+      return;
+    }
     if (btn && btn.dataset.optionProduct && btn.dataset.optionId) {
       const productId = btn.dataset.optionProduct;
       const optionId = btn.dataset.optionId;
@@ -10391,6 +10447,13 @@ function bindEvents() {
     const btn = e.target.closest('button');
     if (btn && btn.dataset.favorite) {
       toggleFavorite(btn.dataset.favorite);
+      e.stopPropagation();
+      return;
+    }
+    if (btn && btn.dataset.optionToggleProduct) {
+      const productId = btn.dataset.optionToggleProduct;
+      setProductCardOptionPanelExpanded(productId, !isProductCardOptionPanelExpanded(productId));
+      renderPromos();
       e.stopPropagation();
       return;
     }
