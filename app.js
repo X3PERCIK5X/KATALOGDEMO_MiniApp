@@ -2181,7 +2181,7 @@ async function fileToOptimizedDataUrl(file) {
   }
 }
 
-async function adminUploadImageFile(file) {
+async function adminUploadImageFile(file, { allowLocalFallback = true } = {}) {
   if (!file) return null;
   let endpoint = getImageUploadEndpoint();
   if (state.saas.enabled && endpoint === '/upload-image') {
@@ -2229,6 +2229,10 @@ async function adminUploadImageFile(file) {
     reportStatus('Фото загружено');
     return imageUrl;
   } catch {
+    if (!allowLocalFallback) {
+      reportStatus('Ошибка загрузки фото');
+      return null;
+    }
     // Авто-fallback: если сервер недоступен, вставляем локально, чтобы админка не блокировалась.
     try {
       const asDataUrl = await fileToOptimizedDataUrl(file);
@@ -2395,7 +2399,7 @@ async function savePrivacyPolicySettings() {
   }
 }
 
-async function adminPickAndUploadImage({ allowCameraChoice = false, source = '' } = {}) {
+async function adminPickAndUploadImage({ allowCameraChoice = false, source = '', allowLocalFallback = true } = {}) {
   let sourceMode = source === 'camera' ? 'camera' : source === 'gallery' ? 'gallery' : '';
   if (!sourceMode && allowCameraChoice) {
     const action = await adminOpenActionSheet('Добавить фото', [
@@ -2412,7 +2416,7 @@ async function adminPickAndUploadImage({ allowCameraChoice = false, source = '' 
     reportStatus('Выбранный файл не является изображением');
     return null;
   }
-  return adminUploadImageFile(file);
+  return adminUploadImageFile(file, { allowLocalFallback });
 }
 
 function isPlaceholderImage(src) {
@@ -9975,7 +9979,7 @@ function bindEvents() {
   on(ui.botWelcomeImageUploadButton, 'click', async () => {
     if (!state.admin.enabled) return;
     if (!requireAdminFeatureAccess()) return;
-    const imageUrl = await adminPickAndUploadImage();
+    const imageUrl = await adminPickAndUploadImage({ allowLocalFallback: false });
     if (!imageUrl) return;
     if (ui.botWelcomeImageInput) ui.botWelcomeImageInput.value = imageUrl;
     if (ui.botSettingsStatus) ui.botSettingsStatus.textContent = 'Картинка загружена. Нажмите "Сохранить в боте".';

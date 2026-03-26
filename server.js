@@ -3642,22 +3642,52 @@ async function sendStoreCatalogKeyboard(botToken, chatId, storeId, isOwner = fal
     inline_keyboard: [[{ text: 'Открыть каталог', web_app: { url: webAppUrl } }]],
   };
   try {
-    const canSendPhoto = Boolean(welcomeImage) && !/^data:/i.test(welcomeImage);
-    if (canSendPhoto) {
+    const normalizedWelcomeImage = (() => {
+      const raw = String(welcomeImage || '').trim();
+      if (!raw) return '';
+      if (/^data:/i.test(raw)) return raw;
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (raw.startsWith('/')) return `${base}${raw}`;
+      return raw;
+    })();
+
+    const sendPhotoFromSource = async (photoSource) => {
+      if (!photoSource) return { ok: false, error: 'PHOTO_SOURCE_EMPTY' };
+      if (/^data:image\//i.test(photoSource)) {
+        const match = photoSource.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+        if (!match) return { ok: false, error: 'INVALID_DATA_IMAGE' };
+        const mimeType = match[1];
+        const bytes = Buffer.from(match[2], 'base64');
+        const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+        const form = new FormData();
+        form.append('chat_id', String(chatId || '').trim());
+        form.append('photo', new Blob([bytes], { type: mimeType }), `welcome.${ext}`);
+        if (welcomeText) form.append('caption', welcomeText.slice(0, 1024));
+        form.append('reply_markup', JSON.stringify(inlineKeyboard));
+        const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendPhoto`, {
+          method: 'POST',
+          body: form,
+        });
+        const payload = await response.json().catch(() => ({}));
+        return response.ok && payload?.ok ? { ok: true } : { ok: false, error: payload?.description || 'SEND_PHOTO_FAILED' };
+      }
       const photoResp = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendPhoto`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: String(chatId || '').trim(),
-          photo: welcomeImage,
+          photo: photoSource,
           caption: welcomeText ? welcomeText.slice(0, 1024) : undefined,
           reply_markup: inlineKeyboard,
         }),
       });
       const photoPayload = await photoResp.json().catch(() => ({}));
-      if (photoResp.ok && photoPayload?.ok) {
-        return { ok: true };
-      }
+      return photoResp.ok && photoPayload?.ok ? { ok: true } : { ok: false, error: photoPayload?.description || 'SEND_PHOTO_FAILED' };
+    };
+
+    if (normalizedWelcomeImage) {
+      const photoResult = await sendPhotoFromSource(normalizedWelcomeImage);
+      if (photoResult.ok) return { ok: true };
     }
 
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`, {
