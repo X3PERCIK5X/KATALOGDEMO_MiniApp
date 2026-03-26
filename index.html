@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>МессКаталог</title>
-    <link rel="stylesheet" href="/style.css?v=20260327-324" />
+    <link rel="stylesheet" href="/style.css?v=20260327-325" />
   </head>
   <body>
     <header class="header">
@@ -604,6 +604,18 @@
             </div>
           </div>
         </div>
+        <div id="profileStoreManagerSection" class="profile-subscription-card hidden">
+          <div class="section-title">Менеджер магазина</div>
+          <p class="feedback-note">Укажите Telegram-ссылку менеджера магазина. Эта ссылка будет открываться у покупателей по кнопке «Написать менеджеру» в каталоге.</p>
+          <form id="storeManagerForm" class="order-form flat">
+            <label>Telegram-ссылка менеджера
+              <input id="storeManagerTelegramLinkInput" type="text" autocomplete="off" placeholder="https://t.me/username" />
+            </label>
+            <div id="storeManagerCurrentLink" class="feedback-note hidden"></div>
+            <div id="storeManagerStatus" class="status"></div>
+            <button id="storeManagerSaveButton" class="primary-button" type="submit">Сохранить менеджера</button>
+          </form>
+        </div>
         <div id="profilePrivacyPolicySection" class="profile-subscription-card hidden">
           <div class="section-title">Политика конфиденциальности</div>
           <p class="feedback-note">Добавьте текст политики или загрузите файл. Если политика заполнена, при оформлении заказа появится обязательная галочка согласия.</p>
@@ -995,12 +1007,12 @@
       </button>
     </nav>
 
-    <script src="/vk-bridge.min.js?v=20260327-324"></script>
-    <script src="/platform.js?v=20260327-324"></script>
-    <script src="/telegram.js?v=20260327-324"></script>
-    <script src="/client-utils.js?v=20260327-324"></script>
-    <script src="/client-routing.js?v=20260327-324"></script>
-    <script src="/client-presentation.js?v=20260327-324"></script>
-    <script src="/app.js?v=20260327-324"></script>
+    <script src="/vk-bridge.min.js?v=20260327-325"></script>
+    <script src="/platform.js?v=20260327-325"></script>
+    <script src="/telegram.js?v=20260327-325"></script>
+    <script src="/client-utils.js?v=20260327-325"></script>
+    <script src="/client-routing.js?v=20260327-325"></script>
+    <script src="/client-presentation.js?v=20260327-325"></script>
+    <script src="/app.js?v=20260327-325"></script>
   </body>
 </html>

@@ -167,6 +167,7 @@ const SAAS_TOKEN_KEY = 'demo_saas_token_v1';
 const SAAS_STORE_KEY = 'demo_saas_store_id_v1';
 const SAAS_API_BASE_KEY = 'demo_saas_api_base_v1';
 const SAAS_DEFAULT_REMOTE_API = 'https://api.saaskatalog.ru/api';
+const ADMIN_SUPPORT_TELEGRAM_USERNAME = 'XPERCHIKX';
 
 // Базовые баннеры главной страницы.
 const DEFAULT_HOME_BANNERS = [];
@@ -317,6 +318,7 @@ const ui = {
   profileName: document.getElementById('profileName'),
   profileHandle: document.getElementById('profileHandle'),
   profileManagerButton: document.getElementById('profileManagerButton'),
+  profileStoreManagerSection: document.getElementById('profileStoreManagerSection'),
   profileStatsSection: document.getElementById('profileStatsSection'),
   profileOpenStatsButton: document.getElementById('profileOpenStatsButton'),
   profileLegalSection: document.getElementById('profileLegalSection'),
@@ -416,6 +418,11 @@ const ui = {
   profilePromoSection: document.getElementById('profilePromoSection'),
   profilePrivacyPolicySection: document.getElementById('profilePrivacyPolicySection'),
   privacyPolicyForm: document.getElementById('privacyPolicyForm'),
+  storeManagerForm: document.getElementById('storeManagerForm'),
+  storeManagerTelegramLinkInput: document.getElementById('storeManagerTelegramLinkInput'),
+  storeManagerCurrentLink: document.getElementById('storeManagerCurrentLink'),
+  storeManagerStatus: document.getElementById('storeManagerStatus'),
+  storeManagerSaveButton: document.getElementById('storeManagerSaveButton'),
   privacyPolicyConsentTextInput: document.getElementById('privacyPolicyConsentTextInput'),
   privacyPolicyTitleInput: document.getElementById('privacyPolicyTitleInput'),
   privacyPolicyTextInput: document.getElementById('privacyPolicyTextInput'),
@@ -1587,10 +1594,51 @@ function submitSearch(query) {
   closeSearchOverlay();
 }
 
+function normalizeTelegramManagerLink(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('@')) {
+    const username = raw.slice(1).trim();
+    return username ? `https://t.me/${username}` : '';
+  }
+  if (/^[A-Za-z0-9_]{5,}$/.test(raw)) {
+    return `https://t.me/${raw}`;
+  }
+  try {
+    const url = new URL(raw);
+    const host = String(url.hostname || '').trim().toLowerCase();
+    if (host === 't.me' || host === 'telegram.me' || host === 'www.t.me' || host === 'www.telegram.me') {
+      const path = String(url.pathname || '').trim();
+      if (!path || path === '/') return '';
+      return `https://t.me${path}${url.search || ''}`;
+    }
+    if (url.protocol === 'tg:' && url.searchParams.get('domain')) {
+      const username = String(url.searchParams.get('domain') || '').trim();
+      return username ? `https://t.me/${username}` : '';
+    }
+  } catch {}
+  return '';
+}
+
+function getStoreManagerTelegramLink() {
+  const settings = state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {};
+  return normalizeTelegramManagerLink(
+    settings.storeManagerTelegramLink
+    || settings.managerTelegramLink
+    || settings.storeManagerLink
+    || '',
+  );
+}
+
 function openManagerChat() {
-  const username = 'XPERCHIKX';
-  const tgLink = `https://t.me/${username}`;
-  if (window.Telegram?.WebApp?.openTelegramLink) {
+  const tgLink = state.admin.enabled
+    ? `https://t.me/${ADMIN_SUPPORT_TELEGRAM_USERNAME}`
+    : getStoreManagerTelegramLink();
+  if (!tgLink) {
+    reportStatus('Ссылка менеджера магазина пока не настроена.');
+    return;
+  }
+  if (window.Telegram?.WebApp?.openTelegramLink && /^https:\/\/t\.me\//i.test(tgLink)) {
     window.Telegram.WebApp.openTelegramLink(tgLink);
     return;
   }
@@ -8935,6 +8983,16 @@ function renderProfile() {
   if (ui.profileHistorySection) {
     ui.profileHistorySection.classList.add('hidden');
   }
+  if (ui.profileManagerButton) {
+    const titleNode = ui.profileManagerButton.querySelector('strong');
+    const hintNode = ui.profileManagerButton.querySelector('small');
+    if (titleNode) titleNode.textContent = state.admin.enabled ? 'Написать в поддержку' : 'Написать менеджеру';
+    if (hintNode) {
+      hintNode.textContent = state.admin.enabled
+        ? 'Аккаунт поддержки сервиса в Telegram'
+        : (getStoreManagerTelegramLink() ? 'Связь с менеджером магазина в Telegram' : 'Менеджер магазина пока не назначен');
+    }
+  }
 }
 
 function normalizePaymentProviderCode(raw) {
@@ -9110,10 +9168,64 @@ function renderStoreSettingsSection() {
   if (ui.profileAppearancePanel) {
     ui.profileAppearancePanel.classList.toggle('hidden', !state.admin.enabled);
   }
+  if (ui.profileStoreManagerSection) {
+    ui.profileStoreManagerSection.classList.toggle('hidden', !state.admin.enabled);
+  }
   if (ui.themeSelect) ui.themeSelect.value = normalizeThemeCode(state.theme);
   if (ui.accentSelect) ui.accentSelect.value = normalizeAccentCode(state.accent);
+  renderStoreManagerSettings();
   renderPrivacyPolicySettings();
   renderAdminPromoSettings();
+}
+
+function renderStoreManagerSettings() {
+  const managerLink = getStoreManagerTelegramLink();
+  if (ui.storeManagerTelegramLinkInput && document.activeElement !== ui.storeManagerTelegramLinkInput) {
+    ui.storeManagerTelegramLinkInput.value = managerLink;
+  }
+  if (ui.storeManagerCurrentLink) {
+    if (managerLink) {
+      ui.storeManagerCurrentLink.classList.remove('hidden');
+      ui.storeManagerCurrentLink.innerHTML = `Текущая ссылка менеджера: <a href="${escapeHtml(managerLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(managerLink)}</a>`;
+    } else {
+      ui.storeManagerCurrentLink.classList.add('hidden');
+      ui.storeManagerCurrentLink.textContent = '';
+    }
+  }
+}
+
+async function saveStoreManagerSettings() {
+  if (!state.admin.enabled || !state.saas.storeId) return;
+  if (!requireAdminFeatureAccess()) return;
+  const managerLink = normalizeTelegramManagerLink(ui.storeManagerTelegramLinkInput?.value || '');
+  if (ui.storeManagerTelegramLinkInput && !managerLink && String(ui.storeManagerTelegramLinkInput.value || '').trim()) {
+    if (ui.storeManagerStatus) ui.storeManagerStatus.textContent = 'Введите корректную Telegram-ссылку, например https://t.me/username';
+    return;
+  }
+  if (ui.storeManagerStatus) ui.storeManagerStatus.textContent = 'Сохраняем менеджера магазина...';
+  try {
+    const patch = {
+      ...(state.saas.settings && typeof state.saas.settings === 'object' ? state.saas.settings : {}),
+      storeManagerTelegramLink: managerLink,
+    };
+    const payload = await saasRequest(`/admin/stores/${encodeURIComponent(state.saas.storeId)}/bot`, {
+      method: 'POST',
+      auth: true,
+      body: { settings: patch },
+    });
+    state.saas.settings = payload?.settings && typeof payload.settings === 'object' ? payload.settings : patch;
+    renderStoreManagerSettings();
+    if (ui.storeManagerStatus) {
+      ui.storeManagerStatus.textContent = managerLink
+        ? 'Ссылка менеджера магазина сохранена.'
+        : 'Ссылка менеджера очищена.';
+    }
+    renderProfile();
+  } catch (error) {
+    if (ui.storeManagerStatus) {
+      ui.storeManagerStatus.textContent = `Ошибка сохранения: ${String(error?.message || 'unknown')}`;
+    }
+  }
 }
 
 async function saveAdminPromoCode() {
@@ -9997,6 +10109,10 @@ function bindEvents() {
   on(ui.promoSettingsForm, 'submit', async (e) => {
     e.preventDefault();
     await saveAdminPromoCode();
+  });
+  on(ui.storeManagerForm, 'submit', async (e) => {
+    e.preventDefault();
+    await saveStoreManagerSettings();
   });
   on(ui.privacyPolicyForm, 'submit', async (e) => {
     e.preventDefault();
