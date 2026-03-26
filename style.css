@@ -4418,6 +4418,54 @@ html[data-theme="light"] #screen-product .recommended-card img {
   text-decoration: underline;
 }
 
+html[data-theme="light"] #screen-checkout .order-form.flat label,
+html[data-theme="light"] #screen-checkout .section-title,
+html[data-theme="light"] #screen-checkout .cart-totals span,
+html[data-theme="light"] #screen-checkout .cart-totals strong {
+  color: #1a2436;
+}
+
+html[data-theme="light"] #screen-checkout .order-form.flat input,
+html[data-theme="light"] #screen-checkout .order-form.flat select,
+html[data-theme="light"] #screen-checkout .order-form.flat textarea {
+  background: #ffffff;
+  color: #182133;
+  border: 1px solid #d7deeb;
+}
+
+html[data-theme="light"] #screen-checkout .order-form.flat input::placeholder,
+html[data-theme="light"] #screen-checkout .order-form.flat textarea::placeholder {
+  color: #7b879b;
+}
+
+html[data-theme="light"] #screen-checkout #inputDeliveryType {
+  background-color: #ffffff;
+}
+
+html[data-theme="light"] #screen-checkout .checkbox {
+  background: #f7f9fc;
+  border: 1px solid #d7deeb;
+}
+
+html[data-theme="light"] #screen-checkout .checkbox span,
+html[data-theme="light"] #screen-checkout #deliveryPriceNote,
+html[data-theme="light"] #screen-checkout .checkout-item-meta {
+  color: #526178;
+}
+
+html[data-theme="light"] #screen-checkout .checkbox a {
+  color: #2563eb;
+}
+
+html[data-theme="light"] #screen-checkout .checkout-item-title,
+html[data-theme="light"] #screen-checkout .checkout-item-option strong {
+  color: #0f172a;
+}
+
+html[data-theme="light"] #screen-checkout .checkout-item-option {
+  color: #526178;
+}
+
 #screen-checkout #deliveryPriceNote {
   margin-top: -4px;
   margin-bottom: 2px;
