@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const Database = require('better-sqlite3');
 
 const STORE_ID = process.argv[2] || 'R33J6P';
@@ -111,6 +112,35 @@ function writeSvg(filename, svg) {
   ensureDir(UPLOADS_BASE);
   fs.writeFileSync(path.join(UPLOADS_BASE, filename), svg, 'utf8');
   return `${PUBLIC_UPLOAD_BASE}/${filename}`;
+}
+
+function downloadAsset(filename, sourceUrl) {
+  if (!sourceUrl) return '';
+  ensureDir(UPLOADS_BASE);
+  const destination = path.join(UPLOADS_BASE, filename);
+  try {
+    execFileSync('curl', [
+      '-A', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+      '--retry', '2',
+      '--retry-delay', '1',
+      '-LfsS',
+      sourceUrl,
+      '-o', destination,
+    ], { stdio: 'ignore' });
+    if (fs.existsSync(destination) && fs.statSync(destination).size > 0) {
+      return `${PUBLIC_UPLOAD_BASE}/${filename}`;
+    }
+  } catch {}
+  return '';
+}
+
+function downloadFirstAvailableAsset(filename, sourceUrls) {
+  const list = Array.isArray(sourceUrls) ? sourceUrls : [sourceUrls];
+  for (const url of list) {
+    const localUrl = downloadAsset(filename, url);
+    if (localUrl) return localUrl;
+  }
+  return '';
 }
 
 function categoryCoverSvg({ accentA, accentB, chip, icon, glow }) {
@@ -444,51 +474,74 @@ function p(data) {
   };
 }
 
-const CATEGORY_IMAGES = {
-  smartphones: IMG.iphone16promax[0],
-  laptops: IMG.macbookpro[0],
-  tablets: IMG.ipadpro[0],
-  headphones: IMG.airpodsmax[0],
-  watches: IMG.watchAppleUltra[0],
-  accessories: 'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MX6X3_AV2?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1729023049997',
-  'smart-home': IMG.homepod[0],
+function buildCategoryImages() {
+  const remoteSources = {
+    smartphones: IMG.iphone16promax[0],
+    laptops: IMG.macbookpro[0],
+    tablets: IMG.ipadpro[0],
+    headphones: IMG.airpodsmax[0],
+    watches: IMG.watchAppleUltra[0],
+    accessories: 'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MX6X3_AV2?wid=1200&hei=630&fmt=jpeg&qlt=95&.v=1729023049997',
+    'smart-home': IMG.homepod[0],
 
-  'smartphones-apple': IMG.iphone16pro[0],
-  'smartphones-samsung': IMG.s25ultra[0],
-  'smartphones-google': IMG.pixel8pro[0],
-  'smartphones-xiaomi': IMG.xiaomi15ultra[0],
+    'smartphones-apple': IMG.iphone16pro[0],
+    'smartphones-samsung': IMG.s25ultra[0],
+    'smartphones-google': IMG.pixel8pro[0],
+    'smartphones-xiaomi': IMG.xiaomi15ultra[0],
 
-  'laptops-apple': IMG.macbookair[0],
-  'laptops-asus': 'https://dlcdnwebimgs.asus.com/gain/AF5B8A86-D42F-4846-ADEF-7A71E66475D4/w1000/h732',
-  'laptops-lenovo': 'https://news.lenovo.com/wp-content/uploads/2024/01/02_Yoga_Slim_7i_14_9_Luna_Grey_oled_glass_Battery.jpg',
-  'laptops-dell': 'https://i.dell.com/is/image/DellContent/content/dam/ss2/product-images/page/consumer-family/xps/family/xps-family-white.png?fmt=png-alpha&wid=1200&hei=630',
+    'laptops-apple': IMG.macbookair[0],
+    'laptops-asus': 'https://dlcdnwebimgs.asus.com/gain/AF5B8A86-D42F-4846-ADEF-7A71E66475D4/w1000/h732',
+    'laptops-lenovo': 'https://news.lenovo.com/wp-content/uploads/2024/01/02_Yoga_Slim_7i_14_9_Luna_Grey_oled_glass_Battery.jpg',
+    'laptops-dell': [
+      'https://i.dell.com/is/image/DellContent/content/dam/ss2/product-images/page/consumer-family/xps/family/xps-family-white.png?fmt=png-alpha&wid=1200&hei=630',
+      IMG.laptopstudio[0],
+    ],
 
-  'tablets-apple': IMG.ipadair[0],
-  'tablets-samsung': IMG.tabS10Ultra[0],
+    'tablets-apple': IMG.ipadair[0],
+    'tablets-samsung': IMG.tabS10Ultra[0],
 
-  'headphones-apple': IMG.airpodspro[0],
-  'headphones-sony': IMG.sonyXm5[0],
-  'headphones-samsung': IMG.galaxyBuds3Pro[0],
-  'headphones-nothing': IMG.nothingEar[0],
+    'headphones-apple': IMG.airpodspro[0],
+    'headphones-sony': IMG.sonyXm5,
+    'headphones-samsung': IMG.galaxyBuds3Pro[0],
+    'headphones-nothing': IMG.nothingEar[0],
 
-  'watches-apple': IMG.watchAppleSeries10[0],
-  'watches-samsung': IMG.watchSamsungUltra[0],
-  'watches-garmin': IMG.watchGarmin[0],
+    'watches-apple': IMG.watchAppleSeries10[0],
+    'watches-samsung': IMG.watchSamsungUltra[0],
+    'watches-garmin': IMG.watchGarmin[0],
 
-  'accessories-cases': IMG.accessoryCaseApple[0],
-  'accessories-cables': IMG.accessoryMagsafe3Cable[0],
-  'accessories-chargers': IMG.charger100w[0],
-  'accessories-power': IMG.accessoryPower[0],
-  'accessories-magsafe': IMG.magsafe[0],
-  'accessories-glass': IMG.accessoryGlassApple[0],
+    'accessories-cases': IMG.accessoryCaseApple[0],
+    'accessories-cables': IMG.accessoryMagsafe3Cable[0],
+    'accessories-chargers': [IMG.charger100w[0], ...(IMG.charger35w || []), ...(IMG.charger3in1 || [])],
+    'accessories-power': IMG.accessoryPower[0],
+    'accessories-magsafe': IMG.magsafe[0],
+    'accessories-glass': [IMG.accessoryGlassApple[0], ...(IMG.accessoryGlassSamsung || []), IMG.accessoryCaseApple[0]],
 
-  'smart-home-speakers': IMG.homepod[0],
-  'smart-home-trackers': IMG.airtag[0],
-  'smart-home-keyboards': IMG.mxKeys[0],
-  'smart-home-mice': IMG.mxMaster[0],
-};
+    'smart-home-speakers': IMG.homepod[0],
+    'smart-home-trackers': IMG.airtag[0],
+    'smart-home-keyboards': IMG.mxKeys[0],
+    'smart-home-mice': IMG.mxMaster[0],
+  };
+  return Object.fromEntries(
+    Object.entries(remoteSources).map(([id, source]) => {
+      const urls = Array.isArray(source) ? source.filter(Boolean) : [source];
+      const sample = String(urls[0] || '');
+      const ext = /\.png(\?|$)/i.test(sample) ? 'png' : 'jpg';
+      const localUrl = downloadFirstAvailableAsset(`cover-${id}.${ext}`, urls);
+      return [id, localUrl || ''];
+    }),
+  );
+}
 
 function buildCategories(art) {
+  const artByParentId = {
+    smartphones: art['category-smartphones'],
+    laptops: art['category-laptops'],
+    tablets: art['category-tablets'],
+    headphones: art['category-headphones'],
+    watches: art['category-watches'],
+    accessories: art['category-accessories'],
+    'smart-home': art['category-smartHome'],
+  };
   const roots = [
     ['smartphones', 'Смартфоны', CATEGORY_IMAGES.smartphones || art['category-smartphones']],
     ['laptops', 'Ноутбуки', CATEGORY_IMAGES.laptops || art['category-laptops']],
@@ -530,7 +583,7 @@ function buildCategories(art) {
   ].map(([id, title, parentId]) => ({
     id,
     title,
-    image: CATEGORY_IMAGES[id] || '',
+    image: CATEGORY_IMAGES[id] || artByParentId[parentId] || '',
     groupId: 'apparel',
     parentId,
   }));
@@ -711,6 +764,7 @@ const current = {
 
 const backupPath = backupStore(row, current);
 const art = buildArt();
+const CATEGORY_IMAGES = buildCategoryImages();
 const categories = buildCategories(art);
 const products = buildProducts();
 const config = buildConfig(current.config, art);
